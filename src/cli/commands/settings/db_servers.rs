@@ -89,10 +89,10 @@ impl DbServersHandler {
         Self { config_service }
     }
 
-    pub async fn handle(&self, subcommand: DbServersSubcommand) -> Result<()> {
+    pub async fn handle(&self, subcommand: Option<DbServersSubcommand>) -> Result<()> {
         match subcommand {
-            DbServersSubcommand::List => self.list_servers(),
-            DbServersSubcommand::Add {
+            Some(DbServersSubcommand::List) => self.list_servers(),
+            Some(DbServersSubcommand::Add {
                 name,
                 host,
                 port,
@@ -104,7 +104,7 @@ impl DbServersHandler {
                 ssl_mode,
                 timeout,
                 max_parallelism,
-            } => self.add_server(
+            }) => self.add_server(
                 name,
                 host,
                 port,
@@ -117,9 +117,19 @@ impl DbServersHandler {
                 timeout,
                 max_parallelism,
             ),
-            DbServersSubcommand::Remove { name } => self.remove_server(&name),
-            DbServersSubcommand::Test { name } => self.test_server(&name).await,
-            DbServersSubcommand::SetPassword { name } => self.set_password(&name),
+            Some(DbServersSubcommand::Remove { name }) => self.remove_server(&name),
+            Some(DbServersSubcommand::Test { name }) => self.test_server(&name).await,
+            Some(DbServersSubcommand::SetPassword { name }) => self.set_password(&name),
+            None => {
+                println!("\n{}", "Available 'db-servers' commands:".bright_cyan().bold());
+                println!("  {:<15} List all configured database servers", "list (ls)".bold());
+                println!("  {:<15} Add or update a database server configuration (interactive if args missing)", "add".bold());
+                println!("  {:<15} Remove a database server configuration", "remove (rm)".bold());
+                println!("  {:<15} Test connection to a database server", "test".bold());
+                println!("  {:<15} Securely set/encrypt password for a database server", "set-password".bold());
+                println!("\nUsage: mustel db-servers <COMMAND>\n");
+                Ok(())
+            }
         }
     }
 

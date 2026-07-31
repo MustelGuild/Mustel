@@ -2,6 +2,7 @@ pub mod commands;
 pub mod ui;
 
 use clap::{CommandFactory, Parser, Subcommand};
+use colored::Colorize;
 use commands::query::{QueryRunArgs, QueryRunner};
 use commands::settings::{DbServersHandler, DbServersSubcommand};
 use crate::config::UserConfigService;
@@ -32,14 +33,14 @@ pub enum Commands {
     /// Application and database server settings.
     Settings {
         #[command(subcommand)]
-        subcommand: SettingsSubcommands,
+        subcommand: Option<SettingsSubcommands>,
     },
 
     /// Shortcut command for database servers configuration.
     #[command(name = "db-servers", alias = "servers")]
     DbServers {
         #[command(subcommand)]
-        subcommand: DbServersSubcommand,
+        subcommand: Option<DbServersSubcommand>,
     },
 }
 
@@ -55,7 +56,7 @@ pub enum SettingsSubcommands {
     #[command(name = "db-servers", alias = "servers")]
     DbServers {
         #[command(subcommand)]
-        subcommand: DbServersSubcommand,
+        subcommand: Option<DbServersSubcommand>,
     },
 }
 
@@ -86,9 +87,14 @@ impl CliApp {
                 runner.run(args).await?;
             }
             Commands::Settings { subcommand } => match subcommand {
-                SettingsSubcommands::DbServers { subcommand } => {
+                Some(SettingsSubcommands::DbServers { subcommand }) => {
                     let handler = DbServersHandler::new(config_service);
                     handler.handle(subcommand).await?;
+                }
+                None => {
+                    println!("\n{}", "Available 'settings' subcommands:".bright_cyan().bold());
+                    println!("  {:<20} Manage configured database servers", "db-servers (servers)".bold());
+                    println!("\nUsage: mustel settings db-servers <COMMAND>\n");
                 }
             },
             Commands::DbServers { subcommand } => {

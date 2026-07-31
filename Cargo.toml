@@ -39,6 +39,8 @@ directories = "5.0"
 sqlparser = "0.47"
 regex = "1.10"
 glob = "0.3"
+anyhow = "1.0"
+thiserror = "1.0"
 
 # Windows DPAPI & Cryptography
 [target.'cfg(windows)'.dependencies]
@@ -49,5 +51,7 @@ windows-sys = { version = "0.52", features = [
 ] }
 
 # Error Handling
-thiserror = "1.0"
-anyhow = "1.0"
+# thiserror and anyhow are already declared above
+
+[dev-dependencies]
+tempfile = "3.10"

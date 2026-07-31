@@ -67,3 +67,110 @@ impl DbConnectionBuilder {
         Ok(tokio_postgres_rustls::MakeRustlsConnect::new(tls_config))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::models::ServerConfigEntry;
+    use std::time::Duration;
+
+    fn create_base_server() -> ServerConfigEntry {
+        ServerConfigEntry {
+            name: "test_server".to_string(),
+            host: "localhost".to_string(),
+            port: 5432,
+            username: "test_user".to_string(),
+            password: None,
+            encrypted_password: None,
+            databases: None,
+            fetch_all_databases: None,
+            exclude_patterns: None,
+            ssl_mode: None,
+            timeout: None,
+            command_timeout: None,
+            max_parallelism: None,
+        }
+    }
+
+    #[test]
+    fn test_build_config_database_resolution() {
+        // Fallback to "postgres"
+        let server = create_base_server();
+        let config = DbConnectionBuilder::build_config(&server, None, None).unwrap();
+        assert_eq!(config.get_dbname(), Some("postgres"));
+
+        // Use database_override
+        let config = DbConnectionBuilder::build_config(&server, Some("override_db"), None).unwrap();
+        assert_eq!(config.get_dbname(), Some("override_db"));
+
+        // Fallback to databases list
+        let mut server_with_db = create_base_server();
+        server_with_db.databases = Some(vec!["server_db".to_string()]);
+        let config = DbConnectionBuilder::build_config(&server_with_db, None, None).unwrap();
+        assert_eq!(config.get_dbname(), Some("server_db"));
+
+        // database_override takes precedence over databases list
+        let config = DbConnectionBuilder::build_config(&server_with_db, Some("override_db"), None).unwrap();
+        assert_eq!(config.get_dbname(), Some("override_db"));
+    }
+
+    #[test]
+    fn test_build_config_password_resolution() {
+        // No password
+        let server = create_base_server();
+        let config = DbConnectionBuilder::build_config(&server, None, None).unwrap();
+        assert_eq!(config.get_password(), None);
+
+        // Password override
+        let config = DbConnectionBuilder::build_config(&server, None, Some("override_pass")).unwrap();
+        assert_eq!(config.get_password(), Some("override_pass".as_bytes()));
+
+        // Server password
+        let mut server_with_pass = create_base_server();
+        server_with_pass.password = Some("server_pass".to_string());
+        let config = DbConnectionBuilder::build_config(&server_with_pass, None, None).unwrap();
+        assert_eq!(config.get_password(), Some("server_pass".as_bytes()));
+
+        // Password override takes precedence over server password
+        let config = DbConnectionBuilder::build_config(&server_with_pass, None, Some("override_pass")).unwrap();
+        assert_eq!(config.get_password(), Some("override_pass".as_bytes()));
+
+        // Server encrypted password
+        let mut server_with_enc_pass = create_base_server();
+        let enc_pass = crate::security::CredentialStore::encrypt_password("encrypted_pass").unwrap();
+        server_with_enc_pass.encrypted_password = Some(enc_pass);
+        let config = DbConnectionBuilder::build_config(&server_with_enc_pass, None, None).unwrap();
+        assert_eq!(config.get_password(), Some("encrypted_pass".as_bytes()));
+    }
+
+    #[test]
+    fn test_build_config_timeout() {
+        // Default timeout is 30 seconds if None
+        let server = create_base_server();
+        let config = DbConnectionBuilder::build_config(&server, None, None).unwrap();
+        assert_eq!(config.get_connect_timeout(), Some(&Duration::from_secs(30)));
+
+        // Custom timeout
+        let mut server_with_timeout = create_base_server();
+        server_with_timeout.timeout = Some(60);
+        let config = DbConnectionBuilder::build_config(&server_with_timeout, None, None).unwrap();
+        assert_eq!(config.get_connect_timeout(), Some(&Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn test_build_config_basic() {
+        let server = create_base_server();
+        let config = DbConnectionBuilder::build_config(&server, None, None).unwrap();
+
+        let hosts = config.get_hosts();
+        assert_eq!(hosts.len(), 1);
+        if let tokio_postgres::config::Host::Tcp(host) = &hosts[0] {
+            assert_eq!(host, "localhost");
+        } else {
+            panic!("Expected TCP host");
+        }
+
+        assert_eq!(config.get_ports(), &[5432]);
+        assert_eq!(config.get_user(), Some("test_user"));
+    }
+}

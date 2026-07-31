@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use directories::ProjectDirs;
+use colored::Colorize;
 
 use crate::config::models::{ServerConfigEntry, UserConfig, UserDefaults};
 use crate::error::{MustelError, Result};
@@ -48,12 +49,55 @@ impl UserConfigService {
         self.config_file_path.exists()
     }
 
+    /// SECURITY: Checks if the config file has insecure permissions (world-readable or group-readable).
+    /// Only warns on Unix systems; Windows uses ACLs which are harder to check.
+    fn check_config_permissions(&self) -> Result<()> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            if let Ok(metadata) = fs::metadata(&self.config_file_path) {
+                let mode = metadata.permissions().mode();
+                // Check if world-readable (04) or group-readable (02)
+                if mode & 0o047 != 0 {
+                    eprintln!(
+                        "{} {}",
+                        "WARNING:".yellow().bold(),
+                        format!(
+                            "Config file '{}' has insecure permissions ({:o}). \
+                             Credentials may be readable by other users. \
+                             Run: chmod 600 '{}'",
+                            self.config_file_path.display(),
+                            mode & 0o777,
+                            self.config_file_path.display()
+                        ).yellow()
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// SECURITY: Sets restrictive permissions on the config file (user read/write only).
+    fn secure_config_permissions(&self) -> Result<()> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::Permissions::mode(0o600);
+            fs::set_permissions(&self.config_file_path, perms)?;
+        }
+        Ok(())
+    }
+
     pub fn load_config(&self) -> Result<UserConfig> {
         if !self.config_file_exists() {
             let default_config = UserConfig::default();
             self.save_config(&default_config)?;
             return Ok(default_config);
         }
+
+        // SECURITY: Check permissions before loading
+        self.check_config_permissions()?;
 
         let content = fs::read_to_string(&self.config_file_path)?;
         let config: UserConfig = json5::from_str(&content)
@@ -70,7 +114,23 @@ impl UserConfigService {
         let json_content = serde_json::to_string_pretty(config)
             .map_err(|e| MustelError::Json(format!("Failed to serialize config: {}", e)))?;
 
-        fs::write(&self.config_file_path, json_content)?;
+        // Write to temp file first, then rename (atomic write)
+        let temp_path = self.config_file_path.with_extension("tmp");
+        fs::write(&temp_path, &json_content)?;
+
+        // SECURITY: Set restrictive permissions before renaming
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::Permissions::mode(0o600);
+            fs::set_permissions(&temp_path, perms)?;
+        }
+
+        fs::rename(&temp_path, &self.config_file_path)?;
+
+        // Final permission check
+        self.check_config_permissions()?;
+
         Ok(())
     }
 

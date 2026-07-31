@@ -1,14 +1,25 @@
 use tokio_postgres::{Client, NoTls};
 use glob::Pattern;
+use colored::Colorize;
 
 use crate::config::models::ServerConfigEntry;
 use crate::database::connection::DbConnectionBuilder;
 use crate::error::{MustelError, Result};
 
+/// Whether to allow fallback to unencrypted connections when TLS fails.
+/// Controlled by environment variable MUSTEL_ALLOW_UNENCRYPTED.
+fn allow_unencrypted_fallback() -> bool {
+    std::env::var("MUSTEL_ALLOW_UNENCRYPTED")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false)
+}
+
 pub struct DbExecutor;
 
 impl DbExecutor {
     /// Connects to a PostgreSQL server with retry logic.
+    /// SECURITY: This function will refuse to connect without encryption unless
+    /// MUSTEL_ALLOW_UNENCRYPTED=true is explicitly set in the environment.
     pub async fn connect(
         server: &ServerConfigEntry,
         database_override: Option<&str>,
@@ -24,7 +35,6 @@ impl DbExecutor {
             attempts += 1;
             match config.connect(tls_connector.clone()).await {
                 Ok((client, connection)) => {
-                    // Spawn connection task in background
                     tokio::spawn(async move {
                         if let Err(e) = connection.await {
                             tracing::error!("PostgreSQL connection error: {}", e);
@@ -33,23 +43,57 @@ impl DbExecutor {
                     return Ok(client);
                 }
                 Err(e) => {
-                    // Try fallback to NoTls if TLS fails or is not supported by server
                     if attempts == max_attempts {
-                        match config.connect(NoTls).await {
-                            Ok((client, connection)) => {
-                                tokio::spawn(async move {
-                                    if let Err(e) = connection.await {
-                                        tracing::error!("PostgreSQL NoTls connection error: {}", e);
-                                    }
-                                });
-                                return Ok(client);
+                        // Check if SSL is disabled in server config
+                        let ssl_disabled = matches!(
+                            server.ssl_mode,
+                            Some(crate::config::models::SslMode::Disable)
+                        );
+
+                        if ssl_disabled || allow_unencrypted_fallback() {
+                            if ssl_disabled {
+                                eprintln!(
+                                    "{} {}",
+                                    "WARNING:".yellow().bold(),
+                                    "SSL is disabled for this server. ".
+                                    yellow()
+                                );
+                            } else {
+                                eprintln!(
+                                    "{} {}",
+                                    "WARNING:".yellow().bold(),
+                                    "TLS connection failed, falling back to unencrypted connection. ".
+                                    yellow()
+                                );
                             }
-                            Err(_) => {
-                                return Err(MustelError::Database(format!(
-                                    "Failed to connect to {}:{} after {} attempts: {}",
-                                    server.host, server.port, max_attempts, e
-                                )));
+                            eprintln!(
+                                "{} {}",
+                                "Password will be sent in plaintext!".red().bold(),
+                                "Consider enabling SSL or using a VPN.".yellow()
+                            );
+
+                            match config.connect(NoTls).await {
+                                Ok((client, connection)) => {
+                                    tokio::spawn(async move {
+                                        if let Err(e) = connection.await {
+                                            tracing::error!("PostgreSQL NoTls connection error: {}", e);
+                                        }
+                                    });
+                                    return Ok(client);
+                                }
+                                Err(_) => {
+                                    return Err(MustelError::Database(format!(
+                                        "Failed to connect to {}:{} after {} attempts: {}",
+                                        server.host, server.port, max_attempts, e
+                                    )));
+                                }
                             }
+                        } else {
+                            return Err(MustelError::Database(format!(
+                                "Failed to establish TLS connection to {}:{}: {}. \
+                                 Set MUSTEL_ALLOW_UNENCRYPTED=true to allow unencrypted connections (not recommended).",
+                                server.host, server.port, e
+                            )));
                         }
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(500 * attempts as u64)).await;

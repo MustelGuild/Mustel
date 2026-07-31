@@ -40,6 +40,11 @@ sqlparser = "0.47"
 regex = "1.10"
 glob = "0.3"
 
+# Cryptography for credential encryption (non-Windows fallback)
+aes-gcm = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+
 # Error Handling
 thiserror = "1.0"
 anyhow = "1.0"

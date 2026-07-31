@@ -18,29 +18,16 @@ pub struct CliApp {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Query execution subcommands.
+    /// Execute SQL queries and export results to CSV.
     Query {
         #[command(subcommand)]
         subcommand: Option<QuerySubcommands>,
-
-        #[command(flatten)]
-        args: QueryRunArgs,
     },
 
-    /// Shortcut command for query run.
-    Run(QueryRunArgs),
-
-    /// Application and database server settings.
+    /// Manage Mustel settings and server configurations.
     Settings {
         #[command(subcommand)]
         subcommand: Option<SettingsSubcommands>,
-    },
-
-    /// Shortcut command for database servers configuration.
-    #[command(name = "db-servers", alias = "servers")]
-    DbServers {
-        #[command(subcommand)]
-        subcommand: Option<DbServersSubcommand>,
     },
 }
 
@@ -75,17 +62,17 @@ impl CliApp {
         };
 
         match command {
-            Commands::Query { subcommand, args } => {
-                let runner = QueryRunner::new(config_service);
-                match subcommand {
-                    Some(QuerySubcommands::Run(run_args)) => runner.run(run_args).await?,
-                    None => runner.run(args).await?,
+            Commands::Query { subcommand } => match subcommand {
+                Some(QuerySubcommands::Run(run_args)) => {
+                    let runner = QueryRunner::new(config_service);
+                    runner.run(run_args).await?;
                 }
-            }
-            Commands::Run(args) => {
-                let runner = QueryRunner::new(config_service);
-                runner.run(args).await?;
-            }
+                None => {
+                    println!("\n{}", "Available 'query' subcommands:".bright_cyan().bold());
+                    println!("  {:<15} Execute a SQL query across target servers/databases and export to CSV", "run".bold());
+                    println!("\nUsage: mustel query run [OPTIONS]\n");
+                }
+            },
             Commands::Settings { subcommand } => match subcommand {
                 Some(SettingsSubcommands::DbServers { subcommand }) => {
                     let handler = DbServersHandler::new(config_service);
@@ -97,10 +84,6 @@ impl CliApp {
                     println!("\nUsage: mustel settings db-servers <COMMAND>\n");
                 }
             },
-            Commands::DbServers { subcommand } => {
-                let handler = DbServersHandler::new(config_service);
-                handler.handle(subcommand).await?;
-            }
         }
 
         Ok(())

@@ -15,7 +15,7 @@ pub enum DbServersSubcommand {
 
     /// Add or update a database server configuration (enters interactive mode if arguments are missing).
     Add {
-        /// Server configuration name (positional or -n/--name).
+        /// Server configuration name.
         #[arg(short = 'n', long = "name")]
         name: Option<String>,
 
@@ -60,23 +60,23 @@ pub enum DbServersSubcommand {
         max_parallelism: Option<usize>,
     },
 
-    /// Remove a database server configuration.
+    /// Remove a database server configuration (enters interactive selection if name missing).
     #[command(alias = "rm")]
     Remove {
         /// Server configuration name to remove.
-        name: String,
+        name: Option<String>,
     },
 
-    /// Test connection to a database server.
+    /// Test connection to a database server (enters interactive selection if name missing).
     Test {
         /// Server configuration name to test.
-        name: String,
+        name: Option<String>,
     },
 
-    /// Securely set/encrypt password for a database server using DPAPI.
+    /// Securely set/encrypt password for a database server (enters interactive selection if name missing).
     SetPassword {
         /// Server configuration name.
-        name: String,
+        name: Option<String>,
     },
 }
 
@@ -117,16 +117,16 @@ impl DbServersHandler {
                 timeout,
                 max_parallelism,
             ),
-            Some(DbServersSubcommand::Remove { name }) => self.remove_server(&name),
-            Some(DbServersSubcommand::Test { name }) => self.test_server(&name).await,
-            Some(DbServersSubcommand::SetPassword { name }) => self.set_password(&name),
+            Some(DbServersSubcommand::Remove { name }) => self.remove_server(name.as_deref()),
+            Some(DbServersSubcommand::Test { name }) => self.test_server(name.as_deref()).await,
+            Some(DbServersSubcommand::SetPassword { name }) => self.set_password(name.as_deref()),
             None => {
                 println!("\n{}", "Available 'db-servers' commands:".bright_cyan().bold());
                 println!("  {:<15} List all configured database servers", "list (ls)".bold());
                 println!("  {:<15} Add or update a database server configuration (interactive if args missing)", "add".bold());
-                println!("  {:<15} Remove a database server configuration", "remove (rm)".bold());
-                println!("  {:<15} Test connection to a database server", "test".bold());
-                println!("  {:<15} Securely set/encrypt password for a database server", "set-password".bold());
+                println!("  {:<15} Remove a database server configuration (interactive if name missing)", "remove (rm)".bold());
+                println!("  {:<15} Test connection to a database server (interactive if name missing)", "test".bold());
+                println!("  {:<15} Securely set/encrypt password for a database server (interactive if name missing)", "set-password".bold());
                 println!("\nUsage: mustel db-servers <COMMAND>\n");
                 Ok(())
             }
@@ -320,19 +320,60 @@ impl DbServersHandler {
         Ok(())
     }
 
-    fn remove_server(&self, name: &str) -> Result<()> {
-        let removed = self.config_service.remove_server(name)?;
-        if removed {
-            println!("{} Server '{}' removed successfully.", "✔".green(), name.bold());
-        } else {
-            println!("{} Server '{}' not found.", "✖".red(), name);
+    fn remove_server(&self, name: Option<&str>) -> Result<()> {
+        let servers = self.config_service.get_servers()?;
+
+        if servers.is_empty() {
+            println!("{}", "No database servers configured to remove.".yellow());
+            return Ok(());
         }
+
+        let names_to_remove = if let Some(n) = name {
+            vec![n.to_string()]
+        } else {
+            let server_names: Vec<String> = servers.iter().map(|s| s.name.clone()).collect();
+            let selected = inquire::MultiSelect::new("Select database server(s) to remove:", server_names)
+                .prompt()
+                .map_err(|_| MustelError::UserCancelled)?;
+
+            if selected.is_empty() {
+                println!("{}", "No servers selected. Operation cancelled.".yellow());
+                return Ok(());
+            }
+            selected
+        };
+
+        for target in names_to_remove {
+            let removed = self.config_service.remove_server(&target)?;
+            if removed {
+                println!("{} Server '{}' removed successfully.", "✔".green(), target.bold());
+            } else {
+                println!("{} Server '{}' not found.", "✖".red(), target);
+            }
+        }
+
         Ok(())
     }
 
-    async fn test_server(&self, name: &str) -> Result<()> {
-        let server = self.config_service.get_server(name)?
-            .ok_or_else(|| MustelError::Config(format!("Server '{}' not found.", name)))?;
+    async fn test_server(&self, name: Option<&str>) -> Result<()> {
+        let servers = self.config_service.get_servers()?;
+
+        if servers.is_empty() {
+            println!("{}", "No database servers configured to test.".yellow());
+            return Ok(());
+        }
+
+        let target_name = if let Some(n) = name {
+            n.to_string()
+        } else {
+            let server_names: Vec<String> = servers.iter().map(|s| s.name.clone()).collect();
+            inquire::Select::new("Select a server to test:", server_names)
+                .prompt()
+                .map_err(|_| MustelError::UserCancelled)?
+        };
+
+        let server = self.config_service.get_server(&target_name)?
+            .ok_or_else(|| MustelError::Config(format!("Server '{}' not found.", target_name)))?;
 
         print!("Testing connection to '{}' ({}:{})... ", server.name, server.host, server.port);
         match DbExecutor::connect(&server, None, None).await {
@@ -348,19 +389,35 @@ impl DbServersHandler {
         }
     }
 
-    fn set_password(&self, name: &str) -> Result<()> {
-        let _server = self.config_service.get_server(name)?
-            .ok_or_else(|| MustelError::Config(format!("Server '{}' not found.", name)))?;
+    fn set_password(&self, name: Option<&str>) -> Result<()> {
+        let servers = self.config_service.get_servers()?;
 
-        let password = inquire::Password::new(&format!("Enter password for server '{}':", name))
+        if servers.is_empty() {
+            println!("{}", "No database servers configured.".yellow());
+            return Ok(());
+        }
+
+        let target_name = if let Some(n) = name {
+            n.to_string()
+        } else {
+            let server_names: Vec<String> = servers.iter().map(|s| s.name.clone()).collect();
+            inquire::Select::new("Select a server to set password:", server_names)
+                .prompt()
+                .map_err(|_| MustelError::UserCancelled)?
+        };
+
+        let _server = self.config_service.get_server(&target_name)?
+            .ok_or_else(|| MustelError::Config(format!("Server '{}' not found.", target_name)))?;
+
+        let password = inquire::Password::new(&format!("Enter password for server '{}':", target_name))
             .without_confirmation()
             .prompt()
             .map_err(|_| MustelError::UserCancelled)?;
 
         let encrypted = CredentialStore::encrypt_password(&password)?;
-        self.config_service.set_encrypted_password(name, encrypted)?;
+        self.config_service.set_encrypted_password(&target_name, encrypted)?;
 
-        println!("{} Encrypted password stored securely for server '{}'.", "✔".green(), name.bold());
+        println!("{} Encrypted password stored securely for server '{}'.", "✔".green(), target_name.bold());
         Ok(())
     }
 }

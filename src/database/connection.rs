@@ -164,11 +164,8 @@ mod tests {
 
         let hosts = config.get_hosts();
         assert_eq!(hosts.len(), 1);
-        if let tokio_postgres::config::Host::Tcp(host) = &hosts[0] {
-            assert_eq!(host, "localhost");
-        } else {
-            panic!("Expected TCP host");
-        }
+        let tokio_postgres::config::Host::Tcp(host) = &hosts[0];
+        assert_eq!(host, "localhost");
 
         assert_eq!(config.get_ports(), &[5432]);
         assert_eq!(config.get_user(), Some("test_user"));

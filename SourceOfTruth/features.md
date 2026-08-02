@@ -13,7 +13,17 @@ mustel gui
 cargo run -- gui
 ```
 
-### Recurso 1.1: Editor SQL Nativo (`text_editor`)
+### Recurso 1.1: Navegação por Abas no Header (`ActiveTab`)
+- **Aba `🔍 Executar Queries`**: Interface principal para digitação e execução de SQL.
+- **Aba `⚙️ Gerenciar Servidores`**: Painel visual completo para cadastro, edição e remoção de servidores PostgreSQL.
+
+### Recurso 1.2: CRUD e Teste de Conexão em Tempo Real (`ServerFormState`)
+- **Formulário Completo**: Cadastro de Nome Amigável, Host/IP, Porta, Usuário, Senha (criptografada via DPAPI Windows), Banco Padrão e Modo SSL.
+- **Botão `🔌 Testar Conexão`**: Valida host, porta e autenticação no PostgreSQL em segundo plano via Tokio antes de salvar.
+- **Persistência Segura**: Grava em `%LocalAppData%\Mustel\mustel.jsonc` com senhas protegidas.
+- **Sincronização Reativa**: Ao salvar ou excluir um servidor, a lista na barra lateral da Aba de Queries é atualizada instantaneamente.
+
+### Recurso 1.3: Editor SQL Nativo (`text_editor`)
 - **Edição de Código**: Suporta digitação com números de linha, seleção com mouse/teclado e histórico de undo/redo (`Ctrl+Z`, `Ctrl+Y`).
 - **Análise AST em Tempo Real**: Conforme você digita a consulta SQL, o `SqlQueryAnalyzer` inspeciona a sintaxe e exibe um alerta no topo do editor:
   - 🟢 **`Status: ReadOnly`**: Para consultas seguras de leitura (`SELECT`).

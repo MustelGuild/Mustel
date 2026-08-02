@@ -48,6 +48,17 @@ impl ConnectionSidebarState {
         Self::default()
     }
 
+    pub fn reload_servers(&mut self, servers: Vec<ServerConfigEntry>) {
+        let current_selected_name = self.selected_server.as_ref().map(|s| s.name.clone());
+        self.server_list = servers;
+        if let Some(ref name) = current_selected_name {
+            self.selected_server = self.server_list.iter().find(|s| s.name == *name).cloned();
+        }
+        if self.selected_server.is_none() {
+            self.selected_server = self.server_list.first().cloned();
+        }
+    }
+
     pub fn view<'a>(&'a self) -> Element<'a, Message> {
         let title = text("Conexões").size(20);
 

@@ -33,6 +33,18 @@ impl std::str::FromStr for SslMode {
         }
     }
 }
+impl std::fmt::Display for SslMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SslMode::Disable => write!(f, "Disable"),
+            SslMode::Allow => write!(f, "Allow"),
+            SslMode::Prefer => write!(f, "Prefer"),
+            SslMode::Require => write!(f, "Require"),
+            SslMode::VerifyCa => write!(f, "VerifyCa"),
+            SslMode::VerifyFull => write!(f, "VerifyFull"),
+        }
+    }
+}
 
 /// Represents a single PostgreSQL server configuration entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]

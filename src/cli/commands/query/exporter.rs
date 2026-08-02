@@ -6,7 +6,7 @@ use tokio_postgres::Row;
 
 use crate::error::{MustelError, Result};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExecutionLogEntry {
     pub timestamp: String,
     pub server_name: String,
@@ -132,5 +132,84 @@ impl CsvExporter {
 mod hex {
     pub fn encode(bytes: Vec<u8>) -> String {
         bytes.iter().map(|b| format!("{:02x}", b)).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn create_test_entry(index: usize) -> ExecutionLogEntry {
+        ExecutionLogEntry {
+            timestamp: format!("2023-10-27 10:00:0{}", index),
+            server_name: "test_server".to_string(),
+            database_name: "test_db".to_string(),
+            query_source: "SELECT 1".to_string(),
+            rows_affected: 1,
+            duration_ms: 10,
+            output_file: "test.csv".to_string(),
+            status: "Success".to_string(),
+            error_message: None,
+        }
+    }
+
+    #[test]
+    fn test_log_execution_creates_new_file() {
+        let dir = tempdir().unwrap();
+        let entry = create_test_entry(1);
+
+        CsvExporter::log_execution(dir.path(), &entry).unwrap();
+
+        let log_file = dir.path().join("execution_log.json");
+        assert!(log_file.exists());
+
+        let content = fs::read_to_string(&log_file).unwrap();
+        let entries: Vec<ExecutionLogEntry> = serde_json::from_str(&content).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0], entry);
+    }
+
+    #[test]
+    fn test_log_execution_appends_to_existing_file() {
+        let dir = tempdir().unwrap();
+        let entry1 = create_test_entry(1);
+        let entry2 = create_test_entry(2);
+
+        // Log first entry
+        CsvExporter::log_execution(dir.path(), &entry1).unwrap();
+
+        // Log second entry
+        CsvExporter::log_execution(dir.path(), &entry2).unwrap();
+
+        let log_file = dir.path().join("execution_log.json");
+        let content = fs::read_to_string(&log_file).unwrap();
+        let entries: Vec<ExecutionLogEntry> = serde_json::from_str(&content).unwrap();
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0], entry1);
+        assert_eq!(entries[1], entry2);
+    }
+
+    #[test]
+    fn test_log_execution_handles_malformed_json() {
+        let dir = tempdir().unwrap();
+        let log_file = dir.path().join("execution_log.json");
+
+        // Create malformed JSON file
+        fs::write(&log_file, "this is not valid json").unwrap();
+
+        let entry = create_test_entry(1);
+
+        // Should overwrite with default (empty list) + new entry
+        CsvExporter::log_execution(dir.path(), &entry).unwrap();
+
+        let content = fs::read_to_string(&log_file).unwrap();
+        let entries: Vec<ExecutionLogEntry> = serde_json::from_str(&content).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0], entry);
     }
 }

@@ -122,3 +122,32 @@ impl UserConfigService {
         Ok(config.defaults)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_load_config_parsing_error() {
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let config_path = temp_file.path().to_path_buf();
+
+        fs::write(&config_path, "invalid json content { [").unwrap();
+
+        let service = UserConfigService {
+            config_file_path: config_path.clone(),
+        };
+
+        let result = service.load_config();
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            MustelError::Json(msg) => {
+                assert!(msg.contains("Failed to parse config at"));
+            },
+            _ => panic!("Expected MustelError::Json"),
+        }
+    }
+}

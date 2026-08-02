@@ -29,6 +29,9 @@ pub enum Commands {
         #[command(subcommand)]
         subcommand: Option<SettingsSubcommands>,
     },
+
+    /// Launch the graphical user interface (GUI).
+    Gui,
 }
 
 #[derive(Subcommand, Debug)]
@@ -84,6 +87,9 @@ impl CliApp {
                     println!("\nUsage: mustel settings db-servers <COMMAND>\n");
                 }
             },
+            Commands::Gui => {
+                crate::gui::run_gui()?;
+            }
         }
 
         Ok(())

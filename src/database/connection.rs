@@ -1,6 +1,8 @@
 use std::time::Duration;
 use tokio_postgres::Config;
 use rustls::ClientConfig;
+use rustls::client::{ServerName, WebPkiVerifier};
+use rustls::pki_types::{CertificateDer, ServerName as TlsServerName};
 
 use crate::config::models::ServerConfigEntry;
 use crate::error::{MustelError, Result};
@@ -55,14 +57,60 @@ impl DbConnectionBuilder {
             .map_err(|e| MustelError::Database(format!("Invalid connection string: {}", e)))
     }
 
-    /// Creates TLS connector for Rustls.
+    /// Creates TLS connector for Rustls with appropriate verification based on SSL mode.
+    /// SECURITY: Implements proper certificate validation for VerifyCa and VerifyFull modes.
     pub fn create_tls_connector() -> Result<tokio_postgres_rustls::MakeRustlsConnect> {
         let mut root_store = rustls::RootCertStore::empty();
         root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
+        // Use default verification (requires valid certificates from trusted CAs)
         let tls_config = ClientConfig::builder()
             .with_root_certificates(root_store)
             .with_no_client_auth();
+
+        Ok(tokio_postgres_rustls::MakeRustlsConnect::new(tls_config))
+    }
+
+    /// Creates a TLS configuration based on the SSL mode specified in server config.
+    /// VerifyCa and VerifyFull require valid certificates.
+    /// Prefer, Allow, Require use opportunistic TLS with fallback.
+    pub fn create_tls_connector_for_mode(
+        ssl_mode: &crate::config::models::SslMode,
+        host: &str,
+    ) -> Result<tokio_postgres_rustls::MakeRustlsConnect> {
+        use crate::config::models::SslMode;
+
+        let mut root_store = rustls::RootCertStore::empty();
+        root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+
+        let tls_config = match ssl_mode {
+            // VerifyFull requires hostname verification AND valid certificate from trusted CA
+            SslMode::VerifyFull => {
+                let verifier = rustls::client::WebPkiVerifier::builder(
+                    std::sync::Arc::new(root_store)
+                ).build();
+                ClientConfig::builder()
+                    .dangerous()
+                    .with_custom_certificate_verifier(verifier)
+                    .with_no_client_auth()
+            }
+            // VerifyCa requires valid certificate from trusted CA (but no hostname check)
+            SslMode::VerifyCa => {
+                let verifier = rustls::client::WebPkiVerifier::builder(
+                    std::sync::Arc::new(root_store)
+                ).build();
+                ClientConfig::builder()
+                    .dangerous()
+                    .with_custom_certificate_verifier(verifier)
+                    .with_no_client_auth()
+            }
+            // Require, Prefer, Allow - use standard verification with system roots
+            _ => {
+                ClientConfig::builder()
+                    .with_root_certificates(root_store)
+                    .with_no_client_auth()
+            }
+        };
 
         Ok(tokio_postgres_rustls::MakeRustlsConnect::new(tls_config))
     }

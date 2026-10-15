@@ -8,5 +8,6 @@
 //! resolvidas e recebendo eventos por um `EventSink`.
 
 pub mod config;
+pub mod credentials;
 pub mod error;
 pub mod signal;

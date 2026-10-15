@@ -35,7 +35,9 @@ Os demais grupos (`file`, `claude`, `opencode`, `winget`, `windowsfeatures`, `do
 - CLI: `clap` (derive) · prompts `inquire` · tabelas `tabled` · progresso `indicatif` · estilo `console` + `owo-colors`
 - Async: `tokio` (+ `tokio-util` para `CancellationToken`) — **somente para I/O**
 - Postgres: driver definido no spike T19 · dados exportados com `csv`
-- Config: `serde` + `jsonc-parser`, caminho resolvido por `dirs` · credenciais: `keyring`
+- Config: `serde` + `jsonc-parser`, caminho resolvido por `dirs` · credenciais: `keyring` — **com os
+  backends nativos habilitados por plataforma** (`windows-native`, `apple-native`,
+  `sync-secret-service`); sem essas features o crate usa um store mock que aceita `set` e não persiste
 - Erros: `thiserror` no core, `anyhow` apenas no binário · logs: `tracing`
 - GUI: `eframe`/`egui` (+ `egui_extras`), atrás da feature `gui`
 - Testes: `assert_cmd` + `predicates` + `insta` (CLI), `expectrl` (PTY), `tempfile`, `testcontainers` (Postgres)

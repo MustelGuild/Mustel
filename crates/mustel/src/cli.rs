@@ -324,6 +324,10 @@ pub enum PgpassCommand {
 }
 
 /// Argumentos de `mustel database pgpass add`.
+///
+/// O banco pode vir posicionalmente (`pgpass add mydb`, forma documentada) ou por`--database`
+/// (forma herdada); as duas juntas são ambíguas e o parser recusa. A resolução de qual forma veio é
+/// feita pelo comando (T23).
 #[derive(Debug, Args)]
 pub struct PgpassAddArgs {
     /// Database name (positional form: `mustel database pgpass add mydb`).
@@ -349,16 +353,6 @@ pub struct PgpassAddArgs {
     /// Password to store for this entry.
     #[arg(long = "password", value_name = "password")]
     pub password: Option<String>,
-}
-
-impl PgpassAddArgs {
-    /// Banco escolhido, aceitando a forma posicional (preferida) ou `--database`.
-    pub fn database_name(&self) -> Option<&str> {
-        self.database_arg
-            .as_deref()
-            .or(self.database.as_deref())
-            .filter(|name| !name.is_empty())
-    }
 }
 
 /// Argumentos de `mustel database pgpass remove`.

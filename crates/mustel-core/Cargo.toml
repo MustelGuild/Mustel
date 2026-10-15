@@ -19,5 +19,20 @@ thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "fs", "process", "sync", "io-util"] }
 tokio-util = "0.7"
 
+# keyring 3.x não habilita backend nenhum por padrão: sem estas features por plataforma ele usa um
+# store mock que aceita `set` e devolve `None` no `get` (falha silenciosa). Ver T7 no plano.
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+
+# Plataformas sem backend nativo continuam compilando; `get`/`set` falham com mensagem clara.
+[target.'cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))'.dependencies]
+keyring = "3"
+
 [dev-dependencies]
 tempfile = "3"

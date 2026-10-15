@@ -1,0 +1,15 @@
+[package]
+name = "mustel-gui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Mustel GUI (egui) — frontend gráfico sobre o mustel-core"
+
+[lints]
+workspace = true
+
+[dependencies]
+mustel-core = { path = "../mustel-core", version = "1.0.0" }

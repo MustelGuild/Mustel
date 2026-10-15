@@ -1,3 +1,6 @@
-# FurLab Development Guidelines
+# Mustel — Guia para agentes
 
-See [CLAUDE.md](./CLAUDE.md) for the full development guidelines.
+Este repositório tem dois produtos:
+
+- **Mustel** (Rust, ativo): workspace Cargo na raiz — grupos `query`, `database` e `settings`, mais a GUI egui.
+- **FurLab** (.NET 10, congelado, em `legacy/`): pro

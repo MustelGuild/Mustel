@@ -9,7 +9,15 @@
 ---
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K3K41AP4RO)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-yellow?logo=buy-me-a-coffee&logoColor=white)](https://www.buymeacoffee.com/liphvf)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-yellow?logo=buymeacoffee&logoColor=white)](https://www.buymeacoffee.com/liphvf)
+
+> **Reescrita em Rust em andamento** (branch `feat/rust-migration`). Os grupos `query`, `database` e
+> `settings` estão sendo reescritos em Rust como **Mustel** — binário `mustel`, instalável via
+> `cargo install mustel` ou winget (`Mustel.CLI`). A implementação .NET agora vive em `legacy/`:
+> é o **oráculo de paridade** durante a migração e continua sendo o produto dos demais grupos
+> (`file`, `claude`, `opencode`, `winget`, `windowsfeatures`, `docker`) até a segunda onda.
+> O restante deste documento ainda descreve o CLI .NET.
+
 
 ## Descrição
 

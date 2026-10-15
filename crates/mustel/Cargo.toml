@@ -1,0 +1,20 @@
+[package]
+name = "mustel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Mustel — CLI de automação (query, database, settings) e interface gráfica"
+
+[lints]
+workspace = true
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+mustel-core = { path = "../mustel-core", version = "1.0.0" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+
+[dev-dependencies]
+insta = "1"

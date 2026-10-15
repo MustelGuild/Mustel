@@ -1,0 +1,53 @@
+---
+source: crates/mustel/tests/cli_tree.rs
+expression: "stdout_of(&[\"query\", \"run\", \"--help\"])"
+---
+Execute SQL queries and export results to CSV
+
+Usage: mustel.exe query run [OPTIONS]
+
+Options:
+  -i, --input <file>
+          Path to the SQL input file
+  -c, --command <sql>
+          Inline SQL query to execute (alternative to --input)
+  -o, --output <path>
+          Path to the output directory
+      --npgsql-connection-string <string>
+          Complete Npgsql connection string. Bypasses server selection when provided
+  -H, --host <host>
+          Database host address. Overrides the configured server host
+  -p, --port <port>
+          Database port. Overrides the configured server port
+  -d, --database <database>
+          Database name. Overrides the configured server database
+  -U, --username <username>
+          Database username. Overrides the configured server username
+  -W, --password <password>
+          Database password. Overrides the stored server password
+      --ssl-mode <mode>
+          SSL mode (Disable, Allow, Prefer, Require, VerifyCA, VerifyFull). Default: Prefer
+      --timeout <seconds>
+          Connection timeout in seconds. Default: 30
+      --command-timeout <seconds>
+          Command timeout in seconds. Default: 300
+      --pooling [<bool>]
+          Enable connection pooling. Default: true [possible values: true, false]
+      --min-pool-size <size>
+          Minimum pool size. Default: 1
+      --max-pool-size <size>
+          Maximum pool size. Default: 100
+      --keepalive <seconds>
+          Keepalive interval in seconds. Default: 0
+      --connection-lifetime <seconds>
+          Connection lifetime in seconds. Default: 0
+  -a, --all
+          Execute the query on all databases on the server
+      --exclude <databases>
+          Comma-separated list of database names to exclude
+      --no-confirm
+          Skip confirmation prompt for destructive queries
+  -h, --help
+          Print help
+  -V, --version
+          Print version

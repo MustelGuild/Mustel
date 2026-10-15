@@ -1,0 +1,2 @@
+# Snapshots do insta comparam bytes: o Git não deve converter fim de linha
+*.snap -text

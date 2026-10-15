@@ -504,8 +504,10 @@ ASALocalRun/
 
 # End of https://www.gitignore.io/api/csharp,visualstudio,visualstudiocode
 
-# Analysis reports
-CODE_REVIEW.md
+# Rust
+/target/
+**/*.rs.bk
+
 
 # Deploy
 packaging/

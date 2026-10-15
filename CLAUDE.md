@@ -1,309 +1,158 @@
-# FurLab Development Guidelines
+# Mustel — Guia de Desenvolvimento
 
-Auto-generated from codebase. Last updated: 2026-04-19
+> Reescrito durante a migração para Rust (branch `feat/rust-migration`). O plano que rege a migração é
+> `MustelPlans/migracao-rust.md` — ele é a fonte de verdade de escopo, decisões e tarefas.
 
 ## Idioma
 
-Todo output para o usuário deve ser em **português do Brasil (pt-BR)**.
-Isso inclui explicações, resumos, mensagens de erro, perguntas de esclarecimento e qualquer comunicação direta com o usuário.
-Exceção: não traduza nomes de skills, comandos do openspec (ex: `openspec-propose`, `opsx-apply`), identificadores de código, nomes de arquivos ou comandos de terminal.
+Todo output para o usuário (explicações, resumos, mensagens de erro de ferramentas, perguntas) deve ser
+em **português do Brasil (pt-BR)**. Exceção: não traduza nomes de skills, comandos do OpenSpec,
+identificadores de código, nomes de arquivos ou comandos de terminal.
 
-Todas as **mensagens exibidas ao usuário pelo CLI** (output de comandos, prompts interativos, mensagens de erro e confirmações) devem ser escritas em **inglês**.
+Todas as **mensagens exibidas ao usuário pelo CLI** (output de comandos, prompts interativos, erros,
+confirmações) são escritas em **inglês** — é o contrato de paridade com o FurLab (níveis N1–N3 da
+escada de fidelidade). O binário fala inglês; a documentação, o plano e a conversa com o usuário do
+repositório falam pt-BR.
 
-## Active Technologies
+## Estado do repositório
 
-- C# 13 / .NET 10 (`net10.0`)
-- Spectre.Console.Cli 0.55.0 — Interactive TUI prompts and CLI argument parsing
-- Npgsql 10.0.2 — PostgreSQL ADO.NET driver
-- CsvHelper 33.1.0 — CSV export for query results
-- Microsoft.Extensions.Hosting 10.0.5 — Generic host + DI container
-- Microsoft.Extensions.Configuration — JSON / env-var config pipeline
-- Microsoft.Extensions.Logging — Structured logging (wrapped by custom ILogger)
-- Polly 8.5.2 — Resilience and retry pipelines
-- MSTest 4.1.0 + Moq 4.20.72 — Unit testing and mocking
-- Nerdbank.GitVersioning 3.9.50 — Semantic versioning from git history
+| Área | O que é |
+|------|---------|
+| `crates/` | **Mustel** (Rust) — o produto ativo |
+| `legacy/` | **FurLab** (.NET 10) — **congelado**: produto dos grupos fora do escopo e oráculo de paridade |
+| `oracle/` | baseline, relatórios de divergência e números de performance |
+| `MustelPlans/` | planos de implementação (fonte de verdade do trabalho em andamento) |
+| `openspec/` | specs canônicas (pt-BR) — contrato comportamental herdado |
+| `docs/` | documentação pt-BR (primária) e en (secundária) |
 
-## Project Structure
+Escopo da migração: grupos **`query`**, **`database`** e **`settings`** completos, mais a GUI em egui.
+Os demais grupos (`file`, `claude`, `opencode`, `winget`, `windowsfeatures`, `docker`) permanecem no
+`legacy/` até a segunda onda.
+
+## Stack
+
+- Rust 1.98 (pinado em `rust-toolchain.toml`), edition 2024, resolver 3
+- CLI: `clap` (derive) · prompts `inquire` · tabelas `tabled` · progresso `indicatif` · estilo `console` + `owo-colors`
+- Async: `tokio` (+ `tokio-util` para `CancellationToken`) — **somente para I/O**
+- Postgres: driver definido no spike T19 · dados exportados com `csv`
+- Config: `serde` + `jsonc-parser`, caminho resolvido por `dirs` · credenciais: `keyring`
+- Erros: `thiserror` no core, `anyhow` apenas no binário · logs: `tracing`
+- GUI: `eframe`/`egui` (+ `egui_extras`), atrás da feature `gui`
+- Testes: `assert_cmd` + `predicates` + `insta` (CLI), `expectrl` (PTY), `tempfile`, `testcontainers` (Postgres)
+
+## Estrutura
 
 ```text
-FurLab/
-├── FurLab.Core/                  ← Business logic, interfaces, models (class library)
-│   ├── Interfaces/                ← ICredentialService, IDatabaseService, IFileService,
-│   │                                 IProcessExecutor, IWingetService, IPgPassService
-│   ├── Models/                    ← OperationResult<T>, DatabaseConnectionConfig,
-│   │                                 OperationProgress, WingetOperationOptions,
-│   │                                 PgPassEntry, PgPassResult, etc.
-│   ├── Services/                  ← Concrete implementations of all interfaces
-│   │   └── ServiceCollectionExtensions.cs  ← AddFurLabServices() DI registration
-│   ├── Logging/                   ← Custom ILogger + MicrosoftExtensionsLoggerAdapter
-│   ├── HealthChecks/              ← PostgresBinaryHealthCheck, ConfigurationHealthCheck
-│   └── Resilience/                ← ResiliencePolicies (Polly retry pipelines)
-│
-├── FurLab.CLI/                   ← CLI executable (depends on FurLab.Core)
-│   ├── Program.cs                 ← Host builder, DI setup, CommandApp configuration
-│   ├── Infrastructure/            ← TypeRegistrar and TypeResolver for Spectre.Console.Cli
-│   ├── Commands/                  ← Command classes - each subcommand has its own folder
-│   │   ├── Files/
-│   │   │   ├── Combine/
-│   │   │   │   ├── FileCombineCommand.cs
-│   │   │   │   └── FileCombineSettings.cs
-│   │   │   └── ConvertEncoding/
-│   │   │       ├── FilesConvertEncodingCommand.cs
-│   │   │       └── FilesConvertEncodingSettings.cs
-│   │   ├── Claude/
-│   │   │   ├── Install/
-│   │   │   │   ├── InstallCommand.cs
-│   │   │   │   └── InstallSettings.cs
-│   │   │   └── Settings/
-│   │   │       ├── McpDatabaseCommand.cs
-│   │   │       ├── McpDatabaseSettings.cs
-│   │   │       ├── WinEnvCommand.cs
-│   │   │       └── WinEnvSettings.cs
-│   │   ├── OpenCode/
-│   │   │   └── Settings/
-│   │   │       ├── McpDatabaseCommand.cs
-│   │   │       ├── McpDatabaseSettings.cs
-│   │   │       ├── DefaultModelCommand.cs
-│   │   │       └── DefaultModelSettings.cs
-│   │   ├── Winget/
-│   │   │   ├── Backup/
-│   │   │   │   ├── BackupCommand.cs
-│   │   │   │   └── BackupSettings.cs
-│   │   │   └── Restore/
-│   │   │       ├── RestoreCommand.cs
-│   │   │       └── RestoreSettings.cs
-│   │   ├── Database/
-│   │   │   ├── Backup/
-│   │   │   │   ├── BackupCommand.cs
-│   │   │   │   ├── BackupSettings.cs
-│   │   │   │   └── BackupConfig.cs
-│   │   │   ├── Restore/
-│   │   │   │   ├── RestoreCommand.cs
-│   │   │   │   ├── RestoreSettings.cs
-│   │   │   │   └── RestoreConfig.cs
-│   │   │   └── PgPass/
-│   │   │       ├── Add/
-│   │   │       │   ├── AddCommand.cs
-│   │   │       │   └── AddSettings.cs
-│   │   │       ├── List/
-│   │   │       │   ├── ListCommand.cs
-│   │   │       │   └── ListSettings.cs
-│   │   │       └── Remove/
-│   │   │           ├── RemoveCommand.cs
-│   │   │           └── RemoveSettings.cs
-│   │   ├── Docker/
-│   │   │   └── Postgres/
-│   │   │       ├── PostgresCommand.cs
-│   │   │       └── PostgresSettings.cs
-│   │   ├── Query/
-│   │   │   └── Run/
-│   │   │       ├── RunCommand.cs
-│   │   │       └── RunSettings.cs
-│   │   ├── WindowsFeatures/
-│   │   │   ├── Export/
-│   │   │   │   ├── ExportCommand.cs
-│   │   │   │   └── ExportSettings.cs
-│   │   │   ├── Import/
-│   │   │   │   ├── ImportCommand.cs
-│   │   │   │   └── ImportSettings.cs
-│   │   │   └── List/
-│   │   │       ├── ListCommand.cs
-│   │   │       └── ListSettings.cs
-│   │   └── Settings/
-│   │       └── DbServers/
-│   │           ├── List/
-│   │           │   ├── ListCommand.cs
-│   │           │   └── ListSettings.cs
-│   │           ├── Add/
-│   │           │   ├── AddCommand.cs
-│   │           │   └── AddSettings.cs
-│   │           ├── Remove/
-│   │           │   ├── RemoveCommand.cs
-│   │           │   └── RemoveSettings.cs
-│   │           ├── Test/
-│   │           │   ├── TestCommand.cs
-│   │           │   └── TestSettings.cs
-│   │           └── SetPassword/
-│   │               ├── SetPasswordCommand.cs
-│   │               └── SetPasswordSettings.cs
-│   └── SecurityUtils.cs           ← Input validation (path traversal, PostgreSQL identifiers,
-│                                     host/port, wildcard *)
-│
-├── FurLab.Tests/                 ← MSTest project (references FurLab.CLI)
-│   └── Commands/                  ← One test class per command
-│
-├── openspec/                      ← OpenSpec workflow (substituiu specs/ e .specify/)
-│   ├── config.yaml                ← Configuração do projeto (schema, idioma pt-BR)
-│   ├── specs/                     ← Especificações canônicas por feature
-│   └── changes/
-│       └── archive/               ← Changes implementados e arquivados
-│
-├── .opencode/
-│   ├── skills/                    ← Skills OpenSpec (openspec-propose, openspec-apply-change, etc.)
-│   └── command/                   ← Slash commands customizados
-│
-├── docs/
-│   ├── pt-BR/                     ← Primary documentation (Portuguese, source of truth)
-│   └── en/                        ← Secondary documentation (English)
-│
-└── opencode.json                  ← Configuração local do OpenCode (modelo padrão, etc.)
+crates/
+├── mustel-core/     lib: config, credentials, postgres, pgpass, casos de uso, eventos (sem UI)
+├── mustel/          bin `mustel`: clap, UI de terminal, comandos finos
+├── mustel-gui/      lib egui usada pelo subcomando `gui`
+└── mustel-testkit/  harness de paridade (bins oracle-capture / oracle-compare; não publicado)
+legacy/              FurLab .NET (congelado)
+oracle/              baseline/, reports/, perf/, known-divergences.md
 ```
 
-### Command File Organization Convention
-
-**Every subcommand has its own folder.** Commands and their settings follow a strict one-class-per-file structure:
-
-```
-Commands/
-├── CommandName/                           ← Command group folder (e.g., "Database")
-│   ├── SubCommand/                        ← Each subcommand gets its own folder
-│   │   ├── {Prefix}Command.cs             ← Command implementation with hierarchy prefix
-│   │   ├── {Prefix}Settings.cs            ← Settings class with hierarchy prefix
-│   │   └── {Prefix}Config.cs              ← Optional: config class with hierarchy prefix
-│   └── SharedHelper.cs                    ← Shared classes across subcommands stay in parent folder
-```
-
-**Naming Rules:**
-- **Folder structure**: `Commands/{Group}/{Subcommand}/` - every subcommand has its own folder
-- **File naming**: Files are prefixed with the hierarchy path (without "Commands" prefix)
-  - ✅ `Claude/Install/ClaudeInstallCommand.cs`
-  - ✅ `Claude/Install/ClaudeInstallSettings.cs`
-  - ✅ `Database/Backup/DatabaseBackupCommand.cs`
-  - ✅ `Database/Backup/DatabaseBackupSettings.cs`
-  - ✅ `Database/PgPass/Add/PgPassAddCommand.cs`
-  - ✅ `Database/PgPass/Add/PgPassAddSettings.cs`
-  - ✅ `Settings/DbServers/List/DbServersListCommand.cs`
-- **Class naming**: Classes use short names (implied by folder structure)
-  - ✅ `class InstallCommand` (in `ClaudeInstallCommand.cs`)
-  - ✅ `class BackupSettings` (in `DatabaseBackupSettings.cs`)
-  - ✅ `class AddCommand` (in `PgPassAddCommand.cs`)
-- **Config files**: Optional config records for internal use
-  - ✅ `Database/Backup/DatabaseBackupConfig.cs` → class `BackupConfig`
-- **Shared files**: Files used by multiple subcommands of the same group stay in the parent folder
-  - ✅ `Database/SharedHelper.cs` - shared across Database subcommands only
-
-**Examples:**
-```
-Commands/Database/Backup/DatabaseBackupCommand.cs       → class BackupCommand
-Commands/Database/Backup/DatabaseBackupSettings.cs      → class BackupSettings
-Commands/Database/Backup/DatabaseBackupConfig.cs        → class BackupConfig
-Commands/Claude/Settings/McpDatabase/ClaudeSettingsMcpDatabaseCommand.cs   → class McpDatabaseCommand
-Commands/Claude/Settings/McpDatabase/ClaudeSettingsMcpDatabaseSettings.cs  → class McpDatabaseSettings
-Commands/Settings/DbServers/List/DbServersListCommand.cs → class ListCommand
-Commands/Settings/DbServers/List/DbServersListSettings.cs → class ListSettings
-```
-
-## Commands
+## Comandos
 
 ```bash
-# Build and run
-dotnet restore
-dotnet build
-dotnet build -c Release
-dotnet run -- --help
-dotnet run -- <command> [args]
+# Rust (na raiz do repositório)
+cargo build --workspace
+cargo test --workspace
+cargo fmt --all                              # CI roda com --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo run -p mustel -- --help
+./target/release/mustel --version
 
-# Test
-dotnet test
-dotnet test --filter "ClassName=DatabaseCommandTests"
+# Paridade com o legado (oráculo)
+cargo run -p mustel-testkit --bin oracle-capture
+cargo run -p mustel-testkit --bin oracle-compare -- --report --scope query,database,settings
 
-# Format (runs dotnet format on all projects)
-./format.ps1       # PowerShell 7, parallel
-./format.bat       # Batch, sequential
-
-# Publish
-./publish.ps1 nuget   # Creates .nupkg in bin/Release/net10.0/
-./publish.ps1 exe     # Creates win-x64 single-file exe in publish/exe/fur.exe
-./publish.ps1 all     # Both
-
-# Install as global tool (from source)
-dotnet tool install --add-source bin/Release/net10.0/ FurLab --global
-
-# CLI usage
-FurLab --help
-FurLab database backup [database] [--host] [--port] [--username] [--password] [--output]
-FurLab database restore [database] [file] [connection options]
-FurLab database pgpass add <banco> [--host] [--port] [--username] [--password]
-FurLab database pgpass list
-FurLab database pgpass remove <banco> [--host] [--port] [--username]
-FurLab docker postgres
-FurLab file combine -i "<glob>" -o <output>
-FurLab file convert-encoding -i "<glob>" --to <encoding> [--from <encoding>] [--backup] [--text-only]
-FurLab query run -f <sql-file> -d <db> [--all] [--servers]
-FurLab winget backup -o <dir>
-FurLab winget restore -i <json-file>
-FurLab claude install
-FurLab claude settings mcp-database
-FurLab claude settings win-env
-FurLab opencode settings mcp-database
-FurLab opencode settings default-model [model-id] [--global]
-FurLab windowsfeatures export -o <file>
-FurLab windowsfeatures import -i <file>
-FurLab windowsfeatures list
-FurLab settings db-servers ls
-FurLab settings db-servers add <name> --host <host> --port <port> --username <user> --database <db>
-FurLab settings db-servers rm <name>
-FurLab settings db-servers test <name>
-FurLab settings db-servers set-password <name>
+# Legado (congelado) — apenas para manter o oráculo vivo
+dotnet build legacy/FurLab.slnx
+dotnet test  legacy/FurLab.slnx
 ```
 
-## Code Style
+## Convenções de código
 
-- **Language**: C# 13, `<Nullable>enable</Nullable>`, `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>`
-- **Primary constructors**: Use primary constructors in classes and records whenever possible (e.g., `public class Foo(ILogger logger) { }`)
-- **Naming**: PascalCase for types/methods/properties; camelCase for locals and parameters
-- **Command classes**: Inherit from `Command<TSettings>` or `AsyncCommand<TSettings>`.
-- **Command settings**: Define `Settings` classes in separate files within the same directory as the command, naming them `[CommandName]Settings.cs` (e.g., `DatabaseBackupSettings.cs`).
-- **Dependency Injection**: Use constructor injection in command classes. All services must be registered in `ServiceCollectionExtensions.cs`.
-- **Service classes**: Always implement a `IXxxService` interface in `FurLab.Core/Interfaces/`; concrete implementation in `FurLab.Core/Services/`
-- **No business logic in commands**: Commands parse input via `Settings`, then call the service method. Never put logic inside the `Execute` or `ExecuteAsync` method.
-- **One file per type**: Each `.cs` file should contain only one class, record, struct, or enum.
-- **Result pattern**: Return `OperationResult` / `OperationResult<T>` records — use `SuccessResult(...)` / `FailureResult(...)` factory methods
-- **External processes**: Always `UseShellExecute = false`, capture stdout/stderr via redirect — never shell out to `cmd.exe` or `powershell.exe`. Pass arguments as `List<string>` (via `ProcessExecutionOptions.Arguments` or `ProcessStartInfo.ArgumentList`) — never as a single concatenated string and never via string interpolation (`$"..."`) to avoid command injection.
-- **Test naming**: `<MethodName>_<StateUnderTest>_<ExpectedBehavior>`
-- **Unit test attributes**: Use `[TestMethod(DisplayName = "<short description>")]` and `[Description("<detailed description>")]` on all test methods
-- **XML doc comments**: Required on all public members (enforced by `GenerateDocumentationFile true`)
-- **Configuration**: Read from `%LocalAppData%\FurLab\appsettings.json` via `IUserConfigService`.
-- **Security**: Use `SecurityUtils` for validation. Credentials should be handled via `ICredentialService` for secure storage.
-- **Async**: All service methods that touch I/O or external processes must be `async Task<T>` and accept `CancellationToken`
-- **Progress reporting**: Use `IProgress<OperationProgress>` or Spectre.Console's Status/Progress components for long-running operations
-- **Logging**: Use `ILogger<T>` (Microsoft.Extensions.Logging) in CLI and `ILogger` (custom) in Core.
+- **Formatação**: `cargo fmt` (default do rustfmt, 100 colunas). O CI reprova qualquer diff.
+- **Lint**: `clippy -D warnings`; `unsafe_code = "forbid"` no workspace.
+- **Sem UI no core**: `mustel-core` não depende de `clap`, `inquire`, `indicatif` nem `egui`
+  (`cargo tree -p mustel-core` deve ficar limpo).
+- **Comandos finos**: o comando parseia argumentos, resolve entradas (flags + prompts) e chama o caso de
+  uso do core. Nenhuma regra de negócio dentro do comando.
+- **Erros**: `CoreError` (thiserror) no core; o CLI traduz para exit code e mensagem. Nunca
+  `unwrap()`/`expect()` em caminho de execução — apenas em teste.
+- **Processos externos**: argumentos sempre em `Vec<String>`; nunca shell, nunca string interpolada;
+  stdout/stderr capturados; árvore de processos morta no cancelamento.
+- **Credenciais**: sempre `keyring`; nenhum segredo em arquivo, log ou mensagem.
+- **Async apenas para I/O**; CPU puro é síncrono (e roda em worker quando chamado pela GUI).
+- **Documentação**: `//!` no módulo e `///` em itens públicos, em pt-BR; mensagens de CLI em inglês.
+- **Um módulo por arquivo**, tipos agrupados por domínio (evitar `types.rs` genérico).
 
-## Architecture Constraints
+## Paridade (o contrato do projeto)
 
-- Dependencies flow **downward only**: `Tests` → `CLI` → `Core`. Never reference a higher layer from a lower one.
-- New NuGet packages require justification.
-- All inputs validated before use via `SecurityUtils`.
-- Exit codes: `0` success, `1` general error, `2` invalid args, `10-11` Database error, `20-22` I/O error, `30` Access error, `130` user cancellation.
+A fonte de verdade comportamental é o **binário legado**, não a documentação: já houve divergência entre
+docs e código (ex.: `-i/--input` no código vs `-f/--servers` nos docs; exit code `41` no código vs `2`
+nos docs). Numa reescrita, "documentado" não é evidência — "observado" é.
 
-## OpenSpec Workflow
+Escada de fidelidade (detalhe na seção 4.4 do plano):
 
-O projeto usa o workflow **OpenSpec** para gerenciar features e mudanças:
+| Nível | Exige | Bloqueia? |
+|-------|-------|-----------|
+| N1 | mesma árvore de comandos, flags, defaults; inválidos rejeitados do mesmo jeito | sim |
+| N2 | mesmos artefatos byte a byte, mesmos exit codes, permissões e mtime preservados | sim |
+| N3 | mesmos fluxos interativos (perguntas, ordem, atalhos, defaults) | sim |
+| N4 | formatação textual (`--help`, cores, tabelas, redação de erros) | não — registrar em `oracle/known-divergences.md` |
 
-- **`openspec/config.yaml`** — schema e configurações (idioma pt-BR obrigatório)
-- **`openspec/specs/<slug>/spec.md`** — especificações canônicas por feature
-- **`openspec/changes/`** — mudanças em andamento
-- **`openspec/changes/archive/`** — mudanças implementadas e arquivadas
+Nenhum comando é considerado pronto sem `oracle-compare` verde nos níveis N1–N3.
+
+## Exit codes (herdados do oráculo)
+
+`0` sucesso · `1` erro geral · `10`/`11` Postgres (com/sem SQLSTATE) · `20`–`22` I/O · `30` acesso ·
+`40`/`41` estado inválido / argumento inválido · `50` timeout · `130` cancelado pelo usuário.
+
+## Legado .NET (congelado)
+
+- **Não adicionar features** ao legado. Mudanças permitidas: as que mantêm o build e o oráculo
+  funcionando (ex.: patch de segurança NU1903 subindo `Microsoft.AspNetCore.DataProtection` para 10.0.13).
+- `legacy/` é a origem do oráculo: `oracle-capture` publica `legacy/fur` e executa os comandos migrados
+  para gravar o baseline.
+- `publish.ps1`, `format.ps1` e `dotnet-tools.json` vivem em `legacy/`; o NBGV continua versionando o
+  legado a partir de `legacy/version.json`.
+- As skills `furlab-command-manager` (em `.claude/` e `.opencode/`) valem **apenas** para o legado.
+- Os pacotes existentes (`FurLab` no NuGet, `FurLab.CLI` no winget) não são tocados. O Mustel publica
+  `Mustel.CLI` no winget e `mustel`, `mustel-core`, `mustel-gui` no crates.io.
 
 ## Guard Rails (Agent Safety Protocol)
 
-> **Mandatory Rule:** This repository enforces a strict **Manual Confirmation Policy** for all state-changing Git operations.
+> **Regra obrigatória:** este repositório exige **confirmação manual** para toda operação de Git que
+> mude estado.
 
-### 1. Restricted Mutations (Explicit Permission Required)
-AI Agents **MUST NOT** execute or suggest the following commands without prior, explicit user authorization:
-- **Index/Commit:** `git add`, `git commit`, `git rm`, `git mv`
-- **History/Sync:** `git push`, `git pull`, `git fetch`, `git merge`, `git rebase`, `git reset`, `git cherry-pick`
-- **Branching:** `git checkout` (if files are modified), `git branch -d`
-- **State:** `git stash`
-- **Filesystem:** Deletion or destructive modification of tracked files.
+### 1. Mutações restritas (exigem permissão explícita)
 
-### 2. Authorized Read-Only Operations
-Agents are permitted to run these commands autonomously for context discovery:
-- `git status`, `git log`, `git diff`, `git show`, `git branch -a`, `git rev-parse`
+`git add`, `git commit`, `git rm`, `git mv`, `git push`, `git pull`, `git fetch`, `git merge`,
+`git rebase`, `git reset`, `git cherry-pick`, `git checkout` (com arquivos modificados),
+`git branch -d`, `git stash`, e remoção ou modificação destrutiva de arquivos rastreados.
 
-### 3. Execution Workflow
-When a Git mutation is necessary to fulfill a request:
-1. **Analyze:** Determine the exact commands needed.
-2. **Disclose:** Explain the command and its intended impact on the repository.
-3. **Prompt:** Request explicit confirmation (e.g., "Confirm execution of `git commit`? [y/N]").
-4. **Await:** Wait for positive user confirmation before invoking the tool.
+### 2. Operações de leitura autorizadas
+
+`git status`, `git log`, `git diff`, `git show`, `git branch -a`, `git rev-parse`.
+
+### 3. Fluxo quando uma mutação é necessária
+
+1. **Analisar** os comandos exatos.
+2. **Divulgar** o comando e o impacto no repositório.
+3. **Pedir** confirmação explícita (ex.: "Confirmo executar `git commit`? [s/N]").
+4. **Aguardar** a confirmação antes de executar.
+
+### 4. Regras adicionais
+
+- Commits em inglês, Conventional Commits (`feat:`, `fix:`, `chore:`, `test:`), um por tarefa ou fase —
+  e **nunca** sem pedido explícito do usuário.
+- Nunca `git push`, merge ou rebase sem autorização específica para aquele destino.
+
+## OpenSpec
+
+O fluxo OpenSpec continua sendo o lugar das especificações canônicas (`openspec/specs/<slug>/spec.md`,
+em pt-BR). As specs dos grupos migrados são o contrato comportamental herdado; specs novas só quando o
+fluxo for reaberto.

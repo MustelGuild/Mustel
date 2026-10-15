@@ -1,0 +1,43 @@
+// Mustel — exemplo de arquivo de configuração (JSONC: comentários são aceitos)
+//
+// Copie para:
+//   Windows: %APPDATA%\Mustel\mustel.jsonc
+//   Linux:   ~/.config/mustel/mustel.jsonc
+//   macOS:   ~/Library/Application Support/Mustel/mustel.jsonc
+//
+// Passwords are NOT stored here: they live in the system keyring
+// (Windows Credential Manager / macOS Keychain / Secret Service), set via
+// `mustel settings db-servers set-password <name>`.
+{
+  // PostgreSQL servers used by `query run`, `database` and `settings`
+  "servers": [
+    {
+      "name": "dev",
+      "host": "localhost",
+      "port": 5432,
+      "username": "postgres",
+      "databases": ["mydb", "app_dev"],
+      "sslMode": "Prefer",
+      "timeout": 30,
+      "maxParallelism": 4
+    },
+    {
+      "name": "prod",
+      "host": "prod-db.company.com",
+      "port": 5432,
+      "username": "readonly",
+      "fetchAllDatabases": true,
+      "excludePatterns": ["template*", "postgres"],
+      "sslMode": "Require",
+      "timeout": 30,
+      "maxParallelism": 2
+    }
+  ],
+
+  // Defaults applied when CLI flags do not override them
+  "defaults": {
+    "outputDirectory": "./results",
+    "requireConfirmation": true,
+    "maxParallelism": 4
+  }
+}

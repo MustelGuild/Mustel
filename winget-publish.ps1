@@ -188,7 +188,7 @@ function Get-LatestRelease
 
     $release = $json | ConvertFrom-Json
 
-    $script:PackageId = "FurLab.CLI"
+    $script:PackageId = "Mustel.CLI"
     $script:PackageVersion = $release.tagName.TrimStart('v')
     $script:InstallerUrls = [System.Collections.Generic.List[string]]::new()
 
@@ -221,8 +221,8 @@ function Get-InformacoesPacote
     Get-LatestRelease
 
     Write-Host ""
-    Write-Info "Identificador do pacote: FurLab.CLI"
-    $script:PackageId = "FurLab.CLI"
+    Write-Info "Identificador do pacote: Mustel.CLI"
+    $script:PackageId = "Mustel.CLI"
 
     if ($script:PackageVersion)
     {
@@ -260,7 +260,7 @@ function Get-InformacoesPacote
 
     Write-Host ""
     Write-Info "Sugestão de URL para instalador (montada a partir da release):"
-    $sugestaoUrl = "https://github.com/liphvf/FurLab/releases/download/v$($script:PackageVersion)/fur.exe"
+    $sugestaoUrl = "https://github.com/liphvf/FurLab/releases/download/v$($script:PackageVersion)/mustel.exe"
     Write-Host "  $sugestaoUrl" -ForegroundColor Gray
     Write-Host ""
 
@@ -461,15 +461,15 @@ function New-ManifestYaml
     }
 
     # DefaultLocale manifest
-    $defaultLocalePath = Join-Path $versionDir "FurLab.CLI.locale.en-US.yaml"
+    $defaultLocalePath = Join-Path $versionDir "Mustel.CLI.locale.en-US.yaml"
     $defaultLocaleYaml = @"
 # yaml-language-server: `$schema=https://aka.ms/winget-manifest.defaultLocale.1.12.0.schema.json
 PackageIdentifier: $($script:PackageId)
 PackageVersion: $($script:PackageVersion)
 PackageLocale: en-US
-Publisher: FurLab
-PackageName: FurLab CLI
-ShortDescription: Command-line utility for database backups, Docker management, and Windows features.
+Publisher: Mustel
+PackageName: Mustel
+ShortDescription: Command-line utility for PostgreSQL queries, database backup/restore and server settings.
 License: GPL-3.0
 ManifestType: defaultLocale
 ManifestVersion: 1.12.0
@@ -478,7 +478,7 @@ ManifestVersion: 1.12.0
     Write-Ok "Manifesto locale gerado: $defaultLocalePath"
 
     # Version manifest
-    $versionManifestPath = Join-Path $versionDir "FurLab.CLI.yaml"
+    $versionManifestPath = Join-Path $versionDir "Mustel.CLI.yaml"
     $versionYaml = @"
 # yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.1.12.0.schema.json
 PackageIdentifier: $($script:PackageId)
@@ -491,7 +491,7 @@ ManifestVersion: 1.12.0
     Write-Ok "Manifesto version gerado: $versionManifestPath"
 
     # Installer manifest
-    $installerPath = Join-Path $versionDir "FurLab.CLI.installer.yaml"
+    $installerPath = Join-Path $versionDir "Mustel.CLI.installer.yaml"
     $installerEntries = [System.Collections.Generic.List[string]]::new()
     $idx = 0
 
@@ -502,7 +502,7 @@ ManifestVersion: 1.12.0
         $architecture = Get-InstallerArchitecture $url
         $sha256 = Get-InstallerSha256 $url
 
-        $entry = "  - Architecture: ${architecture}`n    InstallerType: portable`n    InstallerUrl: ${url}`n    InstallerSha256: ${sha256}`n    Commands:`n    - fur"
+        $entry = "  - Architecture: ${architecture}`n    InstallerType: portable`n    InstallerUrl: ${url}`n    InstallerSha256: ${sha256}`n    Commands:`n    - mustel"
         $installerEntries.Add($entry)
 
         Write-Ok "Installer ${idx}: ${architecture} / ${installerType} / SHA256: $($sha256.Substring(0,16))..."

@@ -9,7 +9,15 @@
 ---
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K3K41AP4RO)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-yellow?logo=buy-me-a-coffee&logoColor=white)](https://www.buymeacoffee.com/liphvf)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-yellow?logo=buymeacoffee&logoColor=white)](https://www.buymeacoffee.com/liphvf)
+
+> **Rust rewrite in progress** (branch `feat/rust-migration`). The `query`, `database` and `settings`
+> command groups are being rewritten in Rust as **Mustel** — binary `mustel`, installed via
+> `cargo install mustel` or winget (`Mustel.CLI`). The .NET implementation now lives in `legacy/`:
+> it is the **parity oracle** during the migration and remains the product for the other command
+> groups (`file`, `claude`, `opencode`, `winget`, `windowsfeatures`, `docker`) until the second wave.
+> Everything documented below still describes the .NET CLI.
+
 
 ## Description
 

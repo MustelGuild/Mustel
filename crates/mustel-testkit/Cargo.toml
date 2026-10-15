@@ -1,0 +1,15 @@
+[package]
+name = "mustel-testkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Harness de paridade do Mustel: fixtures, oráculo (.NET) e comparação"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]

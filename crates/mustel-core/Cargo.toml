@@ -1,0 +1,23 @@
+[package]
+name = "mustel-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Mustel core: configuração, credenciais, Postgres e casos de uso — sem UI"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "fs", "process", "sync", "io-util"] }
+tokio-util = "0.7"
+
+[dev-dependencies]
+tempfile = "3"

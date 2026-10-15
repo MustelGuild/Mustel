@@ -1,0 +1,25 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/mustel",
+    "crates/mustel-core",
+    "crates/mustel-gui",
+    "crates/mustel-testkit",
+]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.98"
+license = "GPL-3.0-only"
+repository = "https://github.com/liphvf/FurLab"
+authors = ["liphvf"]
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+
+# Dependências compartilhadas: declaradas pelo crate que as usa.
+# `mustel-testkit` não é publicado (publish = false).

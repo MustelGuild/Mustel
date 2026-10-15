@@ -308,6 +308,8 @@ não invalidar as referências entre tarefas.
   - Depende de: T2, T9
   - Paralelizável com: T3, T4, T5, T6, T7, T8, T11
   - Concluído quando: `oracle-compare` compara exit code, stdout/stderr normalizados (`FurLab|fur` ↔ `mustel`) e artefatos byte a byte, classifica divergências N1–N3 (falha) e N4 (aviso), gera `oracle/reports/<ts>/report.md` e sai != 0 em falha; `ci.yml` (fmt/clippy/test em 3 SOs) e `compat.yml` (oráculo em windows + ubuntu) rodam verdes com o esqueleto stub
+  - Nota (desenho derivado do T9): comparar **sempre** exit code e artefatos (SHA-256 + texto) — são o contrato duro; comparar stdout/stderr como **aviso N4** (a redação difere por framework), com normalização de CRLF→LF e sem comparar texto quando a saída do legado **não é UTF-8** (tabela do `ls` sai em codepage do console: 414 bytes inválidos em UTF-8) — nesse caso o relatório marca "texto pulado (codepage)". Manter no binário uma lista explícita de comandos já migrados: caso ainda seja stub, registrar como "pulado (não migrado)" em vez de falha, para o gate não mentir
+  - Nota: o `oracle-capture` já grava `stdout_b64`/`stderr_b64`; o comparador deve usá-los para decidir se o texto é comparável
   - Arquivos: `crates/mustel-testkit/src/{oracle.rs,normalize.rs}`, `.github/workflows/{ci.yml,compat.yml}`
 
 - [ ] **T11** — Baseline de performance do .NET

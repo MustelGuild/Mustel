@@ -1,0 +1,16 @@
+{
+  "slug": "help-database-pgpass-remove",
+  "argv": [
+    "database",
+    "pgpass",
+    "remove",
+    "--help"
+  ],
+  "exit_code": 0,
+  "stdout": "USAGE:\r\n    fur database pgpass remove <database> [OPTIONS]\r\n\r\nARGUMENTS:\r\n    <database>    Database name of the entry to remove (or * for wildcard)\r\n\r\nOPTIONS:\r\n    -h, --help        Prints help information        \r\n        --host        Hostname of the entry to remove\r\n        --port        Port of the entry to remove    \r\n        --username    Username of the entry to remove\r\n",
+  "stderr": "",
+  "stdout_b64": "VVNBR0U6DQogICAgZnVyIGRhdGFiYXNlIHBncGFzcyByZW1vdmUgPGRhdGFiYXNlPiBbT1BUSU9OU10NCg0KQVJHVU1FTlRTOg0KICAgIDxkYXRhYmFzZT4gICAgRGF0YWJhc2UgbmFtZSBvZiB0aGUgZW50cnkgdG8gcmVtb3ZlIChvciAqIGZvciB3aWxkY2FyZCkNCg0KT1BUSU9OUzoNCiAgICAtaCwgLS1oZWxwICAgICAgICBQcmludHMgaGVscCBpbmZvcm1hdGlvbiAgICAgICAgDQogICAgICAgIC0taG9zdCAgICAgICAgSG9zdG5hbWUgb2YgdGhlIGVudHJ5IHRvIHJlbW92ZQ0KICAgICAgICAtLXBvcnQgICAgICAgIFBvcnQgb2YgdGhlIGVudHJ5IHRvIHJlbW92ZSAgICANCiAgICAgICAgLS11c2VybmFtZSAgICBVc2VybmFtZSBvZiB0aGUgZW50cnkgdG8gcmVtb3ZlDQo=",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": []
+}

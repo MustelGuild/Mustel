@@ -1,0 +1,17 @@
+{
+  "slug": "error-missing-required-argument",
+  "argv": [
+    "database",
+    "pgpass",
+    "remove"
+  ],
+  "exit_code": 1,
+  "stdout": "Error: Command 'remove' is missing required argument 'database'.\r\n",
+  "stderr": "",
+  "stdout_b64": "RXJyb3I6IENvbW1hbmQgJ3JlbW92ZScgaXMgbWlzc2luZyByZXF1aXJlZCBhcmd1bWVudCAnZGF0YWJhc2UnLg0K",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "posicional obrigatório ausente"
+  ]
+}

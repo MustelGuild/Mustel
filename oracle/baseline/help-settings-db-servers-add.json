@@ -1,0 +1,18 @@
+{
+  "slug": "help-settings-db-servers-add",
+  "argv": [
+    "settings",
+    "db-servers",
+    "add",
+    "--help"
+  ],
+  "exit_code": 0,
+  "stdout": "USAGE:\r\n    fur settings db-servers add [OPTIONS]\r\n\r\nOPTIONS:\r\n    -h, --help                Prints help information                           \r\n    -n, --name                Server name (unique identifier)                   \r\n    -H, --host                Database host address                             \r\n    -p, --port                Database port. Default: 5432                      \r\n    -U, --username            Database username                                 \r\n    -d, --databases           Comma-separated list of specific databases        \r\n        --ssl-mode            SSL mode (Disable, Allow, Prefer, Require,        \r\n                              VerifyCA, VerifyFull)                             \r\n        --timeout             Connection timeout in seconds                     \r\n        --max-parallelism     Max degree of parallelism                         \r\n        --fetch-all           Auto-discover all databases on server             \r\n        --exclude-patterns    Comma-separated patterns to exclude from          \r\n                              auto-discovery                                    \r\n",
+  "stderr": "",
+  "stdout_b64": "VVNBR0U6DQogICAgZnVyIHNldHRpbmdzIGRiLXNlcnZlcnMgYWRkIFtPUFRJT05TXQ0KDQpPUFRJT05TOg0KICAgIC1oLCAtLWhlbHAgICAgICAgICAgICAgICAgUHJpbnRzIGhlbHAgaW5mb3JtYXRpb24gICAgICAgICAgICAgICAgICAgICAgICAgICANCiAgICAtbiwgLS1uYW1lICAgICAgICAgICAgICAgIFNlcnZlciBuYW1lICh1bmlxdWUgaWRlbnRpZmllcikgICAgICAgICAgICAgICAgICAgDQogICAgLUgsIC0taG9zdCAgICAgICAgICAgICAgICBEYXRhYmFzZSBob3N0IGFkZHJlc3MgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA0KICAgIC1wLCAtLXBvcnQgICAgICAgICAgICAgICAgRGF0YWJhc2UgcG9ydC4gRGVmYXVsdDogNTQzMiAgICAgICAgICAgICAgICAgICAgICANCiAgICAtVSwgLS11c2VybmFtZSAgICAgICAgICAgIERhdGFiYXNlIHVzZXJuYW1lICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgDQogICAgLWQsIC0tZGF0YWJhc2VzICAgICAgICAgICBDb21tYS1zZXBhcmF0ZWQgbGlzdCBvZiBzcGVjaWZpYyBkYXRhYmFzZXMgICAgICAgIA0KICAgICAgICAtLXNzbC1tb2RlICAgICAgICAgICAgU1NMIG1vZGUgKERpc2FibGUsIEFsbG93LCBQcmVmZXIsIFJlcXVpcmUsICAgICAgICANCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIFZlcmlmeUNBLCBWZXJpZnlGdWxsKSAgICAgICAgICAgICAgICAgICAgICAgICAgICAgDQogICAgICAgIC0tdGltZW91dCAgICAgICAgICAgICBDb25uZWN0aW9uIHRpbWVvdXQgaW4gc2Vjb25kcyAgICAgICAgICAgICAgICAgICAgIA0KICAgICAgICAtLW1heC1wYXJhbGxlbGlzbSAgICAgTWF4IGRlZ3JlZSBvZiBwYXJhbGxlbGlzbSAgICAgICAgICAgICAgICAgICAgICAgICANCiAgICAgICAgLS1mZXRjaC1hbGwgICAgICAgICAgIEF1dG8tZGlzY292ZXIgYWxsIGRhdGFiYXNlcyBvbiBzZXJ2ZXIgICAgICAgICAgICAgDQogICAgICAgIC0tZXhjbHVkZS1wYXR0ZXJucyAgICBDb21tYS1zZXBhcmF0ZWQgcGF0dGVybnMgdG8gZXhjbHVkZSBmcm9tICAgICAgICAgIA0KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgYXV0by1kaXNjb3ZlcnkgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICANCg==",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "o Mustel acrescenta `-i/--interactive` e `-W/--password` (decisão do usuário)"
+  ]
+}

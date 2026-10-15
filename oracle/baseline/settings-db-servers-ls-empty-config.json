@@ -1,0 +1,24 @@
+{
+  "slug": "settings-db-servers-ls-empty-config",
+  "argv": [
+    "settings",
+    "db-servers",
+    "ls"
+  ],
+  "exit_code": 0,
+  "stdout": "No servers configured. Use 'fur settings db-servers add' to add one.\r\n",
+  "stderr": "",
+  "stdout_b64": "Tm8gc2VydmVycyBjb25maWd1cmVkLiBVc2UgJ2Z1ciBzZXR0aW5ncyBkYi1zZXJ2ZXJzIGFkZCcgdG8gYWRkIG9uZS4NCg==",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "legacy-config",
+      "sha256": "0e4e784eec650fcd0a75f0618e618d90e2faf7ea4968030833c9d70aaa94bed2",
+      "text": "{\r\n  \"servers\": [],\r\n  \"defaults\": {\r\n    \"outputDirectory\": \"./results\",\r\n    \"requireConfirmation\": true,\r\n    \"maxParallelism\": 4\r\n  }\r\n}"
+    }
+  ],
+  "notes": [
+    "config do legado ausente (o comando a cria)",
+    "primeira execução cria a config"
+  ]
+}

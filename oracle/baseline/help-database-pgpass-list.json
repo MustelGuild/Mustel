@@ -1,0 +1,16 @@
+{
+  "slug": "help-database-pgpass-list",
+  "argv": [
+    "database",
+    "pgpass",
+    "list",
+    "--help"
+  ],
+  "exit_code": 0,
+  "stdout": "USAGE:\r\n    fur database pgpass list [OPTIONS]\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n",
+  "stderr": "",
+  "stdout_b64": "VVNBR0U6DQogICAgZnVyIGRhdGFiYXNlIHBncGFzcyBsaXN0IFtPUFRJT05TXQ0KDQpPUFRJT05TOg0KICAgIC1oLCAtLWhlbHAgICAgUHJpbnRzIGhlbHAgaW5mb3JtYXRpb24NCg==",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": []
+}

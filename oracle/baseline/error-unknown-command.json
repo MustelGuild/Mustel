@@ -1,0 +1,15 @@
+{
+  "slug": "error-unknown-command",
+  "argv": [
+    "nao-existe"
+  ],
+  "exit_code": 1,
+  "stdout": "Error: Unknown command 'nao-existe'.\r\n",
+  "stderr": "",
+  "stdout_b64": "RXJyb3I6IFVua25vd24gY29tbWFuZCAnbmFvLWV4aXN0ZScuDQo=",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "exit code de comando desconhecido"
+  ]
+}

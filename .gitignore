@@ -508,6 +508,12 @@ ASALocalRun/
 /target/
 **/*.rs.bk
 
+# Harness de paridade: binário publicado, diretório de trabalho e relatórios não são versionados
+# (o baseline em `oracle/baseline/` **é** versionado — é o contrato de paridade).
+oracle/bin/
+oracle/workdir/
+oracle/reports/
+
 
 # Deploy
 packaging/

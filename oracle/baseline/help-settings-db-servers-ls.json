@@ -1,0 +1,16 @@
+{
+  "slug": "help-settings-db-servers-ls",
+  "argv": [
+    "settings",
+    "db-servers",
+    "ls",
+    "--help"
+  ],
+  "exit_code": 0,
+  "stdout": "USAGE:\r\n    fur settings db-servers ls [OPTIONS]\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n",
+  "stderr": "",
+  "stdout_b64": "VVNBR0U6DQogICAgZnVyIHNldHRpbmdzIGRiLXNlcnZlcnMgbHMgW09QVElPTlNdDQoNCk9QVElPTlM6DQogICAgLWgsIC0taGVscCAgICBQcmludHMgaGVscCBpbmZvcm1hdGlvbg0K",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": []
+}

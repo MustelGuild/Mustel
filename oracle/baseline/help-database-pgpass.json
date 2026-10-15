@@ -1,0 +1,15 @@
+{
+  "slug": "help-database-pgpass",
+  "argv": [
+    "database",
+    "pgpass",
+    "--help"
+  ],
+  "exit_code": 0,
+  "stdout": "DESCRIPTION:\r\nGerencia o arquivo pgpass.conf\r\n\r\nUSAGE:\r\n    fur database pgpass [OPTIONS] <COMMAND>\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n\r\nCOMMANDS:\r\n    add                   \r\n    list                  \r\n    remove <database>     \r\n",
+  "stderr": "",
+  "stdout_b64": "REVTQ1JJUFRJT046DQpHZXJlbmNpYSBvIGFycXVpdm8gcGdwYXNzLmNvbmYNCg0KVVNBR0U6DQogICAgZnVyIGRhdGFiYXNlIHBncGFzcyBbT1BUSU9OU10gPENPTU1BTkQ+DQoNCk9QVElPTlM6DQogICAgLWgsIC0taGVscCAgICBQcmludHMgaGVscCBpbmZvcm1hdGlvbg0KDQpDT01NQU5EUzoNCiAgICBhZGQgICAgICAgICAgICAgICAgICAgDQogICAgbGlzdCAgICAgICAgICAgICAgICAgIA0KICAgIHJlbW92ZSA8ZGF0YWJhc2U+ICAgICANCg==",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": []
+}

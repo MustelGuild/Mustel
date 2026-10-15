@@ -1,0 +1,17 @@
+{
+  "slug": "error-unknown-option",
+  "argv": [
+    "query",
+    "run",
+    "--nao-existe"
+  ],
+  "exit_code": 1,
+  "stdout": "Error: Use -c for an inline query or -i for a SQL file.\r\n",
+  "stderr": "",
+  "stdout_b64": "RXJyb3I6IFVzZSAtYyBmb3IgYW4gaW5saW5lIHF1ZXJ5IG9yIC1pIGZvciBhIFNRTCBmaWxlLg0K",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "exit code de opção desconhecida"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "slug": "help-query",
+  "argv": [
+    "query",
+    "--help"
+  ],
+  "exit_code": 0,
+  "stdout": "DESCRIPTION:\r\nExecute SQL queries and export results to CSV\r\n\r\nUSAGE:\r\n    fur query [OPTIONS] <COMMAND>\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n\r\nCOMMANDS:\r\n    run     \r\n",
+  "stderr": "",
+  "stdout_b64": "REVTQ1JJUFRJT046DQpFeGVjdXRlIFNRTCBxdWVyaWVzIGFuZCBleHBvcnQgcmVzdWx0cyB0byBDU1YNCg0KVVNBR0U6DQogICAgZnVyIHF1ZXJ5IFtPUFRJT05TXSA8Q09NTUFORD4NCg0KT1BUSU9OUzoNCiAgICAtaCwgLS1oZWxwICAgIFByaW50cyBoZWxwIGluZm9ybWF0aW9uDQoNCkNPTU1BTkRTOg0KICAgIHJ1biAgICAgDQo=",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": []
+}

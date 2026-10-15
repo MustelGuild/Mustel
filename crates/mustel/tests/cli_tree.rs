@@ -159,7 +159,7 @@ fn pgpass_add_accepts_the_database_as_a_positional_argument() {
         Some(1),
         "stub must run for the positional form"
     );
-    assert!(String::from_utf8_lossy(&output.stderr).contains("not implemented yet"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("not implemented yet"));
 
     let output = mustel(&["database", "pgpass", "add", "--database", "mydb"]);
     assert_eq!(
@@ -168,16 +168,17 @@ fn pgpass_add_accepts_the_database_as_a_positional_argument() {
         "stub must run for the option form"
     );
 
-    // As duas formas juntas são ambíguas e devem ser recusadas pelo parser (exit 2).
+    // As duas formas juntas são ambíguas e devem ser recusadas pelo parser.
+    // O oráculo devolve `1` para erro de uso (T9) — e a mensagem vai para stdout.
     let output = mustel(&["database", "pgpass", "add", "mydb", "--database", "other"]);
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Error:"));
 }
 
 /// Invocações mínimas válidas de cada comando ainda não migrado.
 ///
 /// Diferente de [`MIGRATED_COMMANDS`], aqui os posicionais obrigatórios são preenchidos — sem isso o
-/// clap falha antes de chegar ao stub (erro de uso, exit `2`), que é justamente o comportamento
-/// esperado de um erro de parse.
+/// clap falha antes de chegar ao stub (erro de uso, exit `1`, como o oráculo).
 const STUB_INVOCATIONS: &[&[&str]] = &[
     &["query", "run"],
     &["database", "backup"],
@@ -202,24 +203,28 @@ fn not_yet_migrated_commands_fail_loudly_with_exit_code_one() {
             "`mustel {}` stub must exit 1",
             path.join(" ")
         );
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
-            stderr.contains("not implemented yet"),
-            "stub must say it is not implemented: {stderr}"
+            stdout.contains("not implemented yet"),
+            "stub must say it is not implemented: {stdout}"
         );
     }
 }
 
 #[test]
-fn missing_required_argument_is_a_usage_error() {
-    // `database pgpass remove` exige <database>; o clap devolve 2 (erro de uso).
-    // O código real do oráculo para erro de parse é verificado no T9 — Spectre pode usar outro valor.
+fn missing_required_argument_follows_the_oracle() {
+    // `database pgpass remove` exige <database>. O oráculo (T9) devolve `1` e escreve a mensagem em
+    // stdout — o clap devolveria `2` em stderr, então o `main` remapeia (ver `handle_parse_error`).
     let output = mustel(&["database", "pgpass", "remove"]);
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1));
     assert!(
-        stderr.contains("required arguments"),
-        "clap must explain the missing argument: {stderr}"
+        output.stderr.is_empty(),
+        "o oráculo não escreve erro em stderr"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("required arguments") || stdout.contains("Error:"),
+        "mensagem de erro de uso em stdout: {stdout}"
     );
 }
 

@@ -1,0 +1,18 @@
+{
+  "slug": "help-database-pgpass-add",
+  "argv": [
+    "database",
+    "pgpass",
+    "add",
+    "--help"
+  ],
+  "exit_code": 0,
+  "stdout": "USAGE:\r\n    fur database pgpass add [OPTIONS]\r\n\r\nOPTIONS:\r\n    -h, --help        Prints help information                                   \r\n        --database    Database name (or * for wildcard)                         \r\n        --host        Hostname or IP address of the PostgreSQL server           \r\n        --port        TCP port of the PostgreSQL server                         \r\n        --username    PostgreSQL username                                       \r\n        --password    PostgreSQL password. Prompted interactively if not        \r\n                      provided                                                  \r\n",
+  "stderr": "",
+  "stdout_b64": "VVNBR0U6DQogICAgZnVyIGRhdGFiYXNlIHBncGFzcyBhZGQgW09QVElPTlNdDQoNCk9QVElPTlM6DQogICAgLWgsIC0taGVscCAgICAgICAgUHJpbnRzIGhlbHAgaW5mb3JtYXRpb24gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA0KICAgICAgICAtLWRhdGFiYXNlICAgIERhdGFiYXNlIG5hbWUgKG9yICogZm9yIHdpbGRjYXJkKSAgICAgICAgICAgICAgICAgICAgICAgICANCiAgICAgICAgLS1ob3N0ICAgICAgICBIb3N0bmFtZSBvciBJUCBhZGRyZXNzIG9mIHRoZSBQb3N0Z3JlU1FMIHNlcnZlciAgICAgICAgICAgDQogICAgICAgIC0tcG9ydCAgICAgICAgVENQIHBvcnQgb2YgdGhlIFBvc3RncmVTUUwgc2VydmVyICAgICAgICAgICAgICAgICAgICAgICAgIA0KICAgICAgICAtLXVzZXJuYW1lICAgIFBvc3RncmVTUUwgdXNlcm5hbWUgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICANCiAgICAgICAgLS1wYXNzd29yZCAgICBQb3N0Z3JlU1FMIHBhc3N3b3JkLiBQcm9tcHRlZCBpbnRlcmFjdGl2ZWx5IGlmIG5vdCAgICAgICAgDQogICAgICAgICAgICAgICAgICAgICAgcHJvdmlkZWQgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA0K",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "o Mustel acrescenta a forma posicional `pgpass add <banco>` (decisão do usuário)"
+  ]
+}

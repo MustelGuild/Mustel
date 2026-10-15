@@ -1,0 +1,34 @@
+{
+  "slug": "settings-db-servers-add-flags",
+  "argv": [
+    "settings",
+    "db-servers",
+    "add",
+    "-n",
+    "capturado",
+    "-H",
+    "localhost",
+    "-p",
+    "5432",
+    "-U",
+    "postgres",
+    "-d",
+    "mydb,app_dev"
+  ],
+  "exit_code": 0,
+  "stdout": "Server 'capturado' added successfully.\r\nUse 'fur settings db-servers set-password capturado' to set the password.\r\n",
+  "stderr": "",
+  "stdout_b64": "U2VydmVyICdjYXB0dXJhZG8nIGFkZGVkIHN1Y2Nlc3NmdWxseS4NClVzZSAnZnVyIHNldHRpbmdzIGRiLXNlcnZlcnMgc2V0LXBhc3N3b3JkIGNhcHR1cmFkbycgdG8gc2V0IHRoZSBwYXNzd29yZC4NCg==",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "legacy-config",
+      "sha256": "e414cff64c76b6f7a60e1c52aa87ba4f17d8b3a0036b67d13b79d89e4024937e",
+      "text": "{\r\n  \"servers\": [\r\n    {\r\n      \"name\": \"capturado\",\r\n      \"host\": \"localhost\",\r\n      \"port\": 5432,\r\n      \"username\": \"postgres\",\r\n      \"encryptedPassword\": null,\r\n      \"databases\": [\r\n        \"mydb\",\r\n        \"app_dev\"\r\n      ],\r\n      \"fetchAllDatabases\": false,\r\n      \"excludePatterns\": [\r\n        \"template*\",\r\n        \"postgres\"\r\n      ],\r\n      \"sslMode\": \"Prefer\",\r\n      \"timeout\": 30,\r\n      \"maxParallelism\": 4\r\n    }\r\n  ],\r\n  \"defaults\": {\r\n    \"outputDirectory\": \"./results\",\r\n    \"requireConfirmation\": true,\r\n    \"maxParallelism\": 4\r\n  }\r\n}"
+    }
+  ],
+  "notes": [
+    "config do legado ausente (o comando a cria)",
+    "escreve a config do legado"
+  ]
+}

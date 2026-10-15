@@ -1,0 +1,16 @@
+{
+  "slug": "help-settings-db-servers-test",
+  "argv": [
+    "settings",
+    "db-servers",
+    "test",
+    "--help"
+  ],
+  "exit_code": 0,
+  "stdout": "USAGE:\r\n    fur settings db-servers test [OPTIONS]\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n    -n, --name    Server name to test    \r\n",
+  "stderr": "",
+  "stdout_b64": "VVNBR0U6DQogICAgZnVyIHNldHRpbmdzIGRiLXNlcnZlcnMgdGVzdCBbT1BUSU9OU10NCg0KT1BUSU9OUzoNCiAgICAtaCwgLS1oZWxwICAgIFByaW50cyBoZWxwIGluZm9ybWF0aW9uDQogICAgLW4sIC0tbmFtZSAgICBTZXJ2ZXIgbmFtZSB0byB0ZXN0ICAgIA0K",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": []
+}

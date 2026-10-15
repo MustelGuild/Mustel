@@ -1,0 +1,16 @@
+{
+  "slug": "help-settings-db-servers-rm",
+  "argv": [
+    "settings",
+    "db-servers",
+    "rm",
+    "--help"
+  ],
+  "exit_code": 0,
+  "stdout": "USAGE:\r\n    fur settings db-servers rm [OPTIONS]\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n    -n, --name    Server name to remove  \r\n",
+  "stderr": "",
+  "stdout_b64": "VVNBR0U6DQogICAgZnVyIHNldHRpbmdzIGRiLXNlcnZlcnMgcm0gW09QVElPTlNdDQoNCk9QVElPTlM6DQogICAgLWgsIC0taGVscCAgICBQcmludHMgaGVscCBpbmZvcm1hdGlvbg0KICAgIC1uLCAtLW5hbWUgICAgU2VydmVyIG5hbWUgdG8gcmVtb3ZlICANCg==",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": []
+}

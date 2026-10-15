@@ -1,0 +1,19 @@
+{
+  "slug": "error-db-servers-test-offline",
+  "argv": [
+    "settings",
+    "db-servers",
+    "test",
+    "-n",
+    "offline"
+  ],
+  "exit_code": 40,
+  "stdout": "Testing connection to offline (127.0.0.1:1)...\r\nNo password found for 'offline'. Type to test (will not be saved):\r\nPassword: Error: Failed to read input in non-interactive mode.\r\n",
+  "stderr": "",
+  "stdout_b64": "VGVzdGluZyBjb25uZWN0aW9uIHRvIG9mZmxpbmUgKDEyNy4wLjAuMToxKS4uLg0KTm8gcGFzc3dvcmQgZm91bmQgZm9yICdvZmZsaW5lJy4gVHlwZSB0byB0ZXN0ICh3aWxsIG5vdCBiZSBzYXZlZCk6DQpQYXNzd29yZDogRXJyb3I6IEZhaWxlZCB0byByZWFkIGlucHV0IGluIG5vbi1pbnRlcmFjdGl2ZSBtb2RlLg0K",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "conexão recusada em 127.0.0.1:1 — mensagem depende do SO, comparar com tolerância"
+  ]
+}

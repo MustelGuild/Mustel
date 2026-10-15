@@ -1,0 +1,14 @@
+{
+  "slug": "help-database",
+  "argv": [
+    "database",
+    "--help"
+  ],
+  "exit_code": 0,
+  "stdout": "DESCRIPTION:\r\nDatabase utilities\r\n\r\nUSAGE:\r\n    fur database [OPTIONS] <COMMAND>\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n\r\nCOMMANDS:\r\n    backup                                   \r\n    restore                                  \r\n    pgpass     Gerencia o arquivo pgpass.conf\r\n",
+  "stderr": "",
+  "stdout_b64": "REVTQ1JJUFRJT046DQpEYXRhYmFzZSB1dGlsaXRpZXMNCg0KVVNBR0U6DQogICAgZnVyIGRhdGFiYXNlIFtPUFRJT05TXSA8Q09NTUFORD4NCg0KT1BUSU9OUzoNCiAgICAtaCwgLS1oZWxwICAgIFByaW50cyBoZWxwIGluZm9ybWF0aW9uDQoNCkNPTU1BTkRTOg0KICAgIGJhY2t1cCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgDQogICAgcmVzdG9yZSAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICANCiAgICBwZ3Bhc3MgICAgIEdlcmVuY2lhIG8gYXJxdWl2byBwZ3Bhc3MuY29uZg0K",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": []
+}

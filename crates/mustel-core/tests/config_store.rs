@@ -7,6 +7,16 @@ fn store_in(dir: &TempDir) -> ConfigStore {
     ConfigStore::new(dir.path().join("mustel.jsonc"))
 }
 
+/// O arquivo escrito usa as quebras de linha do SO (o legado grava CRLF no Windows).
+fn expected_empty_config() -> String {
+    let lf = "{\n  \"servers\": [],\n  \"defaults\": {\n    \"outputDirectory\": \"./results\",\n    \"requireConfirmation\": true,\n    \"maxParallelism\": 4\n  }\n}";
+    if cfg!(windows) {
+        lf.replace('\n', "\r\n")
+    } else {
+        lf.to_string()
+    }
+}
+
 #[test]
 fn creates_an_empty_config_on_first_use() {
     let dir = TempDir::new().expect("tempdir");
@@ -19,7 +29,7 @@ fn creates_an_empty_config_on_first_use() {
     assert!(config.servers.is_empty());
     assert_eq!(
         std::fs::read_to_string(store.path()).expect("read"),
-        "{\n  \"servers\": [],\n  \"defaults\": {\n    \"outputDirectory\": \"./results\",\n    \"requireConfirmation\": true,\n    \"maxParallelism\": 4\n  }\n}"
+        expected_empty_config()
     );
 }
 

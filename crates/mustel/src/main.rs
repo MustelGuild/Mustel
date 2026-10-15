@@ -9,12 +9,15 @@ mod exit;
 
 use clap::Parser;
 
-use mustel_core::error::CoreError;
+use mustel_core::error::{CoreError, exit_code};
 use mustel_core::signal::{cancellation_token, spawn_ctrl_c_listener};
 
 #[tokio::main]
 async fn main() {
-    let parsed = cli::MustelCli::parse();
+    let parsed = match cli::MustelCli::try_parse() {
+        Ok(parsed) => parsed,
+        Err(error) => std::process::exit(handle_parse_error(&error)),
+    };
 
     let token = cancellation_token();
     // Ctrl+C cancela o token; quem observa o token é o caso de uso em execução.
@@ -29,4 +32,26 @@ async fn main() {
     };
 
     std::process::exit(code);
+}
+
+/// Trata erro de parse com o contrato do oráculo (descoberto no T9).
+///
+/// O legado devolve `1` e escreve a mensagem em **stdout** para erro de uso (comando desconhecido,
+/// opção desconhecida, argumento obrigatório ausente), enquanto o clap usaria `2` e `stderr`.
+/// `--help`/`--version` continuam saindo com `0` em stdout, como no legado.
+fn handle_parse_error(error: &clap::Error) -> i32 {
+    use clap::error::ErrorKind;
+
+    match error.kind() {
+        ErrorKind::DisplayHelp
+        | ErrorKind::DisplayVersion
+        | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+            print!("{error}");
+            exit_code::SUCCESS
+        }
+        _ => {
+            println!("Error: {error}");
+            exit_code::GENERAL
+        }
+    }
 }

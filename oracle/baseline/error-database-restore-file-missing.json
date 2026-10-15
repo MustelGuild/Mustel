@@ -1,0 +1,18 @@
+{
+  "slug": "error-database-restore-file-missing",
+  "argv": [
+    "database",
+    "restore",
+    "mydb",
+    "nao-existe.dump"
+  ],
+  "exit_code": 1,
+  "stdout": "Enter password: Error: Cannot read keys when either application does not have a console or when \r\nconsole input has been redirected. Try Console.Read.\r\n",
+  "stderr": "",
+  "stdout_b64": "RW50ZXIgcGFzc3dvcmQ6IEVycm9yOiBDYW5ub3QgcmVhZCBrZXlzIHdoZW4gZWl0aGVyIGFwcGxpY2F0aW9uIGRvZXMgbm90IGhhdmUgYSBjb25zb2xlIG9yIHdoZW4gDQpjb25zb2xlIGlucHV0IGhhcyBiZWVuIHJlZGlyZWN0ZWQuIFRyeSBDb25zb2xlLlJlYWQuDQo=",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "arquivo de dump inexistente"
+  ]
+}

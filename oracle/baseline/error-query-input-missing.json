@@ -1,0 +1,19 @@
+{
+  "slug": "error-query-input-missing",
+  "argv": [
+    "query",
+    "run",
+    "-i",
+    "nao-existe.sql",
+    "--no-confirm"
+  ],
+  "exit_code": 1,
+  "stdout": "Error: SQL input file not found: \r\nC:\\Users\\liphv\\Documents\\DEV\\FurLab\\.delta\\worktrees\\00z7a7nyr8qy\\FurLab\\oracle\\\r\nworkdir\\nao-existe.sql\r\n",
+  "stderr": "",
+  "stdout_b64": "RXJyb3I6IFNRTCBpbnB1dCBmaWxlIG5vdCBmb3VuZDogDQpDOlxVc2Vyc1xsaXBodlxEb2N1bWVudHNcREVWXEZ1ckxhYlwuZGVsdGFcd29ya3RyZWVzXDAwejdhN255cjhxeVxGdXJMYWJcb3JhY2xlXA0Kd29ya2RpclxuYW8tZXhpc3RlLnNxbA0K",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "arquivo de entrada inexistente"
+  ]
+}

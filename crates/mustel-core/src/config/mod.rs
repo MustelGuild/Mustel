@@ -47,7 +47,7 @@ pub enum ConfigError {
     #[error("server name cannot be empty")]
     EmptyServerName,
     /// Servidor referenciado mas inexistente na configuração.
-    #[error("server '{0}' not found")]
+    #[error("Server '{0}' not found.")]
     ServerNotFound(String),
 }
 
@@ -119,7 +119,7 @@ impl ConfigStore {
         })?;
 
         let temp_path = temporary_path(&self.path);
-        fs::write(&temp_path, json).map_err(|source| ConfigError::Write {
+        fs::write(&temp_path, native_newlines(json)).map_err(|source| ConfigError::Write {
             path: temp_path.clone(),
             source,
         })?;
@@ -177,6 +177,18 @@ impl ConfigStore {
     }
 }
 
+/// Ajusta as quebras de linha ao SO, como o arquivo escrito pelo legado.
+///
+/// Observado na captura do oráculo (T9): no Windows o `furlab.jsonc` sai com CRLF. Manter o mesmo
+/// padrão evita uma diferença de bytes puramente cosmética nos artefatos comparados.
+fn native_newlines(json: String) -> String {
+    if cfg!(windows) {
+        json.replace('\n', "\r\n")
+    } else {
+        json
+    }
+}
+
 /// Caminho temporário usado na escrita atômica (mesmo diretório, para o rename ser barato).
 fn temporary_path(path: &Path) -> PathBuf {
     let mut temp = path.to_path_buf();
@@ -191,6 +203,16 @@ fn temporary_path(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_newlines_follow_the_platform() {
+        let converted = native_newlines("a\nb".to_string());
+        if cfg!(windows) {
+            assert_eq!(converted, "a\r\nb");
+        } else {
+            assert_eq!(converted, "a\nb");
+        }
+    }
 
     #[test]
     fn temporary_path_keeps_the_same_directory() {

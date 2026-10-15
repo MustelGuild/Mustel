@@ -1,0 +1,15 @@
+{
+  "slug": "help-root",
+  "argv": [
+    "--help"
+  ],
+  "exit_code": 0,
+  "stdout": "USAGE:\r\n    fur [OPTIONS] <COMMAND>\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n\r\nCOMMANDS:\r\n    file               File utilities                                  \r\n    claude             Comandos para Claude Code                       \r\n    opencode           Comandos para OpenCode                          \r\n    winget             Manage winget packages                          \r\n    database           Database utilities                              \r\n    query              Execute SQL queries and export results to CSV   \r\n    windowsfeatures    Export and import Windows optional features     \r\n    docker             Docker utilities                                \r\n    settings           Manage FurLab settings and server configurations\r\n",
+  "stderr": "",
+  "stdout_b64": "VVNBR0U6DQogICAgZnVyIFtPUFRJT05TXSA8Q09NTUFORD4NCg0KT1BUSU9OUzoNCiAgICAtaCwgLS1oZWxwICAgIFByaW50cyBoZWxwIGluZm9ybWF0aW9uDQoNCkNPTU1BTkRTOg0KICAgIGZpbGUgICAgICAgICAgICAgICBGaWxlIHV0aWxpdGllcyAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICANCiAgICBjbGF1ZGUgICAgICAgICAgICAgQ29tYW5kb3MgcGFyYSBDbGF1ZGUgQ29kZSAgICAgICAgICAgICAgICAgICAgICAgDQogICAgb3BlbmNvZGUgICAgICAgICAgIENvbWFuZG9zIHBhcmEgT3BlbkNvZGUgICAgICAgICAgICAgICAgICAgICAgICAgIA0KICAgIHdpbmdldCAgICAgICAgICAgICBNYW5hZ2Ugd2luZ2V0IHBhY2thZ2VzICAgICAgICAgICAgICAgICAgICAgICAgICANCiAgICBkYXRhYmFzZSAgICAgICAgICAgRGF0YWJhc2UgdXRpbGl0aWVzICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgDQogICAgcXVlcnkgICAgICAgICAgICAgIEV4ZWN1dGUgU1FMIHF1ZXJpZXMgYW5kIGV4cG9ydCByZXN1bHRzIHRvIENTViAgIA0KICAgIHdpbmRvd3NmZWF0dXJlcyAgICBFeHBvcnQgYW5kIGltcG9ydCBXaW5kb3dzIG9wdGlvbmFsIGZlYXR1cmVzICAgICANCiAgICBkb2NrZXIgICAgICAgICAgICAgRG9ja2VyIHV0aWxpdGllcyAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgDQogICAgc2V0dGluZ3MgICAgICAgICAgIE1hbmFnZSBGdXJMYWIgc2V0dGluZ3MgYW5kIHNlcnZlciBjb25maWd1cmF0aW9ucw0K",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "formatação é N4 (não bloqueia)"
+  ]
+}

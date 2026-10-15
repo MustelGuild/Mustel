@@ -1,0 +1,14 @@
+{
+  "slug": "help-settings",
+  "argv": [
+    "settings",
+    "--help"
+  ],
+  "exit_code": 0,
+  "stdout": "DESCRIPTION:\r\nManage FurLab settings and server configurations\r\n\r\nUSAGE:\r\n    fur settings [OPTIONS] <COMMAND>\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n\r\nCOMMANDS:\r\n    db-servers    Manage configured database servers\r\n",
+  "stderr": "",
+  "stdout_b64": "REVTQ1JJUFRJT046DQpNYW5hZ2UgRnVyTGFiIHNldHRpbmdzIGFuZCBzZXJ2ZXIgY29uZmlndXJhdGlvbnMNCg0KVVNBR0U6DQogICAgZnVyIHNldHRpbmdzIFtPUFRJT05TXSA8Q09NTUFORD4NCg0KT1BUSU9OUzoNCiAgICAtaCwgLS1oZWxwICAgIFByaW50cyBoZWxwIGluZm9ybWF0aW9uDQoNCkNPTU1BTkRTOg0KICAgIGRiLXNlcnZlcnMgICAgTWFuYWdlIGNvbmZpZ3VyZWQgZGF0YWJhc2Ugc2VydmVycw0K",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": []
+}

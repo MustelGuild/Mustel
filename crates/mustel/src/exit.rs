@@ -6,11 +6,14 @@
 
 use mustel_core::error::CoreError;
 
-/// Imprime o erro no mesmo formato do CLI legado (`Error: <mensagem>`) e devolve o exit code.
-///
-/// Sem cores e sem markup: formatação é nível N4 do contrato (ver `oracle/known-divergences.md`).
+/// Formata a mensagem de erro sem imprimir (testável; a impressão fica em [`report_error`]).
+pub fn format_error(error: &CoreError) -> String {
+    format!("Error: {error}")
+}
+
+/// Imprime o erro no mesmo formato e **no mesmo stream** do CLI legado e devolve o exit code.
 pub fn report_error(error: &CoreError) -> i32 {
-    println!("Error: {error}");
+    println!("{}", format_error(error));
     error.exit_code()
 }
 
@@ -22,5 +25,11 @@ mod tests {
     #[test]
     fn returns_the_mapped_code() {
         assert_eq!(report_error(&CoreError::Cancelled), exit_code::CANCELLED);
+    }
+
+    #[test]
+    fn formats_with_the_legacy_prefix() {
+        let error = CoreError::InvalidState("boom".to_string());
+        assert_eq!(format_error(&error), "Error: boom");
     }
 }

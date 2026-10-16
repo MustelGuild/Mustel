@@ -1,0 +1,10 @@
+---
+source: crates/mustel/tests/ui_primitives.rs
+expression: rendered
+---
+╭──────┬─────────────────────┬──────╮
+│ Name │ Host                │ Port │
+├──────┼─────────────────────┼──────┤
+│ dev  │ localhost           │ 5432 │
+│ prod │ prod-db.company.com │ 5432 │
+╰──────┴─────────────────────┴──────╯

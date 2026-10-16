@@ -34,6 +34,37 @@ pub fn legacy_project() -> PathBuf {
         .join("FurLab.CLI.csproj")
 }
 
+/// Caminho do binário do Mustel, se existir (`MUSTEL_BIN` tem precedência).
+pub fn mustel_binary() -> Option<PathBuf> {
+    if let Some(override_path) = std::env::var_os("MUSTEL_BIN") {
+        let path = PathBuf::from(override_path);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+
+    for profile in ["debug", "release"] {
+        let dir = repo_root().join("target").join(profile);
+        for suffix in ["", ".exe"] {
+            let candidate = dir.join(format!("mustel{suffix}"));
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Diretório isolado de configuração do Mustel usado nas comparações.
+pub fn mustel_config_dir() -> PathBuf {
+    workspace_dir().join("mustel-config")
+}
+
+/// Caminho do `mustel.jsonc` usado nas comparações.
+pub fn mustel_config_file() -> PathBuf {
+    mustel_config_dir().join("mustel.jsonc")
+}
+
 /// Nomes possíveis do executável publicado do legado.
 const ORACLE_EXE_NAMES: [&str; 2] = ["FurLab.CLI", "fur"];
 

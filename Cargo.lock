@@ -833,6 +833,7 @@ dependencies = [
  "anyhow",
  "base64",
  "dirs",
+ "mustel-core",
  "serde",
  "serde_json",
  "sha2",

@@ -6,6 +6,7 @@
     "ls",
     "--help"
   ],
+  "config_seed": "absent",
   "exit_code": 0,
   "stdout": "USAGE:\r\n    fur settings db-servers ls [OPTIONS]\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n",
   "stderr": "",

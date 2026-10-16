@@ -4,7 +4,9 @@
 //! erros de arquivo ausente. Casos que dependem de Postgres/pg_dump ficam para os testes de
 //! integração das tarefas de comando (T28/T29/T32+).
 
-/// Um caso simples: slug + argumentos (+ observações).
+use crate::capture::ConfigSeed;
+
+/// Um caso: slug + argumentos + observações + estado inicial da configuração.
 pub struct Case {
     /// Identificador estável (vira `oracle/baseline/<slug>.json`).
     pub slug: &'static str,
@@ -12,136 +14,137 @@ pub struct Case {
     pub argv: &'static [&'static str],
     /// Observações registradas na captura.
     pub notes: &'static [&'static str],
+    /// Estado inicial da configuração do usuário.
+    pub seed: ConfigSeed,
+}
+
+const fn help(slug: &'static str, argv: &'static [&'static str]) -> Case {
+    Case {
+        slug,
+        argv,
+        notes: &[],
+        seed: ConfigSeed::Absent,
+    }
+}
+
+const fn help_with_notes(
+    slug: &'static str,
+    argv: &'static [&'static str],
+    notes: &'static [&'static str],
+) -> Case {
+    Case {
+        slug,
+        argv,
+        notes,
+        seed: ConfigSeed::Absent,
+    }
 }
 
 /// Ajuda do binário e de cada grupo/subcomando do escopo.
-pub const HELP_CASES: &[Case] = &[
-    Case {
-        slug: "help-root",
-        argv: &["--help"],
-        notes: &["formatação é N4 (não bloqueia)"],
-    },
-    Case {
-        slug: "help-query",
-        argv: &["query", "--help"],
-        notes: &[],
-    },
-    Case {
-        slug: "help-query-run",
-        argv: &["query", "run", "--help"],
-        notes: &[],
-    },
-    Case {
-        slug: "help-database",
-        argv: &["database", "--help"],
-        notes: &[],
-    },
-    Case {
-        slug: "help-database-backup",
-        argv: &["database", "backup", "--help"],
-        notes: &[],
-    },
-    Case {
-        slug: "help-database-restore",
-        argv: &["database", "restore", "--help"],
-        notes: &[],
-    },
-    Case {
-        slug: "help-database-pgpass",
-        argv: &["database", "pgpass", "--help"],
-        notes: &[],
-    },
-    Case {
-        slug: "help-database-pgpass-add",
-        argv: &["database", "pgpass", "add", "--help"],
-        notes: &[
-            "o Mustel acrescenta a forma posicional `pgpass add <banco>` (decisão do usuário)",
-        ],
-    },
-    Case {
-        slug: "help-database-pgpass-list",
-        argv: &["database", "pgpass", "list", "--help"],
-        notes: &[],
-    },
-    Case {
-        slug: "help-database-pgpass-remove",
-        argv: &["database", "pgpass", "remove", "--help"],
-        notes: &[],
-    },
-    Case {
-        slug: "help-settings",
-        argv: &["settings", "--help"],
-        notes: &[],
-    },
-    Case {
-        slug: "help-settings-db-servers",
-        argv: &["settings", "db-servers", "--help"],
-        notes: &[],
-    },
-    Case {
-        slug: "help-settings-db-servers-ls",
-        argv: &["settings", "db-servers", "ls", "--help"],
-        notes: &[],
-    },
-    Case {
-        slug: "help-settings-db-servers-add",
-        argv: &["settings", "db-servers", "add", "--help"],
-        notes: &["o Mustel acrescenta `-i/--interactive` e `-W/--password` (decisão do usuário)"],
-    },
-    Case {
-        slug: "help-settings-db-servers-rm",
-        argv: &["settings", "db-servers", "rm", "--help"],
-        notes: &[],
-    },
-    Case {
-        slug: "help-settings-db-servers-test",
-        argv: &["settings", "db-servers", "test", "--help"],
-        notes: &[],
-    },
-    Case {
-        slug: "help-settings-db-servers-set-password",
-        argv: &["settings", "db-servers", "set-password", "--help"],
-        notes: &[],
-    },
-];
+pub fn help_cases() -> Vec<Case> {
+    vec![
+        help_with_notes(
+            "help-root",
+            &["--help"],
+            &["formatação é N4 (não bloqueia)"],
+        ),
+        help("help-query", &["query", "--help"]),
+        help("help-query-run", &["query", "run", "--help"]),
+        help("help-database", &["database", "--help"]),
+        help("help-database-backup", &["database", "backup", "--help"]),
+        help("help-database-restore", &["database", "restore", "--help"]),
+        help("help-database-pgpass", &["database", "pgpass", "--help"]),
+        help_with_notes(
+            "help-database-pgpass-add",
+            &["database", "pgpass", "add", "--help"],
+            &["o Mustel acrescenta a forma posicional `pgpass add <banco>` (decisão do usuário)"],
+        ),
+        help(
+            "help-database-pgpass-list",
+            &["database", "pgpass", "list", "--help"],
+        ),
+        help(
+            "help-database-pgpass-remove",
+            &["database", "pgpass", "remove", "--help"],
+        ),
+        help("help-settings", &["settings", "--help"]),
+        help(
+            "help-settings-db-servers",
+            &["settings", "db-servers", "--help"],
+        ),
+        help(
+            "help-settings-db-servers-ls",
+            &["settings", "db-servers", "ls", "--help"],
+        ),
+        help_with_notes(
+            "help-settings-db-servers-add",
+            &["settings", "db-servers", "add", "--help"],
+            &["o Mustel acrescenta `-i/--interactive` e `-W/--password` (decisão do usuário)"],
+        ),
+        help(
+            "help-settings-db-servers-rm",
+            &["settings", "db-servers", "rm", "--help"],
+        ),
+        help(
+            "help-settings-db-servers-test",
+            &["settings", "db-servers", "test", "--help"],
+        ),
+        help(
+            "help-settings-db-servers-set-password",
+            &["settings", "db-servers", "set-password", "--help"],
+        ),
+    ]
+}
 
 /// Erros de uso e de arquivo ausente — fixam exit codes determinísticos (N1/N2).
-pub const ERROR_CASES: &[Case] = &[
-    Case {
-        slug: "error-unknown-command",
-        argv: &["nao-existe"],
-        notes: &["exit code de comando desconhecido"],
-    },
-    Case {
-        slug: "error-unknown-option",
-        argv: &["query", "run", "--nao-existe"],
-        notes: &["exit code de opção desconhecida"],
-    },
-    Case {
-        slug: "error-missing-required-argument",
-        argv: &["database", "pgpass", "remove"],
-        notes: &["posicional obrigatório ausente"],
-    },
-    Case {
-        slug: "error-query-input-missing",
-        argv: &["query", "run", "-i", "nao-existe.sql", "--no-confirm"],
-        notes: &["arquivo de entrada inexistente"],
-    },
-    Case {
-        slug: "error-database-restore-file-missing",
-        argv: &["database", "restore", "mydb", "nao-existe.dump"],
-        notes: &["arquivo de dump inexistente"],
-    },
-    Case {
-        slug: "error-db-servers-rm-unknown",
-        argv: &["settings", "db-servers", "rm", "-n", "nao-existe"],
-        notes: &["servidor inexistente na configuração"],
-    },
-    Case {
-        slug: "error-db-servers-test-offline",
-        argv: &["settings", "db-servers", "test", "-n", "offline"],
-        notes: &[
-            "conexão recusada em 127.0.0.1:1 — mensagem depende do SO, comparar com tolerância",
-        ],
-    },
-];
+pub fn error_cases() -> Vec<Case> {
+    vec![
+        Case {
+            slug: "error-unknown-command",
+            argv: &["nao-existe"],
+            notes: &["exit code de comando desconhecido"],
+            seed: ConfigSeed::Absent,
+        },
+        Case {
+            slug: "error-unknown-option",
+            argv: &["query", "run", "--nao-existe"],
+            notes: &["exit code de opção desconhecida"],
+            seed: ConfigSeed::Absent,
+        },
+        Case {
+            slug: "error-missing-required-argument",
+            argv: &["database", "pgpass", "remove"],
+            notes: &["posicional obrigatório ausente"],
+            seed: ConfigSeed::Absent,
+        },
+        Case {
+            slug: "error-query-input-missing",
+            argv: &["query", "run", "-i", "nao-existe.sql", "--no-confirm"],
+            notes: &["arquivo de entrada inexistente (exit 1, exceção própria do legado)"],
+            seed: ConfigSeed::Absent,
+        },
+        Case {
+            slug: "error-database-restore-file-missing",
+            argv: &["database", "restore", "mydb", "nao-existe.dump"],
+            notes: &[
+                "dump ausente: o comando devolve 2 (FurLabFileNotFoundException), não 1",
+                "com config real presente o caminho muda (pedia senha antes) — por isso todo caso fixa a config",
+            ],
+            seed: ConfigSeed::Absent,
+        },
+        Case {
+            slug: "error-db-servers-rm-unknown",
+            argv: &["settings", "db-servers", "rm", "-n", "nao-existe"],
+            notes: &["servidor inexistente na configuração"],
+            seed: ConfigSeed::Fixture,
+        },
+        Case {
+            slug: "error-db-servers-test-offline",
+            argv: &["settings", "db-servers", "test", "-n", "offline"],
+            notes: &[
+                "senha ausente em modo não-interativo: o legado quebra (exit 40); o Mustel divergirá de propósito",
+            ],
+            seed: ConfigSeed::Fixture,
+        },
+    ]
+}

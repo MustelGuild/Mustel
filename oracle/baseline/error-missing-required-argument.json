@@ -5,6 +5,7 @@
     "pgpass",
     "remove"
   ],
+  "config_seed": "absent",
   "exit_code": 1,
   "stdout": "Error: Command 'remove' is missing required argument 'database'.\r\n",
   "stderr": "",

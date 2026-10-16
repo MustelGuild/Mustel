@@ -4,6 +4,7 @@
     "settings",
     "--help"
   ],
+  "config_seed": "absent",
   "exit_code": 0,
   "stdout": "DESCRIPTION:\r\nManage FurLab settings and server configurations\r\n\r\nUSAGE:\r\n    fur settings [OPTIONS] <COMMAND>\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n\r\nCOMMANDS:\r\n    db-servers    Manage configured database servers\r\n",
   "stderr": "",

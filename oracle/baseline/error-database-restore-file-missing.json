@@ -6,6 +6,7 @@
     "mydb",
     "nao-existe.dump"
   ],
+  "config_seed": "absent",
   "exit_code": 1,
   "stdout": "Enter password: Error: Cannot read keys when either application does not have a console or when \r\nconsole input has been redirected. Try Console.Read.\r\n",
   "stderr": "",
@@ -13,6 +14,7 @@
   "stderr_b64": "",
   "artifacts": [],
   "notes": [
-    "arquivo de dump inexistente"
+    "dump ausente: o comando devolve 2 (FurLabFileNotFoundException), não 1",
+    "com config real presente o caminho muda (pedia senha antes) — por isso todo caso fixa a config"
   ]
 }

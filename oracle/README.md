@@ -46,6 +46,30 @@ pânico, via `Drop`).
 | Tabela do `ls` sai em **codepage do console** (não-UTF-8) | o comparador decodifica/normaliza; o Mustel emite UTF-8 (divergência de bytes aceita) |
 | Senha ausente em modo não-interativo → o legado **quebra** (`Failed to read input in non-interactive mode`) com exit 1 ou 40 | divergência deliberada: o Mustel falha claro e sugere `-W`/`set-password` |
 
+## Política de comparação (T10)
+
+| Item | Nível | Regra |
+|------|-------|-------|
+| exit code | **contrato** | igual ao oráculo, sempre |
+| artefatos (config) | **contrato** | JSON equivalente, com `encryptedPassword`/`password` removidos |
+| flags longas nos casos de ajuda | **contrato** | toda flag do oráculo precisa existir no Mustel; extras são informativas |
+| stdout/stderr | aviso N4 | redação difere por framework; pulado quando a saída do oráculo não é UTF-8 |
+| comando ainda não migrado | pulado | não é falha enquanto o stub existir |
+
+O baseline é reproduzível **na mesma máquina**: duas capturas seguidas geram os mesmos bytes
+(caminhos viram `<WORKDIR>`/`<REPO>`/`<HOME>`/`<LEGACY_CONFIG>`). Entre sistemas operacionais
+diferentes o texto **não** é idêntico — o console do legado quebra linha pela largura, e o
+comprimento do caminho muda a quebra. Entre máquinas vale o que é contrato: exit code e artefatos.
+
+Fatos adicionais aprendidos na comparação:
+
+- `database restore` devolve **2** (`return Task.FromResult(2)`) para `FurLabFileNotFoundException`
+  e `PathTraversalException` — exit 2 existe no comando, não só no parser; ainda assim não é
+  alcançável no cenário determinístico, porque sem senha o legado quebra antes.
+- Com a configuração real do usuário presente o comportamento muda (existe senha salva): por isso
+  **todo caso do baseline fixa o estado da config** (`config_seed`), senão o baseline não é
+  reproduzível.
+
 ## Próximo passo
 
 `oracle-compare` (T10) executa o `mustel`, compara com este baseline e classifica as divergências na

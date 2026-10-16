@@ -3,6 +3,7 @@
   "argv": [
     "nao-existe"
   ],
+  "config_seed": "absent",
   "exit_code": 1,
   "stdout": "Error: Unknown command 'nao-existe'.\r\n",
   "stderr": "",

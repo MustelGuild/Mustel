@@ -5,6 +5,7 @@
     "db-servers",
     "ls"
   ],
+  "config_seed": "fixture",
   "exit_code": 0,
   "stdout": "�����������������������������������������������������������������Ŀ\r\n� Name    � Host      � Port � Username � Databases     � Auto-DB �\r\n�����������������������������������������������������������������Ĵ\r\n� dev     � localhost � 5432 � postgres � mydb, app_dev � No      �\r\n� offline � 127.0.0.1 � 1    � postgres � (default)     � No      �\r\n�������������������������������������������������������������������\r\n",
   "stderr": "",
@@ -12,7 +13,7 @@
   "stderr_b64": "",
   "artifacts": [
     {
-      "path": "legacy-config",
+      "path": "config",
       "sha256": "fcaa969f43d99836859b70b00188ed122ae99e76b4379545675949c755d7eb30",
       "text": "{\n  \"servers\": [\n    {\n      \"name\": \"dev\",\n      \"host\": \"localhost\",\n      \"port\": 5432,\n      \"username\": \"postgres\",\n      \"databases\": [\"mydb\", \"app_dev\"],\n      \"sslMode\": \"Prefer\",\n      \"timeout\": 30,\n      \"maxParallelism\": 4\n    },\n    {\n      \"name\": \"offline\",\n      \"host\": \"127.0.0.1\",\n      \"port\": 1,\n      \"username\": \"postgres\",\n      \"sslMode\": \"Disable\",\n      \"timeout\": 1\n    }\n  ],\n  \"defaults\": {\n    \"outputDirectory\": \"./results\",\n    \"requireConfirmation\": true,\n    \"maxParallelism\": 4\n  }\n}\n"
     }

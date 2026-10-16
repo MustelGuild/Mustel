@@ -4,6 +4,7 @@
     "database",
     "--help"
   ],
+  "config_seed": "absent",
   "exit_code": 0,
   "stdout": "DESCRIPTION:\r\nDatabase utilities\r\n\r\nUSAGE:\r\n    fur database [OPTIONS] <COMMAND>\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n\r\nCOMMANDS:\r\n    backup                                   \r\n    restore                                  \r\n    pgpass     Gerencia o arquivo pgpass.conf\r\n",
   "stderr": "",

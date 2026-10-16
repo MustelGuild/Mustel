@@ -5,6 +5,7 @@
     "db-servers",
     "ls"
   ],
+  "config_seed": "absent",
   "exit_code": 0,
   "stdout": "No servers configured. Use 'fur settings db-servers add' to add one.\r\n",
   "stderr": "",
@@ -12,13 +13,12 @@
   "stderr_b64": "",
   "artifacts": [
     {
-      "path": "legacy-config",
+      "path": "config",
       "sha256": "0e4e784eec650fcd0a75f0618e618d90e2faf7ea4968030833c9d70aaa94bed2",
       "text": "{\r\n  \"servers\": [],\r\n  \"defaults\": {\r\n    \"outputDirectory\": \"./results\",\r\n    \"requireConfirmation\": true,\r\n    \"maxParallelism\": 4\r\n  }\r\n}"
     }
   ],
   "notes": [
-    "config do legado ausente (o comando a cria)",
-    "primeira execução cria a config"
+    "config ausente: a primeira execução cria o arquivo"
   ]
 }

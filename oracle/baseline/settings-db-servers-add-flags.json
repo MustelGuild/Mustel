@@ -15,6 +15,7 @@
     "-d",
     "mydb,app_dev"
   ],
+  "config_seed": "absent",
   "exit_code": 0,
   "stdout": "Server 'capturado' added successfully.\r\nUse 'fur settings db-servers set-password capturado' to set the password.\r\n",
   "stderr": "",
@@ -22,13 +23,12 @@
   "stderr_b64": "",
   "artifacts": [
     {
-      "path": "legacy-config",
+      "path": "config",
       "sha256": "e414cff64c76b6f7a60e1c52aa87ba4f17d8b3a0036b67d13b79d89e4024937e",
       "text": "{\r\n  \"servers\": [\r\n    {\r\n      \"name\": \"capturado\",\r\n      \"host\": \"localhost\",\r\n      \"port\": 5432,\r\n      \"username\": \"postgres\",\r\n      \"encryptedPassword\": null,\r\n      \"databases\": [\r\n        \"mydb\",\r\n        \"app_dev\"\r\n      ],\r\n      \"fetchAllDatabases\": false,\r\n      \"excludePatterns\": [\r\n        \"template*\",\r\n        \"postgres\"\r\n      ],\r\n      \"sslMode\": \"Prefer\",\r\n      \"timeout\": 30,\r\n      \"maxParallelism\": 4\r\n    }\r\n  ],\r\n  \"defaults\": {\r\n    \"outputDirectory\": \"./results\",\r\n    \"requireConfirmation\": true,\r\n    \"maxParallelism\": 4\r\n  }\r\n}"
     }
   ],
   "notes": [
-    "config do legado ausente (o comando a cria)",
-    "escreve a config do legado"
+    "config ausente: o comando a cria e grava o servidor"
   ]
 }

@@ -9,5 +9,7 @@
 
 pub mod capture;
 pub mod cases;
+pub mod compare;
 pub mod config_sandbox;
 pub mod paths;
+pub mod report;

@@ -4,6 +4,7 @@
     "query",
     "--help"
   ],
+  "config_seed": "absent",
   "exit_code": 0,
   "stdout": "DESCRIPTION:\r\nExecute SQL queries and export results to CSV\r\n\r\nUSAGE:\r\n    fur query [OPTIONS] <COMMAND>\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n\r\nCOMMANDS:\r\n    run     \r\n",
   "stderr": "",

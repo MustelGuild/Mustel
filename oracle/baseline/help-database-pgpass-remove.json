@@ -6,6 +6,7 @@
     "remove",
     "--help"
   ],
+  "config_seed": "absent",
   "exit_code": 0,
   "stdout": "USAGE:\r\n    fur database pgpass remove <database> [OPTIONS]\r\n\r\nARGUMENTS:\r\n    <database>    Database name of the entry to remove (or * for wildcard)\r\n\r\nOPTIONS:\r\n    -h, --help        Prints help information        \r\n        --host        Hostname of the entry to remove\r\n        --port        Port of the entry to remove    \r\n        --username    Username of the entry to remove\r\n",
   "stderr": "",

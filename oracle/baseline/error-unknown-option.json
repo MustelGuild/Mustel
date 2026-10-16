@@ -5,6 +5,7 @@
     "run",
     "--nao-existe"
   ],
+  "config_seed": "absent",
   "exit_code": 1,
   "stdout": "Error: Use -c for an inline query or -i for a SQL file.\r\n",
   "stderr": "",

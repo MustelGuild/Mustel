@@ -18,7 +18,10 @@ use crate::capture::{ArtifactCapture, CommandCapture};
 
 /// Comandos cujo comportamento já foi migrado e portanto é comparado em profundidade.
 /// Atualizar a cada tarefa de comando concluída.
-pub const MIGRATED_COMMANDS: &[&[&str]] = &[&["settings", "db-servers", "ls"]];
+pub const MIGRATED_COMMANDS: &[&[&str]] = &[
+    &["settings", "db-servers", "ls"],
+    &["settings", "db-servers", "add"],
+];
 
 /// Nível de um resultado.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

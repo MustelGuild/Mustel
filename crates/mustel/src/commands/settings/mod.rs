@@ -24,7 +24,7 @@ pub(crate) async fn dispatch_db_servers(
 ) -> Result<i32, CoreError> {
     match command {
         DbServersCommand::Ls => db_servers::list::run(),
-        DbServersCommand::Add(_) => not_implemented("settings db-servers add"),
+        DbServersCommand::Add(args) => db_servers::add::run(args),
         DbServersCommand::Rm(_) => not_implemented("settings db-servers rm"),
         DbServersCommand::Test(_) => not_implemented("settings db-servers test"),
         DbServersCommand::SetPassword(_) => not_implemented("settings db-servers set-password"),

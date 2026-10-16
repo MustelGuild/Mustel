@@ -189,14 +189,16 @@ const STUB_INVOCATIONS: &[&[&str]] = &[
     &["database", "pgpass", "add"],
     &["database", "pgpass", "list"],
     &["database", "pgpass", "remove", "mydb"],
-    &["settings", "db-servers", "add"],
     &["settings", "db-servers", "rm"],
     &["settings", "db-servers", "test"],
     &["settings", "db-servers", "set-password"],
 ];
 
 /// Comandos já migrados: precisam executar de verdade (sem "not implemented").
-const IMPLEMENTED_COMMANDS: &[&[&str]] = &[&["settings", "db-servers", "ls"]];
+const IMPLEMENTED_COMMANDS: &[&[&str]] = &[
+    &["settings", "db-servers", "ls"],
+    &["settings", "db-servers", "add"],
+];
 
 #[test]
 fn migrated_commands_run_instead_of_reporting_not_implemented() {

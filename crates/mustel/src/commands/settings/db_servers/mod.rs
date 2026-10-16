@@ -1,5 +1,6 @@
 //! Comandos de `mustel settings db-servers`.
 
+pub mod add;
 pub mod list;
 
 use mustel_core::error::CoreError;

@@ -334,7 +334,8 @@ não invalidar as referências entre tarefas.
   - Concluído quando: lista igual à do oráculo para configs de fixture (inclusive config vazio e servidor sem senha); exit codes iguais; spec `openspec/specs/settings-db-servers` coberta
   - Arquivos: `crates/mustel/src/commands/settings/db_servers/list.rs`
 
-- [ ] **T17** — `settings db-servers add` (flags + interativo)
+- [x] **T17** — `settings db-servers add` (flags + interativo)
+  - Notas de execução: (a) o texto do critério citava `-D/--database`, que **não existe** no código legado — as flags reais são `-n/--name`, `-H/--host`, `-p/--port`, `-U/--username`, `-d/--databases`, `--ssl-mode`, `--timeout`, `--max-parallelism`, `--fetch-all`, `--exclude-patterns`, mais `-i/--interactive` e `-W/--password` acrescentados por decisão do usuário; (b) validações portadas em `mustel-core::validation` (porte fiel do `SecurityUtils`, inclusive a permissividade do legado com IPv4 e o curinga `*`); (c) **nome duplicado é erro 40**, não atualização — o comando verifica antes, apesar de o core ter `add_or_update`; (d) `-W` grava a senha no keyring (o legado gravava blob no arquivo)
   - Depende de: T4, T6, T8, T16
   - Paralelizável com: T19
   - Concluído quando: flags (`-n/--name`, `-H/--host`, `-p/--port`, `-U/--username`, `-D/--database`...) e modo interativo com paridade N1/N3; validações de host/porta/usuário equivalentes (incluindo `*`); `mustel.jsonc` resultante byte-idêntico nos fixtures; spec `settings-user-config` coberta
@@ -628,6 +629,11 @@ Append-only. Registrar início, conclusão, bloqueio, paralelização e falhas.
 - `[2026-10-15 02:45]` `oracle-compare` passou a comparar em profundidade só comandos de `MIGRATED_COMMANDS` (hoje `settings db-servers ls`) — antes só ajuda/erros determinísticos eram comparados. Ao migrar cada comando, adicione-o lá e remova-o de `STUB_INVOCATIONS` no teste da árvore
 - `[2026-10-15 02:45]` divergência nova registrada (item 7 de `known-divergences`): a mensagem de config vazia orienta `'mustel ...'` em vez de `'fur ...'` (nome do binário mudou)
 - `[2026-10-15 02:45]` estado: **74 testes** passando, `fmt --check` e `clippy -D warnings` limpos, paridade com **0 falhas** (1 caso em profundidade passando). Performance regerada: `--help` 167,8 ms → 4,4 ms (**37,8×**)
+- `[2026-10-15 03:20]` **push feito** (autorizado pelo usuário): branch `feat/rust-migration` publicada em `origin` com tracking. O commit de segurança do legado (`328acdc`) segue **apenas local no `main`** — publicar `main` é decisão do usuário e foi deixada explícita
+- `[2026-10-15 03:35]` **T17 concluída** — `settings db-servers add` com os dois caminhos: direto (quando `-n` e `-H` vêm preenchidos) e interativo (quando falta um deles, ou com `-i`), reproduzindo a sequência de prompts do legado (nome, host, porta `[5432]`, usuário `[postgres]`, bancos, confirm de auto-descoberta, padrões de exclusão, seleção de SSL, timeout, paralelismo) e o **menu de ação** de 4 opções (`Save and set password`, `Save and test connection`, `Save without password`, `Cancel`). `-W/--password` guarda no keyring (D6)
+- `[2026-10-15 03:35]` **a config escrita pelo Mustel é idêntica à do oráculo**, campo a campo — a única diferença é o `encryptedPassword` que deixamos de ter por decisão (D6), e que o comparador normaliza. Exit codes conferidos: 0 sucesso, **40** nome duplicado, **41** host/porta inválidos, `*` aceito em host/usuário como no legado. `oracle-compare` marca `settings-db-servers-add-flags` como OK em exit code e artefato, com aviso N4 apenas na redação (`mustel` vs `fur`)
+- `[2026-10-15 03:35]` novo módulo `mustel-core::validation` (porte fiel de `SecurityUtils`: identificador PostgreSQL, host, usuário, porta, mais `is_port_in_range`) com 6 testes, incluindo a permissividade deliberada com IPv4 (`999.999.999.999` passa, como no legado)
+- `[2026-10-15 03:35]` estado: **87 testes** passando, `fmt --check` e `clippy -D warnings` limpos, paridade com **0 falhas** (2 comandos em profundidade: `ls` e `add`)
 
 ---
 

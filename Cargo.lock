@@ -1017,6 +1017,7 @@ version = "1.0.0"
 dependencies = [
  "dirs",
  "keyring",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",

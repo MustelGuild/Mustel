@@ -17,6 +17,8 @@ O critério da seção 6 do plano (`MustelPlans/migracao-rust.md`) exige que, fo
 | `README.md`, `README.pt-BR.md` | aviso de migração: o que permaneceu no .NET |
 | `winget-publish.ps1` | URL de release do repositório `liphvf/FurLab` (D18) |
 | `.github/workflows/build.yml`, `.github/workflows/publish.yml` | workflows do legado (substituídos/renomeados em T10 e T44) |
+| `.github/workflows/ci.yml` | job `legacy` que garante que o oráculo continua compilando em Release |
+| `oracle/perf/baseline.md`, `oracle/README.md`, `oracle/known-divergences.md` | documentam o oráculo por nome |
 | `.vscode/launch.json`, `.vscode/tasks.json` | configs de debug do legado (`Legacy .NET ...`) |
 | `.claude/skills/furlab-command-manager/**`, `.opencode/skills/furlab-command-manager/**` | skill de convenções C# do legado — `CLAUDE.md` declara que vale **somente** para `legacy/` |
 | `.opencode/skills/gh-pr-create/SKILL.md` | exemplos citam o repositório pelo nome atual |

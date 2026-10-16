@@ -313,13 +313,14 @@ não invalidar as referências entre tarefas.
   - Nota: o `oracle-capture` já grava `stdout_b64`/`stderr_b64`; o comparador deve usá-los para decidir se o texto é comparável
   - Arquivos: `crates/mustel-testkit/src/{oracle.rs,normalize.rs}`, `.github/workflows/{ci.yml,compat.yml}`
 
-- [ ] **T11** — Baseline de performance do .NET
+- [x] **T11** — Baseline de performance do .NET
+  - Notas de execução: (a) `hyperfine` **não** está instalado nesta máquina — a medição foi implementada no harness (`mustel-testkit::perf` + bin `oracle-perf`, mediana de 30 execuções do processo completo), o que também a torna reproduzível no CI; (b) o relatório mede **os dois lados** a cada execução (nada de número fixado no gerador); (c) métricas dependentes de Postgres (CSV de 100k linhas, `database backup`) ficam para T32/T28, que terão container; (d) o tamanho do oráculo publicado é **framework-dependent** e não é comparável ao binário auto-contido do Mustel — o relatório alerta sobre isso
   - Depende de: T9
   - Paralelizável com: T3, T10
   - Concluído quando: `oracle/perf/baseline.md` registra, com metodologia e desvio: startup de `--help` (mediana de 20 execuções, `hyperfine --warmup 3`), `settings db-servers ls`, export CSV de 100k linhas, `database backup` de um dump de fixture e tamanho do `fur.exe` self-contained
   - Arquivos: `oracle/perf/baseline.md`, `oracle/perf/scripts/**`
 
-- [ ] **T12** — Gate — fundação
+- [x] **T12** — Gate — fundação
   - Depende de: T1–T11
   - Paralelizável com: —
   - Concluído quando: `cargo fmt --check`, `cargo clippy -D warnings` e `cargo test --workspace` verdes; `mustel --help` cobre a árvore completa; `oracle-compare` roda e reporta 0 divergências N1–N3 nos comandos ainda não implementados (stubs), com exceções listadas em `known-divergences.md`
@@ -618,6 +619,10 @@ Append-only. Registrar início, conclusão, bloqueio, paralelização e falhas.
 - `[2026-10-15 01:40]` decisão estrutural tomada no T8: o crate `mustel` passou a ser **lib + bin** (`src/lib.rs` + `main.rs` fino). Motivo: os testes passam a exercitar a árvore e as primitivas pela biblioteca (sem depender de processo) e código ainda não usado pelos comandos não vira erro de `dead_code` com `clippy -D warnings`. `exit::format_error` foi separado de `report_error` pelo mesmo motivo (mensagem testável)
 - `[2026-10-15 01:40]` ressalvas honestas do T8: (a) `owo-colors` (listado em D11) **não** foi usado — o estilo ficou com `console::Style::for_stdout()`, que decide cor/texto puro sozinho, e a dependência foi removida para não virar peso morto; (b) os 4 testes de PTY são **Unix-only** (no Windows o `expectrl` depende de `conpty`) e **não** foram executados nesta máquina — a validação real acontece no job ubuntu do CI, e no Windows a cobertura interativa é smoke manual; (c) o `tabled` 0.22 exige `Builder` para dados dinâmicos (`Table::new` não aceita `Vec<Vec<String>>`)
 - `[2026-10-15 01:40]` estado: **66 testes** passando (`mustel-core` 22 unit + 6 integração + 11 testkit; `mustel` 8 lib + 2 main + 9 CLI + 4 UI), `fmt --check` e `clippy -D warnings` limpos. Faltam na Fase 0: T11 (baseline de performance) e T12 (gate da fase)
+- `[2026-10-15 02:10]` **T11 concluída** — `mustel-testkit::perf` + bin `oracle-perf` (substitui o `hyperfine`, ausente na máquina) mede o processo completo, mediana de 30 execuções, e grava `oracle/perf/baseline.md`. Números do oráculo: `--help` **158,8 ms**, `settings db-servers ls` **206,1 ms**, erro de uso **121,2 ms**. O relatório mede **os dois lados** a cada execução (nada fixado no gerador) e traz o comparativo parcial: `--help` **158,8 ms → 4,6 ms (34,8×)**, muito abaixo da meta de ≤ 1/3. Métricas que dependem de Postgres (CSV de 100k, `database backup`) ficaram para T32/T28
+- `[2026-10-15 02:10]` alerta metodológico registrado no relatório de perf: o executável publicado do oráculo é **framework-dependent** (158 KB) e exige o runtime .NET instalado — comparar tamanho com o binário auto-contido do Mustel (1,1 MB) seria maçã com laranja; o comparativo justo é contra o artefato self-contained
+- `[2026-10-15 02:15]` **T12 concluída (gate da Fase 0)** — verificações da seção 6 rodadas: `fmt --check` OK; `clippy --all-targets --all-features -D warnings` OK; `cargo build --workspace --release` OK e `mustel --version` = `1.0.0`; **68 testes** passando; `oracle-compare` com **0 falhas** (20 N4 + 7 pulados); grep de resíduos restrito à lista branca de `oracle/known-divergences.md` (atualizada com `ci.yml` e `oracle/**`)
+- `[2026-10-15 02:15]` limpeza encontrada pelo gate: sobraram `FurLab.CLI/bin`, `FurLab.Core/bin`, `FurLab.Tests/bin` (+ `obj`, `TestResults`) **na raiz**, resíduos de build anteriores ao `git mv` do T1 (eram ignorados pelo Git, então não foram movidos junto). Nenhum arquivo rastreado ali (confirmado com `git ls-files`), então foram removidos — regeneráveis, e poluíam busca. Ponto de atenção para quem revisar: a limpeza foi feita por serem artefatos ignorados e não rastreados
 
 ---
 

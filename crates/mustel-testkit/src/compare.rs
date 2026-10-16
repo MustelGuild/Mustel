@@ -21,6 +21,7 @@ use crate::capture::{ArtifactCapture, CommandCapture};
 pub const MIGRATED_COMMANDS: &[&[&str]] = &[
     &["settings", "db-servers", "ls"],
     &["settings", "db-servers", "add"],
+    &["settings", "db-servers", "rm"],
 ];
 
 /// Nível de um resultado.

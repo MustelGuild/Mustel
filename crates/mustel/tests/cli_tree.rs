@@ -189,7 +189,6 @@ const STUB_INVOCATIONS: &[&[&str]] = &[
     &["database", "pgpass", "add"],
     &["database", "pgpass", "list"],
     &["database", "pgpass", "remove", "mydb"],
-    &["settings", "db-servers", "rm"],
     &["settings", "db-servers", "test"],
     &["settings", "db-servers", "set-password"],
 ];
@@ -198,6 +197,7 @@ const STUB_INVOCATIONS: &[&[&str]] = &[
 const IMPLEMENTED_COMMANDS: &[&[&str]] = &[
     &["settings", "db-servers", "ls"],
     &["settings", "db-servers", "add"],
+    &["settings", "db-servers", "rm"],
 ];
 
 #[test]

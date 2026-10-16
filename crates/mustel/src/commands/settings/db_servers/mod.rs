@@ -2,6 +2,7 @@
 
 pub mod add;
 pub mod list;
+pub mod remove;
 
 use mustel_core::error::CoreError;
 use mustel_core::signal::CancellationToken;

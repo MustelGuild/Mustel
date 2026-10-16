@@ -1,0 +1,26 @@
+{
+  "slug": "settings-db-servers-rm-ok",
+  "argv": [
+    "settings",
+    "db-servers",
+    "rm",
+    "-n",
+    "dev"
+  ],
+  "config_seed": "fixture",
+  "exit_code": 0,
+  "stdout": "Server 'dev' removed successfully.\r\n",
+  "stderr": "",
+  "stdout_b64": "U2VydmVyICdkZXYnIHJlbW92ZWQgc3VjY2Vzc2Z1bGx5Lg0K",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "config",
+      "sha256": "1475777abdbfa41f4ce428d4044e4de196e795724b6821eab8a806c2c19b199e",
+      "text": "{\r\n  \"servers\": [\r\n    {\r\n      \"name\": \"offline\",\r\n      \"host\": \"127.0.0.1\",\r\n      \"port\": 1,\r\n      \"username\": \"postgres\",\r\n      \"encryptedPassword\": null,\r\n      \"databases\": [],\r\n      \"fetchAllDatabases\": false,\r\n      \"excludePatterns\": [\r\n        \"template*\",\r\n        \"postgres\"\r\n      ],\r\n      \"sslMode\": \"Disable\",\r\n      \"timeout\": 1,\r\n      \"maxParallelism\": 4\r\n    }\r\n  ],\r\n  \"defaults\": {\r\n    \"outputDirectory\": \"./results\",\r\n    \"requireConfirmation\": true,\r\n    \"maxParallelism\": 4\r\n  }\r\n}"
+    }
+  ],
+  "notes": [
+    "config semeada com 2 servidores; remove o 'dev'"
+  ]
+}

@@ -17,8 +17,8 @@ use serde_json::Value;
 use crate::capture::{ArtifactCapture, CommandCapture};
 
 /// Comandos cujo comportamento já foi migrado e portanto é comparado em profundidade.
-/// Atualizar a cada tarefa de comando concluída (T16+).
-pub const MIGRATED_COMMANDS: &[&[&str]] = &[];
+/// Atualizar a cada tarefa de comando concluída.
+pub const MIGRATED_COMMANDS: &[&[&str]] = &[&["settings", "db-servers", "ls"]];
 
 /// Nível de um resultado.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,6 +161,28 @@ pub fn compare_case(
         }),
     }
 
+    // 3b. conteúdo ASCII — quando o texto não é comparável por codepage, a tabela do legado ainda
+    // tem conteúdo que precisa bater: cabeçalhos e valores em ASCII. Comparar como multiconjunto
+    // ignora bordas, largura de coluna e codepage, e ainda pega "faltou um servidor".
+    if !is_utf8(&baseline.stdout_b64) {
+        let oracle_tokens = ascii_token_counts(&decode_raw(&baseline.stdout_b64));
+        let mustel_tokens = ascii_token_counts(mustel_output.stdout.as_bytes());
+        let equal = oracle_tokens == mustel_tokens;
+        checks.push(Check {
+            name: "conteúdo (tokens ASCII)".to_string(),
+            level: if equal { Level::Pass } else { Level::Fail },
+            detail: if equal {
+                format!("{} tokens conferem", oracle_tokens.len())
+            } else {
+                format!(
+                    "faltando: {:?}; sobrando: {:?}",
+                    missing_tokens(&oracle_tokens, &mustel_tokens),
+                    missing_tokens(&mustel_tokens, &oracle_tokens)
+                )
+            },
+        });
+    }
+
     // 4. artefatos — contrato duro, com as normalizações registradas em known-divergences.
     for artifact in &baseline.artifacts {
         checks.push(compare_artifact(artifact, mustel_config));
@@ -274,6 +296,51 @@ fn is_utf8(b64: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Bytes crus do baseline (sem perda de codepage).
+fn decode_raw(b64: &str) -> Vec<u8> {
+    STANDARD.decode(b64).unwrap_or_default()
+}
+
+/// Multiconjunto de tokens ASCII imprimíveis de uma saída.
+///
+/// A tabela do legado sai na codepage do console: as bordas viram bytes inválidos em UTF-8, mas
+/// nomes, hosts, portas e cabeçalhos sobrevivem em ASCII. É esse conteúdo que precisa bater.
+fn ascii_token_counts(bytes: &[u8]) -> std::collections::BTreeMap<String, usize> {
+    let mut counts = std::collections::BTreeMap::new();
+    let mut current = String::new();
+
+    for byte in bytes {
+        let character = *byte as char;
+        let is_token_char = character.is_ascii_alphanumeric()
+            || matches!(character, '.' | '_' | '-' | '*' | ':' | '/');
+        if is_token_char {
+            current.push(character);
+        } else if !current.is_empty() {
+            *counts.entry(std::mem::take(&mut current)).or_insert(0) += 1;
+        }
+    }
+    if !current.is_empty() {
+        *counts.entry(current).or_insert(0) += 1;
+    }
+
+    counts
+}
+
+/// Tokens presentes em `left` que faltam (ou aparecem menos) em `right`.
+fn missing_tokens(
+    left: &std::collections::BTreeMap<String, usize>,
+    right: &std::collections::BTreeMap<String, usize>,
+) -> Vec<String> {
+    let mut missing = Vec::new();
+    for (token, count) in left {
+        let other = right.get(token).copied().unwrap_or(0);
+        if other < *count {
+            missing.push(format!("{token} x{}", count - other));
+        }
+    }
+    missing
+}
+
 /// Normaliza para comparar texto entre frameworks: caminhos da máquina, fim de linha e nome do
 /// programa. Os caminhos precisam da mesma redação usada na captura, senão a comparação só passa na
 /// máquina que gerou o baseline.
@@ -337,6 +404,31 @@ mod tests {
         let mustel = r#"{ "servers": [ { "name": "dev", "port": 5432 } ], "defaults": { "outputDirectory": "./results" } }"#;
 
         assert_eq!(parse_config(legacy), parse_config(mustel));
+    }
+
+    #[test]
+    fn ascii_tokens_ignore_box_drawing_and_count_repeats() {
+        // Bytes de borda em codepage (não-UTF-8) mais conteúdo ASCII.
+        let mut bytes = vec![0xDA, 0xC4, 0xBF];
+        bytes.extend_from_slice(b" Name  No  No ");
+        bytes.extend_from_slice(&[0xC0, 0xC4, 0xD9]);
+
+        let counts = ascii_token_counts(&bytes);
+        assert_eq!(counts.get("Name"), Some(&1));
+        assert_eq!(counts.get("No"), Some(&2));
+        assert_eq!(counts.len(), 2);
+    }
+
+    #[test]
+    fn missing_tokens_reports_the_difference() {
+        let oracle = ascii_token_counts(b" dev prod 5432");
+        let mustel = ascii_token_counts(b" dev 5432");
+
+        assert_eq!(
+            missing_tokens(&oracle, &mustel),
+            vec!["prod x1".to_string()]
+        );
+        assert!(missing_tokens(&mustel, &oracle).is_empty());
     }
 
     #[test]

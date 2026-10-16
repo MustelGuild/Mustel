@@ -23,8 +23,8 @@ fn stdout_of(args: &[&str]) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
 }
 
-/// Todos os comandos do escopo migrado, na ordem em que o oráculo os expõe.
-const MIGRATED_COMMANDS: &[&[&str]] = &[
+/// Todos os comandos do escopo, na ordem em que o oráculo os expõe.
+const SCOPE_COMMANDS: &[&[&str]] = &[
     &["query", "run"],
     &["database", "backup"],
     &["database", "restore"],
@@ -51,7 +51,7 @@ fn root_help_lists_the_migrated_groups_and_the_gui() {
 
 #[test]
 fn every_migrated_command_renders_its_own_help() {
-    for path in MIGRATED_COMMANDS {
+    for path in SCOPE_COMMANDS {
         let mut args = path.to_vec();
         args.push("--help");
         let help = stdout_of(&args);
@@ -175,10 +175,13 @@ fn pgpass_add_accepts_the_database_as_a_positional_argument() {
     assert!(String::from_utf8_lossy(&output.stdout).contains("Error:"));
 }
 
-/// Invocações mínimas válidas de cada comando ainda não migrado.
+/// Invocações mínimas válidas de cada comando **ainda não migrado**.
 ///
-/// Diferente de [`MIGRATED_COMMANDS`], aqui os posicionais obrigatórios são preenchidos — sem isso o
+/// Diferente de [`SCOPE_COMMANDS`], aqui os posicionais obrigatórios são preenchidos — sem isso o
 /// clap falha antes de chegar ao stub (erro de uso, exit `1`, como o oráculo).
+///
+/// Ao migrar um comando, remova-o desta lista: ele deixa de ser stub e passa a ter comportamento
+/// próprio (ver `settings db-servers ls`, migrado no T16).
 const STUB_INVOCATIONS: &[&[&str]] = &[
     &["query", "run"],
     &["database", "backup"],
@@ -186,12 +189,27 @@ const STUB_INVOCATIONS: &[&[&str]] = &[
     &["database", "pgpass", "add"],
     &["database", "pgpass", "list"],
     &["database", "pgpass", "remove", "mydb"],
-    &["settings", "db-servers", "ls"],
     &["settings", "db-servers", "add"],
     &["settings", "db-servers", "rm"],
     &["settings", "db-servers", "test"],
     &["settings", "db-servers", "set-password"],
 ];
+
+/// Comandos já migrados: precisam executar de verdade (sem "not implemented").
+const IMPLEMENTED_COMMANDS: &[&[&str]] = &[&["settings", "db-servers", "ls"]];
+
+#[test]
+fn migrated_commands_run_instead_of_reporting_not_implemented() {
+    for path in IMPLEMENTED_COMMANDS {
+        let output = mustel(path);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            !stdout.contains("not implemented yet"),
+            "`mustel {}` já foi migrado e não pode ser stub: {stdout}",
+            path.join(" ")
+        );
+    }
+}
 
 #[test]
 fn not_yet_migrated_commands_fail_loudly_with_exit_code_one() {

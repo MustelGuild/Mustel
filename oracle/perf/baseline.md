@@ -5,9 +5,9 @@ está disponível na máquina da migração). Cada linha é a mediana de 30 exec
 
 | métrica | mediana | mínimo | máximo | execuções | falhas | notas |
 |---|---|---|---|---|---|---|
-| startup: --help | 158.8 ms | 155.7 ms | 162.8 ms | 30 | 0 | inclui partida do runtime .NET |
-| settings db-servers ls | 206.1 ms | 199.0 ms | 222.3 ms | 30 | 0 | config semeada com 2 servidores |
-| erro de uso (comando desconhecido) | 121.2 ms | 117.0 ms | 138.2 ms | 30 | 30 | caminho de erro; exit code 1 |
+| startup: --help | 157.2 ms | 155.2 ms | 166.0 ms | 30 | 0 | inclui partida do runtime .NET |
+| settings db-servers ls | 201.7 ms | 198.2 ms | 208.7 ms | 30 | 0 | config semeada com 2 servidores |
+| erro de uso (comando desconhecido) | 118.2 ms | 116.4 ms | 119.7 ms | 30 | 30 | caminho de erro; exit code 1 |
 
 ## Tamanho dos binários
 
@@ -29,8 +29,8 @@ está disponível na máquina da migração). Cada linha é a mediana de 30 exec
 
 | métrica | oráculo (.NET) | mustel | razão | observação |
 |---|---|---|---|---|
-| `--help` | 158.8 ms | 4.6 ms | 34.8× | comparação justa: os dois só parseiam e imprimem ajuda |
-| `settings db-servers ls` | 206.1 ms | 4.6 ms | — | **não** comparável ainda: no Mustel o comando é stub |
+| `--help` | 157.2 ms | 4.7 ms | 33.3× | comparação justa: os dois só parseiam e imprimem ajuda |
+| `settings db-servers ls` | 201.7 ms | 4.7 ms | 43.0× | comparação justa desde o T16: os dois leem a config e montam a lista |
 
 O comparativo final (.NET × Rust) é o T46, com todas as métricas reais.
 

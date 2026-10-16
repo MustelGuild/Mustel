@@ -328,7 +328,7 @@ não invalidar as referências entre tarefas.
 
 ### Fase 1 — Configuração e credenciais (`settings db-servers`)
 
-- [ ] **T16** — `settings db-servers ls`
+- [x] **T16** — `settings db-servers ls`
   - Depende de: T4, T6, T9, T10
   - Paralelizável com: T19
   - Concluído quando: lista igual à do oráculo para configs de fixture (inclusive config vazio e servidor sem senha); exit codes iguais; spec `openspec/specs/settings-db-servers` coberta
@@ -623,6 +623,11 @@ Append-only. Registrar início, conclusão, bloqueio, paralelização e falhas.
 - `[2026-10-15 02:10]` alerta metodológico registrado no relatório de perf: o executável publicado do oráculo é **framework-dependent** (158 KB) e exige o runtime .NET instalado — comparar tamanho com o binário auto-contido do Mustel (1,1 MB) seria maçã com laranja; o comparativo justo é contra o artefato self-contained
 - `[2026-10-15 02:15]` **T12 concluída (gate da Fase 0)** — verificações da seção 6 rodadas: `fmt --check` OK; `clippy --all-targets --all-features -D warnings` OK; `cargo build --workspace --release` OK e `mustel --version` = `1.0.0`; **68 testes** passando; `oracle-compare` com **0 falhas** (20 N4 + 7 pulados); grep de resíduos restrito à lista branca de `oracle/known-divergences.md` (atualizada com `ci.yml` e `oracle/**`)
 - `[2026-10-15 02:15]` limpeza encontrada pelo gate: sobraram `FurLab.CLI/bin`, `FurLab.Core/bin`, `FurLab.Tests/bin` (+ `obj`, `TestResults`) **na raiz**, resíduos de build anteriores ao `git mv` do T1 (eram ignorados pelo Git, então não foram movidos junto). Nenhum arquivo rastreado ali (confirmado com `git ls-files`), então foram removidos — regeneráveis, e poluíam busca. Ponto de atenção para quem revisar: a limpeza foi feita por serem artefatos ignorados e não rastreados
+- `[2026-10-15 02:45]` **T16 concluída** — primeiro comando migrado de verdade: `settings db-servers ls` em `crates/mustel/src/commands/settings/db_servers/list.rs`, com o grupo reorganizado em diretório (`settings/mod.rs` + `db_servers/`) conforme a convenção do plano. Paridade herdada do oráculo: colunas `Name|Host|Port|Username|Databases|Auto-DB`; célula de bancos `(auto)`/lista com `, `/`(default)`; `Auto-DB` `Yes`/`No`; **config vazia não é erro** (exit 0) e imprime orientação
+- `[2026-10-15 02:45]` **o comparador passou a ter cobertura real de tabela**: como a saída do legado não é UTF-8, o texto era pulado e o caso mais rico ficava sem verificação. Foi adicionada a checagem **conteúdo (tokens ASCII)** — multiconjunto de tokens imprimíveis dos dois lados, que ignora bordas/largura/codepage e ainda pega "faltou um servidor". Resultado no `ls` semeado: exit code OK, **17 tokens conferem**, artefato de config equivalente (sem `encryptedPassword`) — primeira linha da Fase 1 verificada ponta a ponta
+- `[2026-10-15 02:45]` `oracle-compare` passou a comparar em profundidade só comandos de `MIGRATED_COMMANDS` (hoje `settings db-servers ls`) — antes só ajuda/erros determinísticos eram comparados. Ao migrar cada comando, adicione-o lá e remova-o de `STUB_INVOCATIONS` no teste da árvore
+- `[2026-10-15 02:45]` divergência nova registrada (item 7 de `known-divergences`): a mensagem de config vazia orienta `'mustel ...'` em vez de `'fur ...'` (nome do binário mudou)
+- `[2026-10-15 02:45]` estado: **74 testes** passando, `fmt --check` e `clippy -D warnings` limpos, paridade com **0 falhas** (1 caso em profundidade passando). Performance regerada: `--help` 167,8 ms → 4,4 ms (**37,8×**)
 
 ---
 

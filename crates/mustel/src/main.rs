@@ -1,20 +1,20 @@
 //! Mustel — CLI de automação.
 //!
-//! Este binário é o frontend de terminal: parseia argumentos ([`cli`]), delega aos casos de uso de
-//! `mustel-core` e traduz o resultado em mensagem + exit code ([`exit`]).
-
-mod cli;
-mod commands;
-mod exit;
+//! O binário é uma casca fina: parseia argumentos, monta o token de cancelamento e delega à
+//! biblioteca (`mustel::commands`). A árvore de comandos e as primitivas de UI vivem na lib para
+//! serem testáveis sem processo.
 
 use clap::Parser;
 
+use mustel::cli::MustelCli;
+use mustel::commands;
+use mustel::exit;
 use mustel_core::error::{CoreError, exit_code};
 use mustel_core::signal::{cancellation_token, spawn_ctrl_c_listener};
 
 #[tokio::main]
 async fn main() {
-    let parsed = match cli::MustelCli::try_parse() {
+    let parsed = match MustelCli::try_parse() {
         Ok(parsed) => parsed,
         Err(error) => std::process::exit(handle_parse_error(&error)),
     };

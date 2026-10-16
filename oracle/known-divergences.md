@@ -37,6 +37,7 @@ Nenhuma registrada até aqui.
 | 4 | `port` é `u16` no Mustel: valor fora de 0–65535 no arquivo é erro de parse | Tipagem forte; o legado aceitava `int` e só validava no uso | Se um fixture tiver porta inválida, a divergência é esperada e documentada aqui |
 | 5 | **Interface dirigida pelos docs** em dois comandos (decisão do usuário, 2026-10-14): `settings db-servers add` ganha `-i/--interactive` e `-W/--password`; `database pgpass add` aceita o banco como **posicional** (`--database` mantido por compatibilidade, formas mutuamente exclusivas) | O README documentava a interface pretendida e o binário legado ficou atrás | O harness deve tratar essa superfície extra como **adição aceita** e não como divergência N1 em `settings db-servers add` e `database pgpass add` |
 | 6 | `mustel gui` e `mustel --version` não existem no legado | Superfície nova do produto Mustel (D5/T6) | Ignorar na comparação da árvore de comandos |
+| 7 | A mensagem de configuração vazia do `settings db-servers ls` orienta `'mustel settings db-servers add'`; o legado diz `'fur settings db-servers add'` | Nome do binário mudou (D10) | Texto é N4; o comparador cobre o conteúdo por tokens ASCII, e "mustel"/"fur" são adições registradas aqui |
 
 ## 3. Divergências N1–N3 (proibidas)
 

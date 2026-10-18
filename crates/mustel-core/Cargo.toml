@@ -18,6 +18,9 @@ dirs = "6"
 thiserror = "2"
 regex = "1"
 tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
+# `Stream`/`FuturesUnordered` para o `query run` (T34): o resultado do driver chega como fluxo de
+# linhas (memória estável em export grande) e o executor junta as consultas paralelas.
+futures-util = "0.3"
 # `numeric` não tem `FromSql` no driver; o `rust_decimal` (feature `db-postgres`) traz o do
 # `numeric` e um `Display` que **preserva a escala** — o CSV do oráculo mostra `0.00`, não `0`.
 rust_decimal = { version = "1", features = ["db-postgres"] }

@@ -1,9 +1,9 @@
 //! `mustel query run` — executa a consulta nos bancos escolhidos e exporta o CSV.
 //!
-//! Escopo desta entrega (T32 + T33): descoberta incluída; ficam para as próximas sub-entregas, e
-//! está registrado aqui para não parecer esquecimento:
+//! Escopo desta entrega (T32 + T33 + T34): descoberta de bancos, execução em paralelo com um escritor
+//! único e escrita incremental. Fica para a próxima sub-entrega, e está registrado aqui para não
+//! parecer esquecimento:
 //!
-//! - **T34**: execução em paralelo (`maxParallelism`), `--separate-files` e escrita incremental;
 //! - **T35**: detecção de consulta destrutiva com confirmação e a tabela de progresso ao vivo.
 //!
 //! Paridade medida e conferida no código do legado:
@@ -17,6 +17,9 @@
 //!   `excludePatterns` do cadastro (curinga `*`); falha de descoberta **avisa e cai para os bancos do
 //!   cadastro** em vez de derrubar o comando; e o `--exclude` (nomes exatos, sem diferenciar
 //!   maiúsculas) filtra os dois caminhos, no fim;
+//! - **execução** (T34): `defaults.maxParallelism` servidores ao mesmo tempo e, em cada servidor,
+//!   `server.maxParallelism` bancos — o paralelismo do legado, com um canal para um escritor único
+//!   (ver `mustel_core::query::executor`);
 //! - a saída vai para `<diretório>/<timestamp>/`, com um CSV por servidor, o consolidado, o de
 //!   erros (só quando falha) e o de log — nomes e conteúdo iguais aos do oráculo (ver
 //!   `mustel_core::query::csv_writer`);
@@ -28,10 +31,11 @@
 //! - o legado tenta de novo (3 vezes, com espera exponencial) só para erro de Postgres ou timeout.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use mustel_core::config::ServerConfigEntry;
 use mustel_core::error::CoreError;
-use mustel_core::postgres::client::query_rows;
+use mustel_core::query::executor::{self, ExecutionRequest, ServerPlan};
 use mustel_core::query::{csv_writer, discovery};
 use mustel_core::signal::CancellationToken;
 use mustel_core::validation;
@@ -39,16 +43,7 @@ use mustel_core::validation;
 use crate::cli::QueryRunArgs;
 use crate::ui::prompts;
 
-use super::settings::{self, Target};
-
-/// Tentativas extras do legado (Polly: 3 retries com espera exponencial de 500ms·2^n).
-const MAX_RETRIES: u32 = 3;
-
-/// Resultado de uma consulta: as colunas e as linhas **já formatadas** para o CSV.
-type QueryResult = (Vec<String>, Vec<Vec<String>>);
-
-/// Um resultado bem-sucedido: alvo, colunas do resultado e linhas.
-type Success = (Target, Vec<String>, Vec<Vec<String>>);
+use super::settings;
 
 /// Executa o comando.
 pub async fn run(args: QueryRunArgs, token: &CancellationToken) -> Result<i32, CoreError> {
@@ -172,213 +167,75 @@ async fn execute(
     args: &QueryRunArgs,
     token: &CancellationToken,
 ) -> Result<i32, CoreError> {
-    let base_directory = settings::output_directory(args)?;
+    let defaults = settings::defaults()?;
+    let base_directory = settings::output_directory(args, &defaults);
     let timestamp = csv_writer::timestamp_for(std::time::SystemTime::now());
     let directory = PathBuf::from(&base_directory).join(&timestamp);
     std::fs::create_dir_all(&directory).map_err(CoreError::Io)?;
 
     // Alvos: para cada servidor, os bancos do cadastro ou os descobertos (`--all` /
-    // `fetchAllDatabases`), já filtrados pelos dois critérios do legado.
+    // `fetchAllDatabases`), já filtrados pelos dois critérios do legado. Todo servidor selecionado
+    // entra no plano, mesmo sem banco: o `Servers:` do resumo e a ordem do merge do consolidado
+    // contam com eles (o legado monta a tabela e o merge da mesma lista).
     let exclude_names = discovery::exclude_names(args.exclude.as_deref());
-    let mut targets: Vec<Target> = Vec::new();
+    let mut plans: Vec<ServerPlan> = Vec::new();
     for server in &servers {
-        for database in databases_for_server(server, args, &exclude_names).await? {
-            targets.push(settings::target_for(server, &database, args)?);
-        }
+        let databases = databases_for_server(server, args, &exclude_names).await?;
+        let databases = databases
+            .iter()
+            .map(|database| settings::target_for(server, database, args))
+            .collect::<Result<Vec<_>, CoreError>>()?;
+
+        plans.push(ServerPlan {
+            name: server.name.clone(),
+            max_parallelism: server.max_parallelism as usize,
+            databases,
+        });
     }
 
-    if targets.is_empty() {
+    if plans.iter().all(|plan| plan.databases.is_empty()) {
+        // Aqui o legado sai antes de criar o canal, o log e o consolidado — e sem o resumo.
         println!("No accessible databases found across selected servers.");
         return Ok(0);
     }
 
-    let command_timeout =
-        std::time::Duration::from_secs(args.command_timeout.unwrap_or(300).max(1) as u64);
+    let request = ExecutionRequest {
+        servers: plans,
+        sql: Arc::from(sql),
+        directory,
+        timestamp,
+        max_parallelism: defaults.max_parallelism.max(1) as usize,
+        command_timeout: std::time::Duration::from_secs(
+            args.command_timeout.unwrap_or(300).max(1) as u64
+        ),
+    };
 
-    let mut successes: Vec<Success> = Vec::new();
-    let mut failures = 0usize;
-    let mut error_rows: Vec<Vec<String>> = Vec::new();
-    let mut log_rows: Vec<Vec<String>> = Vec::new();
-
-    for target in targets {
-        if token.is_cancelled() {
-            break;
-        }
-
-        let executed_at = std::time::SystemTime::now();
-        match execute_with_retry(&target, sql, command_timeout, token).await {
-            Ok((columns, data)) => {
-                log_rows.push(log_row(&target, executed_at, "Success", data.len(), ""));
-                successes.push((target, columns, data));
-            }
-            Err(error) => {
-                failures += 1;
-                let message = error.to_string();
-                error_rows.push(vec![
-                    target.server.clone(),
-                    target.database.clone(),
-                    csv_writer::iso8601_for(executed_at),
-                    message.clone(),
-                ]);
-                log_rows.push(log_row(&target, executed_at, "Error", 0, &message));
-            }
-        }
-    }
-
-    write_outputs(&directory, &timestamp, &successes, &error_rows, &log_rows)?;
-
-    let total_rows: usize = successes.iter().map(|(_, _, data)| data.len()).sum();
-    let consolidated = directory.join(csv_writer::consolidated_file_name(&timestamp));
-    let errors_path = directory.join(csv_writer::errors_file_name(&timestamp));
-    let log_path = directory.join(csv_writer::log_file_name(&timestamp));
+    let outcome = executor::execute(&request, token).await?;
 
     println!();
-    if consolidated.is_file() {
+    if let Some(consolidated) = &outcome.consolidated {
         println!("✅ Consolidated → {}", consolidated.display());
     }
-    if errors_path.is_file() && !error_rows.is_empty() {
-        println!("❌ Errors       → {}", errors_path.display());
+    if let Some(errors) = &outcome.errors {
+        println!("❌ Errors       → {}", errors.display());
     }
-    println!("Log           → {}", log_path.display());
+    println!("Log           → {}", outcome.log.display());
     println!();
     println!(
         "Servers: {} | Success: {} | Failed: {} | Total rows: {}",
-        servers.len(),
-        successes.len(),
-        failures,
-        total_rows
+        request.servers.len(),
+        outcome.successes,
+        outcome.failures,
+        outcome.total_rows
     );
 
-    if successes.is_empty() && failures > 0 {
+    if outcome.successes == 0 && outcome.failures > 0 {
         return Err(CoreError::Other(
             "No server responded successfully. Please check the connections.".to_string(),
         ));
     }
 
     Ok(0)
-}
-
-/// Executa com as tentativas do legado (`NpgsqlException`/`TimeoutException` → 3 retries).
-async fn execute_with_retry(
-    target: &Target,
-    sql: &str,
-    command_timeout: std::time::Duration,
-    token: &CancellationToken,
-) -> Result<QueryResult, CoreError> {
-    let mut attempt = 0u32;
-
-    loop {
-        if token.is_cancelled() {
-            return Err(CoreError::Cancelled);
-        }
-
-        match query_rows(&target.settings, sql, command_timeout).await {
-            Ok(result) => return Ok(result),
-            Err(error) => {
-                let retryable = matches!(error, CoreError::Postgres { .. } | CoreError::Timeout(_));
-                if !retryable || attempt >= MAX_RETRIES {
-                    return Err(error);
-                }
-
-                attempt += 1;
-                let delay = std::time::Duration::from_millis(2u64.pow(attempt) * 500);
-                tokio::time::sleep(delay).await;
-            }
-        }
-    }
-}
-
-/// Escreve os arquivos da execução (por servidor, consolidado, erros e log).
-fn write_outputs(
-    directory: &std::path::Path,
-    timestamp: &str,
-    successes: &[Success],
-    error_rows: &[Vec<String>],
-    log_rows: &[Vec<String>],
-) -> Result<(), CoreError> {
-    // CSV por servidor: cabeçalho com as colunas **daquele** resultado.
-    for (target, columns, data) in successes {
-        let header = header_for(columns);
-        let rows: Vec<Vec<String>> = data
-            .iter()
-            .map(|row| {
-                let mut fields = vec![target.server.clone(), target.database.clone()];
-                fields.extend(row.iter().cloned());
-                fields
-            })
-            .collect();
-
-        let path = directory.join(csv_writer::server_file_name(&target.server, timestamp));
-        csv_writer::write_file(&path, &csv_writer::render_csv(&header, &rows))?;
-    }
-
-    // Consolidado: união das colunas, na ordem de primeira aparição, e as linhas de todos.
-    let mut columns: Vec<String> = Vec::new();
-    for (_, result_columns, _) in successes {
-        for column in result_columns {
-            if !columns.contains(column) {
-                columns.push(column.clone());
-            }
-        }
-    }
-
-    if !columns.is_empty() {
-        let header = header_for(&columns);
-        let mut rows: Vec<Vec<String>> = Vec::new();
-
-        for (target, result_columns, data) in successes {
-            for row in data {
-                let mut fields = vec![target.server.clone(), target.database.clone()];
-                for column in &columns {
-                    let index = result_columns
-                        .iter()
-                        .position(|candidate| candidate == column);
-                    fields.push(
-                        index
-                            .and_then(|index| row.get(index).cloned())
-                            .unwrap_or_default(),
-                    );
-                }
-                rows.push(fields);
-            }
-        }
-
-        let path = directory.join(csv_writer::consolidated_file_name(timestamp));
-        csv_writer::write_file(&path, &csv_writer::render_csv(&header, &rows))?;
-    }
-
-    if !error_rows.is_empty() {
-        let header = ["Server", "Database", "ExecutedAt", "Error"]
-            .iter()
-            .map(|field| (*field).to_string())
-            .collect::<Vec<_>>();
-        let path = directory.join(csv_writer::errors_file_name(timestamp));
-        csv_writer::write_file(&path, &csv_writer::render_csv(&header, error_rows))?;
-    }
-
-    let log_header = [
-        "Server",
-        "Database",
-        "ExecutedAt",
-        "Status",
-        "RowCount",
-        "DurationMs",
-        "Error",
-    ]
-    .iter()
-    .map(|field| (*field).to_string())
-    .collect::<Vec<_>>();
-    let path = directory.join(csv_writer::log_file_name(timestamp));
-    csv_writer::write_file(&path, &csv_writer::render_csv(&log_header, log_rows))?;
-
-    Ok(())
-}
-
-/// Cabeçalho do CSV de resultados: `Server`, `Database` e as colunas da consulta.
-fn header_for(columns: &[String]) -> Vec<String> {
-    let mut header = vec!["Server".to_string(), "Database".to_string()];
-    header.extend(columns.iter().cloned());
-    header
 }
 
 /// Bancos de um servidor, como o `GetDatabasesForServerAsync` do legado.
@@ -421,26 +278,6 @@ async fn databases_for_server(
         &server.exclude_patterns,
         exclude_names,
     ))
-}
-
-/// Linha do CSV de log (o `DurationMs` fica vazio: o legado mede o tempo por banco, que só o
-/// progresso ao vivo usa — a medição entra no T35 junto da tabela).
-fn log_row(
-    target: &Target,
-    executed_at: std::time::SystemTime,
-    status: &str,
-    rows: usize,
-    error: &str,
-) -> Vec<String> {
-    vec![
-        target.server.clone(),
-        target.database.clone(),
-        csv_writer::iso8601_for(executed_at),
-        status.to_string(),
-        rows.to_string(),
-        String::new(),
-        error.to_string(),
-    ]
 }
 
 /// Caminho absoluto, como o `Path.GetFullPath` do legado.

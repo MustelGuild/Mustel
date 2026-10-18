@@ -5,6 +5,11 @@
 //! texto puro. Ligar TLS (rustls + certificados do sistema) e separar `VerifyCA` de `VerifyFull` é o
 //! que falta — ver `docs/rust-postgres-spike.md`.
 
+use std::pin::Pin;
+use std::time::Duration;
+
+use futures_util::Stream;
+
 use crate::error::CoreError;
 use crate::postgres::settings::ConnectionSettings;
 
@@ -257,46 +262,105 @@ fn octet(bytes: &[u8]) -> Result<[u8; 8], CoreError> {
         .map_err(|_| CoreError::InvalidState("valor com tamanho inesperado".to_string()))
 }
 
-/// Roda uma consulta e devolve `(colunas, linhas)` com os valores **já formatados** para o CSV.
+/// Consulta **em andamento**: as linhas chegam uma a uma, já formatadas para o CSV.
 ///
-/// O texto de cada célula sai daqui com a semântica do `ToString()` do .NET (ver
-/// [`crate::postgres::value`]) — é a fronteira entre o driver e o export.
+/// É o equivalente do `NpgsqlDataReader` do legado, e existe para o `query run` escrever o CSV
+/// conforme lê (critério de memória limitada do T34) em vez de materializar o resultado: o
+/// `RowStream` só avança quando alguém o consome, então o back-pressure do canal do executor chega
+/// até o servidor.
 ///
-/// As linhas são trazidas de uma vez, como no legado (que também materializa tudo antes de escrever).
-/// A escrita **incremental** com memória limitada é critério do T34, e é lá que a leitura vira
-/// `query_raw` com `StreamExt`.
-pub async fn query_rows(
-    settings: &ConnectionSettings,
-    sql: &str,
-    command_timeout: std::time::Duration,
-) -> Result<(Vec<String>, Vec<Vec<String>>), CoreError> {
-    let client = connect(settings).await?;
+/// Quem consome conta quantas linhas passaram por aqui — é de onde saem o `RowCount` do log e o
+/// `Total rows` do resumo (o legado conta do mesmo jeito, só que sobre o `List<Dictionary>` que ele
+/// materializa).
+pub struct QueryStream {
+    /// Mantém a conexão viva enquanto o fluxo é lido: sem o cliente a task da conexão cai e o fluxo
+    /// termina. O campo não é lido de propósito.
+    _client: tokio_postgres::Client,
+    /// Colunas do resultado, conhecidas já no `prepare` (o legado as lê do `FieldCount`/`GetName`).
+    columns: Vec<String>,
+    /// Linhas do driver, uma por vez.
+    rows: Pin<Box<tokio_postgres::RowStream>>,
+    /// Timeout de comando, aplicado **por leitura** (ver [`Self::next_row`]).
+    command_timeout: Duration,
+}
 
-    let statement = client.prepare(sql).await.map_err(map_error)?;
-    let columns: Vec<String> = statement
-        .columns()
-        .iter()
-        .map(|column| column.name().to_string())
-        .collect();
+impl QueryStream {
+    /// Prepara e dispara a consulta; devolve o fluxo pronto para ser consumido.
+    ///
+    /// O `prepare` (que valida a consulta e devolve as colunas) está sob o mesmo timeout de comando,
+    /// como o `ExecuteReaderAsync` do legado: uma consulta que nunca responde estoura aqui.
+    pub async fn open(
+        settings: &ConnectionSettings,
+        sql: &str,
+        command_timeout: Duration,
+    ) -> Result<Self, CoreError> {
+        let client = connect(settings).await?;
 
-    let fetch = async {
-        let rows = client.query(&statement, &[]).await.map_err(map_error)?;
+        let statement = match tokio::time::timeout(command_timeout, client.prepare(sql)).await {
+            Ok(result) => result.map_err(map_error)?,
+            Err(_) => return Err(timeout_error(command_timeout)),
+        };
 
-        rows.iter()
-            .map(row_text)
-            .collect::<Result<Vec<Vec<String>>, CoreError>>()
-    };
+        let columns = statement
+            .columns()
+            .iter()
+            .map(|column| column.name().to_string())
+            .collect();
 
-    let data = match tokio::time::timeout(command_timeout, fetch).await {
-        Ok(result) => result?,
-        Err(_) => {
-            return Err(CoreError::Timeout(format!(
-                "query exceeded {command_timeout:?}"
-            )));
+        // Sem parâmetros: a consulta vem inteira do `-c`/`-i`, como no legado (que também não passa
+        // parâmetro nenhum).
+        //
+        // O `await` está sob o timeout porque o servidor só manda a descrição das colunas quando
+        // **começa** a produzir o resultado: uma consulta que trava antes disso trava aqui (o
+        // `ExecuteReaderAsync` do legado espera o mesmo e está sob o `CommandTimeout`).
+        let rows = match tokio::time::timeout(
+            command_timeout,
+            client.query_raw(
+                &statement,
+                std::iter::empty::<&(dyn tokio_postgres::types::ToSql + Sync)>(),
+            ),
+        )
+        .await
+        {
+            Ok(result) => result.map_err(map_error)?,
+            Err(_) => return Err(timeout_error(command_timeout)),
+        };
+
+        Ok(Self {
+            _client: client,
+            columns,
+            rows: Box::pin(rows),
+            command_timeout,
+        })
+    }
+
+    /// Colunas do resultado, na ordem do `SELECT`.
+    pub fn columns(&self) -> &[String] {
+        &self.columns
+    }
+
+    /// Próxima linha, com os valores já no texto do `ToString()` do .NET (ver
+    /// [`crate::postgres::value`]); `None` quando o resultado acabou.
+    ///
+    /// O timeout de comando vale **por leitura** (e na abertura), como o `CommandTimeout` do Npgsql
+    /// (que é renovado a cada `ReadAsync`), e não para o resultado inteiro: um export longo que
+    /// devolve linha a linha não é interrompido só por demorar, mas uma consulta que trava no meio
+    /// estoura.
+    pub async fn next_row(&mut self) -> Result<Option<Vec<String>>, CoreError> {
+        let next = std::future::poll_fn(|context| self.rows.as_mut().poll_next(context));
+
+        match tokio::time::timeout(self.command_timeout, next).await {
+            Ok(Some(Ok(row))) => row_text(&row).map(Some),
+            Ok(Some(Err(error))) => Err(map_error(error)),
+            Ok(None) => Ok(None),
+            Err(_) => Err(timeout_error(self.command_timeout)),
         }
-    };
+    }
+}
 
-    Ok((columns, data))
+/// Erro de timeout do comando, no formato que o log e o `_erros.csv` mostram.
+fn timeout_error(command_timeout: Duration) -> CoreError {
+    CoreError::Timeout(format!("query exceeded {command_timeout:?}"))
 }
 
 /// Lista os bancos para a **descoberta** do `query run`, com a query do legado.

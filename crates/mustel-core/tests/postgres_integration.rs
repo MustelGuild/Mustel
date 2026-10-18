@@ -11,10 +11,14 @@
 //! ```
 
 use std::str::FromStr;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use mustel_core::postgres::client::{connect, create_database_if_missing};
 use mustel_core::postgres::settings::ConnectionSettings;
 use mustel_core::postgres::value::{TextValue, format_cell};
+use mustel_core::query::executor::{self, DatabaseTarget, ExecutionRequest, ServerPlan};
+use mustel_core::signal::cancellation_token;
 
 /// Configuração derivada de `MUSTEL_PG_TEST_URL`, ou `None` quando o gate não foi aberto.
 ///
@@ -191,4 +195,114 @@ async fn reads_the_types_the_csv_export_cares_about() {
 
     let json: serde_json::Value = row.get("j");
     assert_eq!(json["a"], 1);
+}
+
+#[tokio::test]
+async fn the_query_stream_hands_the_rows_one_by_one() {
+    let Some(settings) = settings() else {
+        eprintln!("skipped: set MUSTEL_PG_TEST_URL");
+        return;
+    };
+
+    let mut stream = mustel_core::postgres::client::QueryStream::open(
+        &settings,
+        "SELECT n AS id, 'texto ' || n AS texto FROM generate_series(1, 500) AS n",
+        Duration::from_secs(30),
+    )
+    .await
+    .expect("abre a consulta");
+
+    assert_eq!(stream.columns(), ["id".to_string(), "texto".to_string()]);
+
+    let mut rows = Vec::new();
+    while let Some(row) = stream.next_row().await.expect("linha") {
+        rows.push(row);
+    }
+
+    assert_eq!(rows.len(), 500, "o fluxo entrega todas as linhas");
+    assert_eq!(rows[0], ["1".to_string(), "texto 1".to_string()]);
+    assert_eq!(rows[499], ["500".to_string(), "texto 500".to_string()]);
+}
+
+#[tokio::test]
+async fn the_command_timeout_fires_on_a_slow_read() {
+    let Some(settings) = settings() else {
+        eprintln!("skipped: set MUSTEL_PG_TEST_URL");
+        return;
+    };
+
+    // `pg_sleep` devolve `void` (uma linha) depois de dormir; com o timeout de 1s a execução estoura,
+    // como o `CommandTimeout` do Npgsql. O estouro pode acontecer na abertura (o servidor só manda a
+    // descrição das colunas quando começa a produzir o resultado) ou na leitura da linha.
+    let error = match mustel_core::postgres::client::QueryStream::open(
+        &settings,
+        "SELECT pg_sleep(3)",
+        Duration::from_secs(1),
+    )
+    .await
+    {
+        Err(error) => error,
+        Ok(mut stream) => stream.next_row().await.expect_err("estoura no timeout"),
+    };
+
+    assert!(
+        matches!(error, mustel_core::error::CoreError::Timeout(_)),
+        "erro de timeout, não de Postgres: {error:?}"
+    );
+}
+
+/// Roda o executor com dois servidores, um banco cada, e devolve o tempo.
+async fn run_two_servers(settings: &ConnectionSettings, max_parallelism: usize) -> f64 {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let request = ExecutionRequest {
+        servers: ["um", "dois"]
+            .iter()
+            .map(|name| ServerPlan {
+                name: (*name).to_string(),
+                max_parallelism: 1,
+                databases: vec![DatabaseTarget {
+                    database: settings.database.clone().unwrap_or_default(),
+                    settings: settings.clone(),
+                }],
+            })
+            .collect(),
+        sql: Arc::from("SELECT pg_sleep(2)"),
+        directory: directory.path().to_path_buf(),
+        timestamp: "ts".to_string(),
+        max_parallelism,
+        command_timeout: Duration::from_secs(60),
+    };
+
+    let started = Instant::now();
+    let outcome = executor::execute(&request, &cancellation_token())
+        .await
+        .expect("executa");
+    let elapsed = started.elapsed().as_secs_f64();
+
+    assert_eq!(outcome.successes, 2, "os dois servidores responderam");
+    assert_eq!(outcome.failures, 0);
+    assert!(
+        outcome.consolidated.is_some(),
+        "com linhas dos dois, sai consolidado"
+    );
+
+    elapsed
+}
+
+#[tokio::test]
+async fn servers_run_in_parallel_up_to_the_configured_degree() {
+    let Some(settings) = settings() else {
+        eprintln!("skipped: set MUSTEL_PG_TEST_URL");
+        return;
+    };
+
+    // Cada servidor dorme 2s. Com grau 2 os dois dormem juntos (~2s); com grau 1, um depois do outro
+    // (~4s). É o `defaults.MaxParallelism` do `Parallel.ForEachAsync` externo do legado.
+    let parallel = run_two_servers(&settings, 2).await;
+    let serial = run_two_servers(&settings, 1).await;
+
+    assert!(
+        serial > parallel * 1.5,
+        "grau 1 tinha de ser bem mais lento: paralelo {parallel:.1}s, serial {serial:.1}s"
+    );
 }

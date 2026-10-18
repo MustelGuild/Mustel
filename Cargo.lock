@@ -1174,6 +1174,7 @@ name = "mustel-core"
 version = "1.0.0"
 dependencies = [
  "dirs",
+ "futures-util",
  "keyring",
  "nix 0.29.0",
  "regex",

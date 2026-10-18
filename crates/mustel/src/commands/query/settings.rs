@@ -17,32 +17,23 @@
 //!   `Password for '<servidor>': `;
 //! - `--ssl-mode` desconhecido vira `Prefer` (o `ParseSslMode` do legado), e não é erro.
 //!
-//! Opções de **pool** (`--pooling`, `--min-pool-size`, `--max-pool-size`, `--keepalive`,
-//! `--connection-lifetime`) são aceitas e **ignoradas** por enquanto: o `tokio-postgres` não tem
-//! pool e a escolha da biblioteca é do T34 (os campos ficam prontos aqui para ligar lá).
+//! Das opções de **pool** (`--pooling`, `--min-pool-size`, `--max-pool-size`), só o valor fica
+//! guardado na conexão: o Mustel abre uma conexão por banco, então não há pool (ver
+//! `docs/rust-postgres-spike.md`). O `--keepalive` **tem** efeito — vai para o socket, como no Npgsql —
+//! e o `--connection-lifetime` só valeria num pool, onde não é usado ainda.
 
-use mustel_core::config::{ConfigStore, ServerConfigEntry};
+use mustel_core::config::{ConfigStore, ServerConfigEntry, UserDefaults};
 use mustel_core::credentials::{CredentialStore, SystemKeyring};
 use mustel_core::error::CoreError;
 use mustel_core::postgres::settings::ConnectionSettings;
 use mustel_core::postgres::tls::SslMode;
+use mustel_core::query::executor::DatabaseTarget;
 
 use crate::cli::QueryRunArgs;
 use crate::ui::prompts;
 
 /// Texto do prompt de senha do `query run` (medido no oráculo).
 pub const PASSWORD_PROMPT: &str = "Password for";
-
-/// Alvo de uma execução: servidor (para o nome no CSV) + banco + conexão resolvida.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Target {
-    /// Nome do servidor, como sai na coluna `Server` do CSV.
-    pub server: String,
-    /// Banco alvo.
-    pub database: String,
-    /// Conexão já resolvida (sem senha — ela entra na hora de conectar).
-    pub settings: ConnectionSettings,
-}
 
 /// Servidores a usar: o ad-hoc da connection string ou os cadastrados (com os overrides).
 ///
@@ -67,20 +58,26 @@ pub fn servers_from_settings(
     Ok(Some(servers))
 }
 
-/// Diretório base da saída: `-o` quando informado, senão o default do cadastro.
-pub fn output_directory(args: &QueryRunArgs) -> Result<String, CoreError> {
-    if let Some(output) = args
+/// Preferências do arquivo (`defaults`): diretório de saída e paralelismo padrão.
+pub fn defaults() -> Result<UserDefaults, CoreError> {
+    let store = ConfigStore::with_default_path()?;
+
+    Ok(store.load()?.defaults.unwrap_or_default())
+}
+
+/// Diretório base da saída: `-o` quando informado (absolutizado, como o `Path.GetFullPath` do
+/// legado), senão o default do cadastro.
+pub fn output_directory(args: &QueryRunArgs, defaults: &UserDefaults) -> String {
+    match args
         .output
         .as_deref()
         .filter(|value| !value.trim().is_empty())
     {
-        return Ok(output.to_string());
+        Some(output) => std::path::absolute(output)
+            .map(|value| value.to_string_lossy().to_string())
+            .unwrap_or_else(|_| output.to_string()),
+        None => defaults.output_directory.clone(),
     }
-
-    let store = ConfigStore::with_default_path()?;
-    let defaults = store.load()?.defaults.unwrap_or_default();
-
-    Ok(defaults.output_directory)
 }
 
 /// Resolve o alvo (servidor + banco) de uma execução.
@@ -88,13 +85,10 @@ pub fn target_for(
     server: &ServerConfigEntry,
     database: &str,
     args: &QueryRunArgs,
-) -> Result<Target, CoreError> {
-    let settings = connection_settings(server, database, args)?;
-
-    Ok(Target {
-        server: server.name.clone(),
+) -> Result<DatabaseTarget, CoreError> {
+    Ok(DatabaseTarget {
         database: database.to_string(),
-        settings,
+        settings: connection_settings(server, database, args)?,
     })
 }
 
@@ -135,8 +129,9 @@ fn connection_settings(
         command_timeout: std::time::Duration::from_secs(
             args.command_timeout.unwrap_or(300).max(1) as u64
         ),
-        // As opções de pool entram aqui para não serem silenciosamente descartadas, mas só passam
-        // a valer quando o pool existir (T34 — o driver não tem pool).
+        // As opções de pool entram aqui para não serem silenciosamente descartadas: o `--keepalive`
+        // vai para o socket da conexão (ver `to_pg_config`) e as demais só valeriam num pool, que o
+        // Mustel não tem.
         pooling: args.pooling.unwrap_or(true),
         min_pool_size: args.min_pool_size.unwrap_or(1).max(0) as u32,
         max_pool_size: args.max_pool_size.unwrap_or(100).max(0) as u32,

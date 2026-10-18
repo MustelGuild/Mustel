@@ -82,6 +82,13 @@ impl ConnectionSettings {
     ///
     /// A senha vai junto porque o driver a exige na configuração; ela **nunca** é registrada em log
     /// nem em mensagem de erro (D6).
+    ///
+    /// Das opções de pool do legado, **`--keepalive` tem efeito real**: é o keepalive de TCP do
+    /// Npgsql, e vai para o socket da conexão. As outras (`--pooling`, `--min-pool-size`,
+    /// `--max-pool-size`, `--connection-lifetime`) ficam guardadas em [`ConnectionSettings`] porque
+    /// são parte da superfície do comando, mas **não** mudam nada: o Mustel abre uma conexão por
+    /// banco e a fecha no fim, então não há pool para configurar (o `tokio-postgres` não tem um — ver
+    /// `docs/rust-postgres-spike.md`).
     pub fn to_pg_config(&self) -> tokio_postgres::Config {
         let mut config = tokio_postgres::Config::new();
         config.host(&self.host);
@@ -94,6 +101,14 @@ impl ConnectionSettings {
         }
         if let Some(database) = &self.database {
             config.dbname(database);
+        }
+        if self.keepalive.is_zero() {
+            // O `KeepAlive = 0` do Npgsql (o default) deixa o default do SO, que é desligado — e o
+            // driver, por conta própria, ligaria o keepalive com 2 horas de ociosidade.
+            config.keepalives(false);
+        } else {
+            config.keepalives(true);
+            config.keepalives_idle(self.keepalive);
         }
         config
     }
@@ -144,6 +159,26 @@ mod tests {
             ..ConnectionSettings::default()
         };
         assert_eq!(settings.endpoint(), "localhost:5432");
+    }
+
+    #[test]
+    fn the_keepalive_goes_to_the_socket_and_zero_leaves_the_default() {
+        let with_keepalive = ConnectionSettings {
+            keepalive: std::time::Duration::from_secs(30),
+            ..ConnectionSettings::default()
+        }
+        .to_pg_config();
+        assert!(with_keepalive.get_keepalives());
+        assert_eq!(
+            with_keepalive.get_keepalives_idle(),
+            std::time::Duration::from_secs(30)
+        );
+
+        let without = ConnectionSettings::default().to_pg_config();
+        assert!(
+            !without.get_keepalives(),
+            "sem `--keepalive` o socket fica como o Npgsql deixa"
+        );
     }
 
     #[test]

@@ -6,7 +6,6 @@ use mustel_core::error::CoreError;
 use mustel_core::signal::CancellationToken;
 
 use crate::cli::{DbServersCommand, SettingsArgs, SettingsCommand};
-use crate::commands::not_implemented;
 
 /// Despacha `mustel settings <subcomando>`.
 pub async fn run(args: SettingsArgs, token: &CancellationToken) -> Result<i32, CoreError> {
@@ -26,7 +25,7 @@ pub(crate) async fn dispatch_db_servers(
         DbServersCommand::Ls => db_servers::list::run(),
         DbServersCommand::Add(args) => db_servers::add::run(args),
         DbServersCommand::Rm(args) => db_servers::remove::run(args),
-        DbServersCommand::Test(_) => not_implemented("settings db-servers test"),
+        DbServersCommand::Test(args) => db_servers::test::run(args).await,
         DbServersCommand::SetPassword(args) => db_servers::set_password::run(args),
     }
 }

@@ -189,7 +189,6 @@ const STUB_INVOCATIONS: &[&[&str]] = &[
     &["database", "pgpass", "add"],
     &["database", "pgpass", "list"],
     &["database", "pgpass", "remove", "mydb"],
-    &["settings", "db-servers", "test"],
 ];
 
 /// Comandos já migrados: precisam executar de verdade (sem "not implemented").
@@ -198,6 +197,7 @@ const IMPLEMENTED_COMMANDS: &[&[&str]] = &[
     &["settings", "db-servers", "add"],
     &["settings", "db-servers", "rm"],
     &["settings", "db-servers", "set-password"],
+    &["settings", "db-servers", "test"],
 ];
 
 #[test]

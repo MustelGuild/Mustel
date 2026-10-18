@@ -22,6 +22,7 @@ pub const MIGRATED_COMMANDS: &[&[&str]] = &[
     &["settings", "db-servers", "ls"],
     &["settings", "db-servers", "add"],
     &["settings", "db-servers", "rm"],
+    &["settings", "db-servers", "test"],
 ];
 
 /// Nível de um resultado.

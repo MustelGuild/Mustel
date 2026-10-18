@@ -61,6 +61,56 @@ async fn connects_and_reads_a_scalar() {
 }
 
 #[tokio::test]
+async fn a_wrong_password_is_classified_for_the_exit_codes() {
+    let Some(mut settings) = settings() else {
+        eprintln!("skipped: set MUSTEL_PG_TEST_URL");
+        return;
+    };
+
+    settings.password = Some("senha-errada".to_string());
+    let error = connect(&settings).await.expect_err("must fail");
+
+    // Autenticação recusada **tem** SQLSTATE (`28P01`), então o oráculo devolve 10 (a mesma regra:
+    // `NpgsqlException { SqlState: not null }` → 10). O 11 fica para falhas sem SQLSTATE.
+    let mustel_core::error::CoreError::Postgres { sqlstate, .. } = &error else {
+        panic!("falha de autenticação precisa ser erro de Postgres: {error:?}");
+    };
+    assert_eq!(
+        sqlstate.as_deref(),
+        Some("28P01"),
+        "SQLSTATE de senha inválida"
+    );
+    assert_eq!(
+        error.exit_code(),
+        mustel_core::error::exit_code::POSTGRES_WITH_SQLSTATE,
+        "com SQLSTATE o código é 10"
+    );
+}
+
+#[tokio::test]
+async fn an_unreachable_server_fails_instead_of_hanging() {
+    let Some(mut settings) = settings() else {
+        eprintln!("skipped: set MUSTEL_PG_TEST_URL");
+        return;
+    };
+
+    // Porta fechada na própria máquina: recusa rápida, sem depender de timeout longo.
+    settings.port = 1;
+    settings.connect_timeout = std::time::Duration::from_secs(2);
+
+    let started = std::time::Instant::now();
+    let error = connect(&settings).await.expect_err("must fail");
+    assert!(
+        matches!(error, mustel_core::error::CoreError::Postgres { .. }),
+        "recusa de conexão precisa ser erro de Postgres: {error:?}"
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "não pode ficar pendurado no timeout"
+    );
+}
+
+#[tokio::test]
 async fn reads_the_types_the_csv_export_cares_about() {
     let Some(settings) = settings() else {
         eprintln!("skipped: set MUSTEL_PG_TEST_URL");

@@ -35,6 +35,23 @@ pub async fn connect(settings: &ConnectionSettings) -> Result<tokio_postgres::Cl
     Ok(client)
 }
 
+/// Lista os bancos acessíveis, com a **mesma query** que o legado usa.
+///
+/// O FurLab faz isso executando o `psql` externo; aqui a consulta vai pelo driver (D12), o que
+/// dispensa o `psql` instalado no caminho do `settings db-servers test`. A ordem é a mesma
+/// (`ORDER BY datname`) para que a mensagem `Databases found: ...` seja comparável.
+pub async fn list_databases(client: &tokio_postgres::Client) -> Result<Vec<String>, CoreError> {
+    let rows = client
+        .query(
+            "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname;",
+            &[],
+        )
+        .await
+        .map_err(map_error)?;
+
+    Ok(rows.iter().map(|row| row.get::<_, String>(0)).collect())
+}
+
 /// Classifica o erro do driver no erro do núcleo.
 fn map_error(error: tokio_postgres::Error) -> CoreError {
     let sqlstate = error.code().map(|code| code.code().to_string());

@@ -190,3 +190,48 @@ fn wildcards_are_accepted_like_the_legacy() {
         stdout_of(&output)
     );
 }
+
+#[test]
+fn storing_a_password_with_w_cleans_up_after_itself() {
+    // O `-W` grava no cofre **real** do usuário, então o teste apaga no fim. Isto não é zelo
+    // excessivo: uma execução anterior deixou um `dev.mustel` órfão no Windows Credential Manager,
+    // encontrado no smoke do T20.
+    if std::env::var("MUSTEL_KEYRING_TESTS").as_deref() != Ok("1") {
+        eprintln!("skipped: set MUSTEL_KEYRING_TESTS=1 to exercise the real keyring");
+        return;
+    }
+
+    use mustel_core::credentials::{CredentialStore, SystemKeyring};
+
+    let dir = TempDir::new().expect("tempdir");
+    let keyring = SystemKeyring::new();
+    let server = "t17-keyring-check";
+    let _ = keyring.delete(server);
+
+    let output = run(
+        dir.path(),
+        &[
+            "settings",
+            "db-servers",
+            "add",
+            "-n",
+            server,
+            "-H",
+            "localhost",
+            "-W",
+            "segredo-t17",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", stdout_of(&output));
+    assert_eq!(
+        keyring.get(server).expect("read"),
+        Some("segredo-t17".to_string()),
+        "o -W precisa guardar a senha no cofre"
+    );
+
+    assert!(
+        keyring.delete(server).expect("cleanup"),
+        "limpeza obrigatória"
+    );
+    assert_eq!(keyring.get(server).expect("read after"), None);
+}

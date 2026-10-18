@@ -214,45 +214,40 @@ fn spawn_in_own_group(_command: &mut tokio::process::Command) {}
 /// Mata a árvore do processo, sem deixar saída do utilitário vazar para o nosso stdout.
 async fn kill_tree(child: &mut Child) {
     if let Some(pid) = child.id() {
-        let mut killer = killer_command(pid);
-        let _ = killer
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await;
+        kill_group(pid);
     }
 
-    // Cinto e suspensório: se o utilitário não existir, o filho direto ainda morre.
+    // Cinto e suspensório: garante que o filho direto também morra.
     let _ = child.kill().await;
 }
 
-/// Comando que derruba a árvore a partir do pid.
+/// No Windows a árvore é derrubada por `taskkill /T`, e a saída dele não pode aparecer na nossa.
 #[cfg(windows)]
-fn killer_command(pid: u32) -> tokio::process::Command {
-    let mut command = tokio::process::Command::new("taskkill");
-    command.args(["/PID", &pid.to_string(), "/T", "/F"]);
-    command
+fn kill_group(pid: u32) {
+    let _ = std::process::Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
-/// Comando que derruba o grupo de processos (o filho virou líder do próprio grupo).
+/// No Unix o filho abre o próprio grupo (`process_group(0)`), então `killpg` derruba a árvore
+/// inteira — a syscall direta, sem depender do parsing de pid negativo do utilitário `kill`.
 #[cfg(unix)]
-fn killer_command(pid: u32) -> tokio::process::Command {
-    let mut command = tokio::process::Command::new(kill_program());
-    command.args(["-KILL", &format!("-{pid}")]);
-    command
+fn kill_group(pid: u32) {
+    use nix::sys::signal::{Signal, killpg};
+    use nix::unistd::Pid;
+
+    // O grupo é o do filho, que virou líder (`process_group(0)` no momento do spawn).
+    if let Ok(pid) = i32::try_from(pid) {
+        let _ = killpg(Pid::from_raw(pid), Signal::SIGKILL);
+    }
 }
 
-/// Caminho do utilitário `kill`; `/bin/kill` primeiro, depois o PATH.
-#[cfg(unix)]
-fn kill_program() -> &'static str {
-    const CANDIDATES: [&str; 2] = ["/bin/kill", "/usr/bin/kill"];
-
-    CANDIDATES
-        .into_iter()
-        .find(|path| std::path::Path::new(path).is_file())
-        .unwrap_or("kill")
-}
+/// Em outros SOs não há grupo para derrubar: resta o `child.kill()` de `kill_tree`.
+#[cfg(not(any(unix, windows)))]
+fn kill_group(_pid: u32) {}
 
 #[cfg(test)]
 mod tests {

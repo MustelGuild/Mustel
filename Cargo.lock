@@ -1133,6 +1133,7 @@ version = "1.0.0"
 dependencies = [
  "dirs",
  "keyring",
+ "nix 0.29.0",
  "regex",
  "serde",
  "serde_json",

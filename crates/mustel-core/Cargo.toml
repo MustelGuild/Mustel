@@ -36,5 +36,12 @@ keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 [target.'cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))'.dependencies]
 keyring = "3"
 
+# `killpg` para derrubar a **árvore** de um processo no cancelamento (T27). É API segura sobre a
+# syscall: o utilitário `kill` com pid negativo se mostrou não confiável na prática (testado em
+# container: `/bin/kill -KILL -<pid>` sai com 0 e **não** mata o grupo; o builtin do shell mata),
+# e `libc::kill` direto não é opção por causa de `unsafe_code = "forbid"`.
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["signal", "process"] }
+
 [dev-dependencies]
 tempfile = "3"

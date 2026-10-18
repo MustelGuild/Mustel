@@ -23,7 +23,19 @@ pub const MIGRATED_COMMANDS: &[&[&str]] = &[
     &["settings", "db-servers", "add"],
     &["settings", "db-servers", "rm"],
     &["settings", "db-servers", "test"],
+    &["database", "pgpass", "add"],
+    &["database", "pgpass", "list"],
+    &["database", "pgpass", "remove"],
 ];
+
+/// Caminhos dos artefatos do Mustel na execução isolada do comparador.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MustelArtifacts<'a> {
+    /// `mustel.jsonc` da execução isolada (`MUSTEL_CONFIG_DIR`).
+    pub config: Option<&'a Path>,
+    /// `pgpass.conf` da execução isolada (`MUSTEL_PGPASS_FILE`).
+    pub pgpass: Option<&'a Path>,
+}
 
 /// Nível de um resultado.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,7 +93,7 @@ impl CaseComparison {
 pub fn compare_case(
     baseline: &CommandCapture,
     mustel_output: &crate::capture::RunOutput,
-    mustel_config: Option<&Path>,
+    artifacts: MustelArtifacts<'_>,
 ) -> CaseComparison {
     let mut checks = Vec::new();
 
@@ -190,7 +202,7 @@ pub fn compare_case(
 
     // 4. artefatos — contrato duro, com as normalizações registradas em known-divergences.
     for artifact in &baseline.artifacts {
-        checks.push(compare_artifact(artifact, mustel_config));
+        checks.push(compare_artifact(artifact, artifacts));
     }
 
     CaseComparison {
@@ -199,18 +211,99 @@ pub fn compare_case(
     }
 }
 
-fn compare_artifact(artifact: &ArtifactCapture, mustel_config: Option<&Path>) -> Check {
+/// Compara um artefato do baseline com o arquivo correspondente da execução do Mustel.
+fn compare_artifact(artifact: &ArtifactCapture, artifacts: MustelArtifacts<'_>) -> Check {
+    match artifact.path.as_str() {
+        "config" => compare_config_artifact(artifact, artifacts.config),
+        "pgpass" => compare_pgpass_artifact(artifact, artifacts.pgpass),
+        _ => Check {
+            name: format!("artefato {}", artifact.path),
+            level: Level::Skipped,
+            detail: "sem regra de comparação para este artefato".to_string(),
+        },
+    }
+}
+
+/// Compara o `pgpass.conf` **byte a byte** — o critério do T23 é o arquivo resultante idêntico.
+///
+/// O hash do baseline é do arquivo inteiro, então ele é o veredito; quando difere, o detalhe mostra o
+/// texto dos dois lados com quebras de linha escapadas (sem isso o diff seria invisível). Não há
+/// redacção aqui: o arquivo não guarda caminho.
+fn compare_pgpass_artifact(artifact: &ArtifactCapture, mustel_path: Option<&Path>) -> Check {
     let name = format!("artefato {}", artifact.path);
 
-    if artifact.path != "config" {
+    let Some(mustel_path) = mustel_path else {
         return Check {
             name,
             level: Level::Skipped,
-            detail: "sem regra de comparação para este artefato".to_string(),
+            detail: "caminho do pgpass.conf do Mustel não informado".to_string(),
+        };
+    };
+
+    let oracle_present = artifact.sha256.is_some();
+    let mustel_present = mustel_path.is_file();
+    if !oracle_present && !mustel_present {
+        return Check {
+            name,
+            level: Level::Pass,
+            detail: "ausente nos dois lados".to_string(),
+        };
+    }
+    if oracle_present != mustel_present {
+        return Check {
+            name,
+            level: Level::Fail,
+            detail: format!("presença difere: oráculo={oracle_present} mustel={mustel_present}"),
         };
     }
 
-    let Some(mustel_path) = mustel_config else {
+    let mustel_bytes = std::fs::read(mustel_path).unwrap_or_default();
+    let oracle_hash = artifact.sha256.clone().unwrap_or_default();
+    if oracle_hash == sha256_hex(&mustel_bytes) {
+        return Check {
+            name,
+            level: Level::Pass,
+            detail: format!("arquivo idêntico ({} bytes)", mustel_bytes.len()),
+        };
+    }
+
+    let mustel_text = String::from_utf8_lossy(&mustel_bytes).into_owned();
+    let oracle_text = artifact
+        .text
+        .clone()
+        .unwrap_or_else(|| "<conteúdo não-UTF-8>".to_string());
+    Check {
+        name,
+        level: Level::Fail,
+        detail: format!(
+            "bytes diferem:\n  oráculo: {}\n  mustel:  {}",
+            show_escaped(&oracle_text),
+            show_escaped(&mustel_text)
+        ),
+    }
+}
+
+/// SHA-256 dos bytes, no mesmo formato que o `ArtifactCapture` grava.
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
+}
+
+/// Escapa quebras de linha e tabulações para o diff ficar legível.
+fn show_escaped(text: &str) -> String {
+    text.replace('\r', "\\r")
+        .replace('\n', "\\n")
+        .replace('\t', "\\t")
+}
+
+/// Compara o `mustel.jsonc` por **equivalência de JSON**, com as normalizações registradas.
+fn compare_config_artifact(artifact: &ArtifactCapture, mustel_path: Option<&Path>) -> Check {
+    let name = format!("artefato {}", artifact.path);
+
+    let Some(mustel_path) = mustel_path else {
         return Check {
             name,
             level: Level::Skipped,
@@ -442,6 +535,7 @@ mod tests {
             slug: "x".to_string(),
             argv: vec![],
             config_seed: crate::capture::ConfigSeed::Absent,
+            pgpass_seed: crate::capture::PgPassSeed::Absent,
             exit_code: Some(0),
             stdout: String::new(),
             stderr: String::new(),
@@ -456,8 +550,138 @@ mod tests {
             stderr: String::new(),
         };
 
-        let comparison = compare_case(&baseline, &output, None);
+        let comparison = compare_case(&baseline, &output, MustelArtifacts::default());
         assert_eq!(comparison.worst(), Level::Fail);
         assert_eq!(comparison.checks[0].name, "exit code");
+    }
+
+    /// Captura sintética de um caso que produziu um arquivo.
+    fn capture_of(label: &str, content: &str) -> CommandCapture {
+        CommandCapture {
+            slug: "database-pgpass-add-new".to_string(),
+            argv: vec![],
+            config_seed: crate::capture::ConfigSeed::Absent,
+            pgpass_seed: crate::capture::PgPassSeed::Absent,
+            exit_code: Some(0),
+            stdout: String::new(),
+            stderr: String::new(),
+            stdout_b64: STANDARD.encode([]),
+            stderr_b64: STANDARD.encode([]),
+            artifacts: vec![ArtifactCapture {
+                path: label.to_string(),
+                sha256: Some(sha256_hex(content.as_bytes())),
+                text: Some(content.to_string()),
+            }],
+            notes: vec![],
+        }
+    }
+
+    fn no_output() -> crate::capture::RunOutput {
+        crate::capture::RunOutput {
+            exit_code: Some(0),
+            stdout: String::new(),
+            stderr: String::new(),
+        }
+    }
+
+    /// Localiza a verificação do artefato pelo nome.
+    fn artifact_check<'a>(comparison_case: &'a CaseComparison, label: &str) -> &'a Check {
+        comparison_case
+            .checks
+            .iter()
+            .find(|check| check.name == format!("artefato {label}"))
+            .unwrap_or_else(|| panic!("sem verificação para {label}"))
+    }
+
+    #[test]
+    fn pgpass_artifact_must_be_byte_identical() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("pgpass.conf");
+        let content = "localhost:5432:mydb:postgres:senha123\r\n";
+        std::fs::write(&path, content).expect("write");
+        let baseline = capture_of("pgpass", content);
+        let artifacts = MustelArtifacts {
+            config: None,
+            pgpass: Some(&path),
+        };
+
+        let comparison = compare_case(&baseline, &no_output(), artifacts);
+        assert_eq!(comparison.worst(), Level::Pass);
+        assert!(
+            artifact_check(&comparison, "pgpass")
+                .detail
+                .contains("idêntico"),
+            "{:?}",
+            artifact_check(&comparison, "pgpass")
+        );
+    }
+
+    #[test]
+    fn pgpass_artifact_with_a_different_line_ending_is_a_failure() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("pgpass.conf");
+        let baseline = capture_of("pgpass", "localhost:5432:mydb:postgres:senha123\r\n");
+        std::fs::write(&path, "localhost:5432:mydb:postgres:senha123\n").expect("write");
+        let artifacts = MustelArtifacts {
+            config: None,
+            pgpass: Some(&path),
+        };
+
+        let comparison = compare_case(&baseline, &no_output(), artifacts);
+        let check = artifact_check(&comparison, "pgpass");
+        assert_eq!(check.level, Level::Fail);
+        assert!(
+            check.detail.contains("\\r\\n") && check.detail.contains("bytes diferem"),
+            "o detalhe precisa mostrar a quebra de linha: {}",
+            check.detail
+        );
+    }
+
+    #[test]
+    fn pgpass_artifact_absent_on_both_sides_is_a_pass() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("pgpass.conf");
+        let baseline = CommandCapture {
+            slug: "database-pgpass-list-empty".to_string(),
+            argv: vec![],
+            config_seed: crate::capture::ConfigSeed::Absent,
+            pgpass_seed: crate::capture::PgPassSeed::Absent,
+            exit_code: Some(0),
+            stdout: String::new(),
+            stderr: String::new(),
+            stdout_b64: STANDARD.encode([]),
+            stderr_b64: STANDARD.encode([]),
+            artifacts: vec![ArtifactCapture {
+                path: "pgpass".to_string(),
+                sha256: None,
+                text: None,
+            }],
+            notes: vec![],
+        };
+        let artifacts = MustelArtifacts {
+            config: None,
+            pgpass: Some(&path),
+        };
+
+        let comparison = compare_case(&baseline, &no_output(), artifacts);
+        assert_eq!(comparison.worst(), Level::Pass);
+        assert_eq!(
+            artifact_check(&comparison, "pgpass").detail,
+            "ausente nos dois lados"
+        );
+
+        // Presente de um lado só é falha (criou o que o legado não criou).
+        std::fs::write(&path, "x").expect("write");
+        let comparison = compare_case(&baseline, &no_output(), artifacts);
+        assert_eq!(artifact_check(&comparison, "pgpass").level, Level::Fail);
+    }
+
+    #[test]
+    fn an_unknown_artifact_label_is_skipped_with_a_reason() {
+        let baseline = capture_of("backup", "dados");
+        let comparison = compare_case(&baseline, &no_output(), MustelArtifacts::default());
+        let check = artifact_check(&comparison, "backup");
+        assert_eq!(check.level, Level::Skipped);
+        assert!(check.detail.contains("sem regra"));
     }
 }

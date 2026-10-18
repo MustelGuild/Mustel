@@ -6,6 +6,7 @@
     "--help"
   ],
   "config_seed": "absent",
+  "pgpass_seed": "unchanged",
   "exit_code": 0,
   "stdout": "DESCRIPTION:\r\nManage configured database servers\r\n\r\nUSAGE:\r\n    fur settings db-servers [OPTIONS] <COMMAND>\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n\r\nCOMMANDS:\r\n    ls               \r\n    add              \r\n    rm               \r\n    test             \r\n    set-password     \r\n",
   "stderr": "",

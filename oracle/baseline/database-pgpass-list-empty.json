@@ -1,0 +1,25 @@
+{
+  "slug": "database-pgpass-list-empty",
+  "argv": [
+    "database",
+    "pgpass",
+    "list"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "absent",
+  "exit_code": 0,
+  "stdout": "No entries configured in pgpass.conf.\r\n",
+  "stderr": "",
+  "stdout_b64": "Tm8gZW50cmllcyBjb25maWd1cmVkIGluIHBncGFzcy5jb25mLg0K",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "pgpass",
+      "sha256": null,
+      "text": null
+    }
+  ],
+  "notes": [
+    "arquivo ausente: `No entries configured in pgpass.conf.` com exit 0"
+  ]
+}

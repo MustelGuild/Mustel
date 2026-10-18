@@ -65,6 +65,17 @@ pub fn mustel_config_file() -> PathBuf {
     mustel_config_dir().join("mustel.jsonc")
 }
 
+/// Caminho do `pgpass.conf` isolado usado nas comparações.
+///
+/// Fica dentro do diretório de trabalho do harness (ignorado pelo Git) e chega ao `mustel` por
+/// `MUSTEL_PGPASS_FILE` — o arquivo real do usuário nunca é tocado do lado do Mustel.
+pub fn mustel_pgpass_file() -> PathBuf {
+    workspace_dir()
+        .join("mustel-pgpass")
+        .join("postgresql")
+        .join("pgpass.conf")
+}
+
 /// Nomes possíveis do executável publicado do legado.
 const ORACLE_EXE_NAMES: [&str; 2] = ["FurLab.CLI", "fur"];
 

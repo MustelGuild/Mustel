@@ -8,6 +8,7 @@
     "nao-existe"
   ],
   "config_seed": "fixture",
+  "pgpass_seed": "unchanged",
   "exit_code": 41,
   "stdout": "Error: Server 'nao-existe' not found.\r\n",
   "stderr": "",

@@ -7,6 +7,7 @@
     "--help"
   ],
   "config_seed": "absent",
+  "pgpass_seed": "unchanged",
   "exit_code": 0,
   "stdout": "USAGE:\r\n    fur database pgpass add [OPTIONS]\r\n\r\nOPTIONS:\r\n    -h, --help        Prints help information                                   \r\n        --database    Database name (or * for wildcard)                         \r\n        --host        Hostname or IP address of the PostgreSQL server           \r\n        --port        TCP port of the PostgreSQL server                         \r\n        --username    PostgreSQL username                                       \r\n        --password    PostgreSQL password. Prompted interactively if not        \r\n                      provided                                                  \r\n",
   "stderr": "",

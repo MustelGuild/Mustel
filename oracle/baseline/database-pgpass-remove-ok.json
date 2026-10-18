@@ -1,0 +1,33 @@
+{
+  "slug": "database-pgpass-remove-ok",
+  "argv": [
+    "database",
+    "pgpass",
+    "remove",
+    "app_dev",
+    "--host",
+    "db.interno",
+    "--port",
+    "5433",
+    "--username",
+    "deploy"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "fixture",
+  "exit_code": 0,
+  "stdout": "Entry removed: db.interno:5433:app_dev:deploy\r\n",
+  "stderr": "",
+  "stdout_b64": "RW50cnkgcmVtb3ZlZDogZGIuaW50ZXJubzo1NDMzOmFwcF9kZXY6ZGVwbG95DQo=",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "pgpass",
+      "sha256": "6b1906e06717f0bad3b7b76820d80e66414aadba918976cff68eba1471b010c9",
+      "text": "# exemplo\r\nlocalhost:5432:mydb:postgres:senha123\r\n"
+    }
+  ],
+  "notes": [
+    "a chave é host:porta:banco:usuário — remover pelo banco sozinho não acharia",
+    "o comentário do fixture tem de sobreviver à reescrita"
+  ]
+}

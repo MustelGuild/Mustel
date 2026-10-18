@@ -1,0 +1,26 @@
+{
+  "slug": "error-pgpass-add-missing-database",
+  "argv": [
+    "database",
+    "pgpass",
+    "add"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "absent",
+  "exit_code": 2,
+  "stdout": "Error: the --database argument is required.\r\n",
+  "stderr": "",
+  "stdout_b64": "RXJyb3I6IHRoZSAtLWRhdGFiYXNlIGFyZ3VtZW50IGlzIHJlcXVpcmVkLg0K",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "pgpass",
+      "sha256": null,
+      "text": null
+    }
+  ],
+  "notes": [
+    "sem `--database`: o legado valida o banco antes da senha, então não chega a pedir senha",
+    "exit 2 vem do corpo do comando, não do parser (que sai com 1)"
+  ]
+}

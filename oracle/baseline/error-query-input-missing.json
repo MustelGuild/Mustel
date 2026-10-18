@@ -8,6 +8,7 @@
     "--no-confirm"
   ],
   "config_seed": "absent",
+  "pgpass_seed": "unchanged",
   "exit_code": 1,
   "stdout": "Error: SQL input file not found: \r\n<REPO>\\oracle\\\r\nworkdir\\nao-existe.sql\r\n",
   "stderr": "",

@@ -108,7 +108,17 @@ mod tests {
             assert!(is_valid_host(valid), "deveria aceitar {valid}");
         }
 
-        for invalid in ["", "   ", "host_com_underscore", "-leading.example"] {
+        // ` * ` e `* ` são da spec `pgpass-wildcard-validation`: o curinga é a string inteira.
+        for invalid in [
+            "",
+            "   ",
+            "host_com_underscore",
+            "-leading.example",
+            " * ",
+            "* ",
+            " *",
+            "**",
+        ] {
             assert!(!is_valid_host(invalid), "deveria recusar {invalid}");
         }
     }
@@ -125,7 +135,8 @@ mod tests {
             assert!(is_valid_username(valid), "deveria aceitar {valid}");
         }
 
-        for invalid in ["", "with space", "quotes'", &"a".repeat(64)] {
+        // O curinga com espaço em volta é recusado (spec `pgpass-wildcard-validation`).
+        for invalid in ["", "with space", "quotes'", " * ", "* ", &"a".repeat(64)] {
             assert!(!is_valid_username(invalid), "deveria recusar {invalid}");
         }
     }
@@ -137,10 +148,9 @@ mod tests {
         assert!(is_valid_port("65535"));
         assert!(is_valid_port("*"));
 
-        assert!(!is_valid_port("0"));
-        assert!(!is_valid_port("65536"));
-        assert!(!is_valid_port("abc"));
-        assert!(!is_valid_port(""));
+        for invalid in ["0", "65536", "abc", "", " * ", "* ", "-"] {
+            assert!(!is_valid_port(invalid), "deveria recusar {invalid}");
+        }
     }
 
     #[test]

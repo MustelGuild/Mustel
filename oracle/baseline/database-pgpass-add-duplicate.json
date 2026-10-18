@@ -1,0 +1,30 @@
+{
+  "slug": "database-pgpass-add-duplicate",
+  "argv": [
+    "database",
+    "pgpass",
+    "add",
+    "--database",
+    "mydb",
+    "--password",
+    "outra_senha"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "fixture",
+  "exit_code": 0,
+  "stdout": "Entry already exists: localhost:5432:mydb:postgres\r\n",
+  "stderr": "",
+  "stdout_b64": "RW50cnkgYWxyZWFkeSBleGlzdHM6IGxvY2FsaG9zdDo1NDMyOm15ZGI6cG9zdGdyZXMNCg==",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "pgpass",
+      "sha256": "0312ebe5d0664f68f085eaa9d60362a7e14756e965b622d30711b4ccfd1770bc",
+      "text": "# exemplo\r\nlocalhost:5432:mydb:postgres:senha123\r\ndb.interno:5433:app_dev:deploy:outra_senha\r\n"
+    }
+  ],
+  "notes": [
+    "identidade já no arquivo: exit 0, mensagem `Entry already exists` e arquivo intacto",
+    "a senha não faz parte da identidade"
+  ]
+}

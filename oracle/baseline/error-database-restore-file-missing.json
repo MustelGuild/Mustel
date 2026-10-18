@@ -7,6 +7,7 @@
     "nao-existe.dump"
   ],
   "config_seed": "absent",
+  "pgpass_seed": "unchanged",
   "exit_code": 1,
   "stdout": "Enter password: Error: Cannot read keys when either application does not have a console or when \r\nconsole input has been redirected. Try Console.Read.\r\n",
   "stderr": "",

@@ -6,6 +6,7 @@
     "ls"
   ],
   "config_seed": "absent",
+  "pgpass_seed": "unchanged",
   "exit_code": 0,
   "stdout": "No servers configured. Use 'fur settings db-servers add' to add one.\r\n",
   "stderr": "",

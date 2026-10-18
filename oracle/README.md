@@ -34,6 +34,17 @@ O `oracle-capture` **preserva a configuração real do usuário**: ele salva
 `%LOCALAPPDATA%\FurLab\furlab.jsonc`, semeia os fixtures, captura e restaura no fim (inclusive em
 pânico, via `Drop`).
 
+O mesmo vale para o **`pgpass.conf`** (`%APPDATA%\postgresql\pgpass.conf`), que o legado resolve por
+`SpecialFolder.ApplicationData`: como no Windows esse valor vem do **registro**, apontar `%APPDATA%`
+para outro diretório não muda o arquivo lido (verificado na prática). Como esse arquivo guarda
+**senhas em texto claro**, o harness grava também uma cópia em `oracle/workdir/legacy-pgpass.backup`
+antes de sobrescrever — se o processo morrer sem passar pelo `Drop`, a recuperação é copiar o arquivo
+de volta. Nenhum caso do baseline pode rodar sem semear o `pgpass.conf` (o `oracle-capture` recusa, com
+erro, um caso de `pgpass` com `pgpass_seed: unchanged`).
+
+Do lado do Mustel o arquivo é **outro**: `oracle/workdir/mustel-pgpass/postgresql/pgpass.conf`, chegado
+ao processo por `MUSTEL_PGPASS_FILE`. O arquivo real do usuário nunca é tocado pelo `mustel`.
+
 ## Fatos de paridade já observados (T9)
 
 | Observação | Consequência para o Mustel |
@@ -52,6 +63,7 @@ pânico, via `Drop`).
 |------|-------|-------|
 | exit code | **contrato** | igual ao oráculo, sempre |
 | artefatos (config) | **contrato** | JSON equivalente, com `encryptedPassword`/`password` removidos |
+| artefatos (pgpass) | **contrato** | conteúdo **byte a byte** (o `add` anexa e o `remove` reescreve com a quebra de linha do SO) |
 | flags longas nos casos de ajuda | **contrato** | toda flag do oráculo precisa existir no Mustel; extras são informativas |
 | stdout/stderr | aviso N4 | redação difere por framework; pulado quando a saída do oráculo não é UTF-8 |
 | comando ainda não migrado | pulado | não é falha enquanto o stub existir |
@@ -69,6 +81,13 @@ Fatos adicionais aprendidos na comparação:
 - Com a configuração real do usuário presente o comportamento muda (existe senha salva): por isso
   **todo caso do baseline fixa o estado da config** (`config_seed`), senão o baseline não é
   reproduzível.
+- `database pgpass add` **não** aceita o banco como posicional: `fur database pgpass add mydb`
+  responde `Error: Unknown command 'mydb'.` (exit 1). A forma posicional do Mustel é adição
+  deliberada (item 5 de `known-divergences.md`), então nenhum caso do baseline pode usá-la — o argv
+  de um caso roda nos **dois** binários.
+- O exit **2** de `pgpass add` (banco ausente, host inválido, porta inválida) vem do **corpo** do
+  comando legado (`return Task.FromResult(2)`), não do parser: o mustel precisa devolver `Ok(2)` ali,
+  e não passar pelo mapeamento de `CoreError` (que daria 41).
 
 ## Próximo passo
 

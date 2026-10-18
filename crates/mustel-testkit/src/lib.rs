@@ -13,4 +13,5 @@ pub mod compare;
 pub mod config_sandbox;
 pub mod paths;
 pub mod perf;
+pub mod pgpass_sandbox;
 pub mod report;

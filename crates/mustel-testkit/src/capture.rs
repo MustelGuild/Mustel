@@ -97,6 +97,27 @@ pub enum ConfigSeed {
     Fixture,
 }
 
+/// Como o `pgpass.conf` deve estar antes da execução.
+///
+/// Sem isto o comparador teria de adivinhar pelo texto das observações; e é **obrigatório** para
+/// casos de `pgpass`: sem semear, o oráculo leria o arquivo real do usuário (que pode ter
+/// credenciais de verdade) e o conteúdo iria para o baseline versionado.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PgPassSeed {
+    /// O comando não lê nem escreve o `pgpass.conf`.
+    #[default]
+    Unchanged,
+    /// O arquivo **não** existe.
+    Absent,
+    /// O arquivo tem as duas entradas de exemplo do harness.
+    Fixture,
+    /// O arquivo tem uma entrada **sem** quebra de linha no fim.
+    NoTrailingNewline,
+    /// O arquivo tem uma entrada com o host curinga (`*:5432:mydb:postgres`).
+    Wildcard,
+}
+
 /// Uma captura completa (comando + saída + artefatos).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandCapture {
@@ -107,6 +128,9 @@ pub struct CommandCapture {
     /// Estado inicial da configuração do usuário.
     #[serde(default)]
     pub config_seed: ConfigSeed,
+    /// Estado inicial do `pgpass.conf` do usuário.
+    #[serde(default)]
+    pub pgpass_seed: PgPassSeed,
     /// Saída do processo.
     pub exit_code: Option<i32>,
     /// stdout decodificado como UTF-8 (lossy, para leitura humana).
@@ -136,6 +160,7 @@ impl CommandCapture {
             slug: slug.to_string(),
             argv: argv.iter().map(|arg| (*arg).to_string()).collect(),
             config_seed: ConfigSeed::default(),
+            pgpass_seed: PgPassSeed::default(),
             exit_code: output.status.code(),
             stdout: redact(&String::from_utf8_lossy(&output.stdout)),
             stderr: redact(&String::from_utf8_lossy(&output.stderr)),
@@ -149,6 +174,12 @@ impl CommandCapture {
     /// Define o estado inicial da configuração do usuário.
     pub fn with_seed(mut self, seed: ConfigSeed) -> Self {
         self.config_seed = seed;
+        self
+    }
+
+    /// Define o estado inicial do `pgpass.conf` do usuário.
+    pub fn with_pgpass_seed(mut self, seed: PgPassSeed) -> Self {
+        self.pgpass_seed = seed;
         self
     }
 

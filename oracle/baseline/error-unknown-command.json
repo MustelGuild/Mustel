@@ -4,6 +4,7 @@
     "nao-existe"
   ],
   "config_seed": "absent",
+  "pgpass_seed": "unchanged",
   "exit_code": 1,
   "stdout": "Error: Unknown command 'nao-existe'.\r\n",
   "stderr": "",

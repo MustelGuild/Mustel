@@ -7,6 +7,7 @@
     "--help"
   ],
   "config_seed": "absent",
+  "pgpass_seed": "unchanged",
   "exit_code": 0,
   "stdout": "USAGE:\r\n    fur settings db-servers ls [OPTIONS]\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n",
   "stderr": "",

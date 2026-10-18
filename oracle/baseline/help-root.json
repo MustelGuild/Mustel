@@ -4,6 +4,7 @@
     "--help"
   ],
   "config_seed": "absent",
+  "pgpass_seed": "unchanged",
   "exit_code": 0,
   "stdout": "USAGE:\r\n    fur [OPTIONS] <COMMAND>\r\n\r\nOPTIONS:\r\n    -h, --help    Prints help information\r\n\r\nCOMMANDS:\r\n    file               File utilities                                  \r\n    claude             Comandos para Claude Code                       \r\n    opencode           Comandos para OpenCode                          \r\n    winget             Manage winget packages                          \r\n    database           Database utilities                              \r\n    query              Execute SQL queries and export results to CSV   \r\n    windowsfeatures    Export and import Windows optional features     \r\n    docker             Docker utilities                                \r\n    settings           Manage FurLab settings and server configurations\r\n",
   "stderr": "",

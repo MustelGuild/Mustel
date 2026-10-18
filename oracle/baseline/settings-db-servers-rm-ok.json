@@ -8,6 +8,7 @@
     "dev"
   ],
   "config_seed": "fixture",
+  "pgpass_seed": "unchanged",
   "exit_code": 0,
   "stdout": "Server 'dev' removed successfully.\r\n",
   "stderr": "",

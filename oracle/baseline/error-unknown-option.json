@@ -6,6 +6,7 @@
     "--nao-existe"
   ],
   "config_seed": "absent",
+  "pgpass_seed": "unchanged",
   "exit_code": 1,
   "stdout": "Error: Use -c for an inline query or -i for a SQL file.\r\n",
   "stderr": "",

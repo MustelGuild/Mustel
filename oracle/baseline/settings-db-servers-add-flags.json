@@ -16,6 +16,7 @@
     "mydb,app_dev"
   ],
   "config_seed": "absent",
+  "pgpass_seed": "unchanged",
   "exit_code": 0,
   "stdout": "Server 'capturado' added successfully.\r\nUse 'fur settings db-servers set-password capturado' to set the password.\r\n",
   "stderr": "",

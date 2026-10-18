@@ -1,0 +1,26 @@
+{
+  "slug": "database-pgpass-list-seeded",
+  "argv": [
+    "database",
+    "pgpass",
+    "list"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "fixture",
+  "exit_code": 0,
+  "stdout": "                     pgpass.conf                      \r\n����������������������������������������������������Ŀ\r\n� HOSTNAME   � PORT � DATABASE � USERNAME � PASSWORD �\r\n����������������������������������������������������Ĵ\r\n� localhost  � 5432 � mydb     � postgres � ****     �\r\n� db.interno � 5433 � app_dev  � deploy   � ****     �\r\n������������������������������������������������������\r\n",
+  "stderr": "",
+  "stdout_b64": "ICAgICAgICAgICAgICAgICAgICAgcGdwYXNzLmNvbmYgICAgICAgICAgICAgICAgICAgICAgDQraxMTExMTExMTExMTEwsTExMTExMLExMTExMTExMTEwsTExMTExMTExMTCxMTExMTExMTExL8NCrMgSE9TVE5BTUUgICCzIFBPUlQgsyBEQVRBQkFTRSCzIFVTRVJOQU1FILMgUEFTU1dPUkQgsw0Kw8TExMTExMTExMTExMXExMTExMTFxMTExMTExMTExMXExMTExMTExMTExcTExMTExMTExMS0DQqzIGxvY2FsaG9zdCAgsyA1NDMyILMgbXlkYiAgICAgsyBwb3N0Z3JlcyCzICoqKiogICAgILMNCrMgZGIuaW50ZXJubyCzIDU0MzMgsyBhcHBfZGV2ICCzIGRlcGxveSAgILMgKioqKiAgICAgsw0KwMTExMTExMTExMTExMHExMTExMTBxMTExMTExMTExMHExMTExMTExMTEwcTExMTExMTExMTZDQo=",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "pgpass",
+      "sha256": "0312ebe5d0664f68f085eaa9d60362a7e14756e965b622d30711b4ccfd1770bc",
+      "text": "# exemplo\r\nlocalhost:5432:mydb:postgres:senha123\r\ndb.interno:5433:app_dev:deploy:outra_senha\r\n"
+    }
+  ],
+  "notes": [
+    "tabela é N4 (codepage do console); o comparador confere o conteúdo por tokens ASCII",
+    "o comentário do fixture não pode aparecer na listagem"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "slug": "database-pgpass-add-appends-to-a-file-without-final-newline",
+  "argv": [
+    "database",
+    "pgpass",
+    "add",
+    "--database",
+    "novo",
+    "--password",
+    "senha_nova"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "no-trailing-newline",
+  "exit_code": 0,
+  "stdout": "Entry added: localhost:5432:novo:postgres\r\n",
+  "stderr": "",
+  "stdout_b64": "RW50cnkgYWRkZWQ6IGxvY2FsaG9zdDo1NDMyOm5vdm86cG9zdGdyZXMNCg==",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "pgpass",
+      "sha256": "d57fcd61409eb5dfd6b5be781466783a2cbfe1d7ffe0bc1235432585c59932a4",
+      "text": "localhost:5432:mydb:postgres:senha123localhost:5432:novo:postgres:senha_nova\r\n"
+    }
+  ],
+  "notes": [
+    "arquivo sem quebra de linha no fim: a entrada nova entra **colada** na última",
+    "comportamento do `File.AppendAllText` — paridade mesmo onde é feio"
+  ]
+}

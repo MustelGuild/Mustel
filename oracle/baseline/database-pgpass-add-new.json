@@ -1,0 +1,29 @@
+{
+  "slug": "database-pgpass-add-new",
+  "argv": [
+    "database",
+    "pgpass",
+    "add",
+    "--database",
+    "mydb",
+    "--password",
+    "senha123"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "absent",
+  "exit_code": 0,
+  "stdout": "Entry added: localhost:5432:mydb:postgres\r\n",
+  "stderr": "",
+  "stdout_b64": "RW50cnkgYWRkZWQ6IGxvY2FsaG9zdDo1NDMyOm15ZGI6cG9zdGdyZXMNCg==",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "pgpass",
+      "sha256": "fc703589e386d3cf81ec2d4ece58270e5a3691cceba47e3e814cafa40db73eac",
+      "text": "localhost:5432:mydb:postgres:senha123\r\n"
+    }
+  ],
+  "notes": [
+    "arquivo ausente: o comando cria o diretório e o arquivo"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "slug": "database-pgpass-remove-wildcard-host",
+  "argv": [
+    "database",
+    "pgpass",
+    "remove",
+    "mydb",
+    "--host",
+    "*"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "wildcard",
+  "exit_code": 0,
+  "stdout": "Entry removed: *:5432:mydb:postgres\r\n",
+  "stderr": "",
+  "stdout_b64": "RW50cnkgcmVtb3ZlZDogKjo1NDMyOm15ZGI6cG9zdGdyZXMNCg==",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "pgpass",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    }
+  ],
+  "notes": [
+    "cenário da spec `pgpass-cli-setup`: `--host \"*\"` remove a entrada curinga `*:5432:mydb:postgres`",
+    "o `remove` não valida host: o curinga entra na chave como texto"
+  ]
+}

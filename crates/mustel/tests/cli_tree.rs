@@ -2,12 +2,31 @@
 //!
 //! Usam `std::process::Command` com `CARGO_BIN_EXE_mustel` em vez de `assert_cmd` — menos uma
 //! dependência e sem API depreciada.
+//!
+//! **Isolamento:** todo processo filho herda `MUSTEL_CONFIG_DIR` e `MUSTEL_PGPASS_FILE` apontando para
+//! um diretório temporário. Sem isso, um comando de `pgpass` ou de `settings` da suíte escreveria no
+//! `mustel.jsonc` e no `pgpass.conf` **reais** do usuário (o último guarda senhas de verdade).
 
+use std::path::PathBuf;
 use std::process::{Command, Output};
+
+/// Diretório temporário compartilhado pelas invocações de um teste.
+fn sandbox_dir() -> PathBuf {
+    let dir = std::env::temp_dir().join("mustel-cli-tree");
+    std::fs::create_dir_all(&dir).expect("sandbox dir");
+    dir
+}
+
+/// Caminho isolado do `pgpass.conf` usado pelos testes.
+fn sandbox_pgpass_file() -> PathBuf {
+    sandbox_dir().join("postgresql").join("pgpass.conf")
+}
 
 fn mustel(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_mustel"))
         .args(args)
+        .env("MUSTEL_CONFIG_DIR", sandbox_dir().join("config"))
+        .env("MUSTEL_PGPASS_FILE", sandbox_pgpass_file())
         .output()
         .expect("binary must run")
 }
@@ -151,21 +170,40 @@ fn flags_follow_the_legacy_contract() {
 #[test]
 fn pgpass_add_accepts_the_database_as_a_positional_argument() {
     // Decisão do usuário: `pgpass add <banco>` (documentado) é a forma correta, e `--database` fica
-    // por compatibilidade. Aqui só se verifica que a árvore aceita as duas formas sem erro de uso
-    // (o comando em si ainda é stub).
-    let output = mustel(&["database", "pgpass", "add", "mydb"]);
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "stub must run for the positional form"
-    );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("not implemented yet"));
+    // por compatibilidade. As duas formas convivem; juntas são ambíguas e o parser recusa.
+    //
+    // O arquivo do usuário não é tocado: `mustel()` aponta `MUSTEL_PGPASS_FILE` para um temporário,
+    // que é zerado aqui para o resultado não depender de execuções anteriores.
+    let _ = std::fs::remove_file(sandbox_pgpass_file());
 
-    let output = mustel(&["database", "pgpass", "add", "--database", "mydb"]);
+    let output = mustel(&["database", "pgpass", "add", "mydb", "--password", "senha"]);
+    assert_eq!(output.status.code(), Some(0), "forma posicional");
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Entry added: localhost:5432:mydb:postgres"),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+
+    let output = mustel(&[
+        "database",
+        "pgpass",
+        "add",
+        "--database",
+        "outro",
+        "--password",
+        "senha",
+    ]);
     assert_eq!(
         output.status.code(),
-        Some(1),
-        "stub must run for the option form"
+        Some(0),
+        "forma herdada (`--database`)"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Entry added: localhost:5432:outro:postgres"),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
     );
 
     // As duas formas juntas são ambíguas e devem ser recusadas pelo parser.
@@ -186,9 +224,6 @@ const STUB_INVOCATIONS: &[&[&str]] = &[
     &["query", "run"],
     &["database", "backup"],
     &["database", "restore"],
-    &["database", "pgpass", "add"],
-    &["database", "pgpass", "list"],
-    &["database", "pgpass", "remove", "mydb"],
 ];
 
 /// Comandos já migrados: precisam executar de verdade (sem "not implemented").
@@ -198,6 +233,9 @@ const IMPLEMENTED_COMMANDS: &[&[&str]] = &[
     &["settings", "db-servers", "rm"],
     &["settings", "db-servers", "set-password"],
     &["settings", "db-servers", "test"],
+    &["database", "pgpass", "add"],
+    &["database", "pgpass", "list"],
+    &["database", "pgpass", "remove", "mydb"],
 ];
 
 #[test]

@@ -1,0 +1,26 @@
+{
+  "slug": "database-pgpass-remove-not-found",
+  "argv": [
+    "database",
+    "pgpass",
+    "remove",
+    "nao-existe"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "fixture",
+  "exit_code": 0,
+  "stdout": "Entry not found: localhost:5432:nao-existe:postgres\r\n",
+  "stderr": "",
+  "stdout_b64": "RW50cnkgbm90IGZvdW5kOiBsb2NhbGhvc3Q6NTQzMjpuYW8tZXhpc3RlOnBvc3RncmVzDQo=",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "pgpass",
+      "sha256": "0312ebe5d0664f68f085eaa9d60362a7e14756e965b622d30711b4ccfd1770bc",
+      "text": "# exemplo\r\nlocalhost:5432:mydb:postgres:senha123\r\ndb.interno:5433:app_dev:deploy:outra_senha\r\n"
+    }
+  ],
+  "notes": [
+    "entrada inexistente → `Entry not found: ...` e exit **0** (não é erro) e arquivo intacto"
+  ]
+}

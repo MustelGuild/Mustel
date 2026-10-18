@@ -7,6 +7,7 @@
     "--help"
   ],
   "config_seed": "absent",
+  "pgpass_seed": "unchanged",
   "exit_code": 0,
   "stdout": "USAGE:\r\n    fur settings db-servers add [OPTIONS]\r\n\r\nOPTIONS:\r\n    -h, --help                Prints help information                           \r\n    -n, --name                Server name (unique identifier)                   \r\n    -H, --host                Database host address                             \r\n    -p, --port                Database port. Default: 5432                      \r\n    -U, --username            Database username                                 \r\n    -d, --databases           Comma-separated list of specific databases        \r\n        --ssl-mode            SSL mode (Disable, Allow, Prefer, Require,        \r\n                              VerifyCA, VerifyFull)                             \r\n        --timeout             Connection timeout in seconds                     \r\n        --max-parallelism     Max degree of parallelism                         \r\n        --fetch-all           Auto-discover all databases on server             \r\n        --exclude-patterns    Comma-separated patterns to exclude from          \r\n                              auto-discovery                                    \r\n",
   "stderr": "",

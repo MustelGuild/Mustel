@@ -1,0 +1,31 @@
+{
+  "slug": "error-pgpass-add-invalid-host",
+  "argv": [
+    "database",
+    "pgpass",
+    "add",
+    "--database",
+    "mydb",
+    "--host",
+    "host_com_underscore",
+    "--password",
+    "senha"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "absent",
+  "exit_code": 2,
+  "stdout": "Error: invalid host format: \"host_com_underscore\".\r\n",
+  "stderr": "",
+  "stdout_b64": "RXJyb3I6IGludmFsaWQgaG9zdCBmb3JtYXQ6ICJob3N0X2NvbV91bmRlcnNjb3JlIi4NCg==",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "pgpass",
+      "sha256": null,
+      "text": null
+    }
+  ],
+  "notes": [
+    "host recusado por `SecurityUtils.IsValidHost` (o curinga `*` passa)"
+  ]
+}

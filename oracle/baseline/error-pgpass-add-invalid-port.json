@@ -1,0 +1,31 @@
+{
+  "slug": "error-pgpass-add-invalid-port",
+  "argv": [
+    "database",
+    "pgpass",
+    "add",
+    "--database",
+    "mydb",
+    "--port",
+    "70000",
+    "--password",
+    "senha"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "absent",
+  "exit_code": 2,
+  "stdout": "Error: port must be a number between 1 and 65535.\r\n",
+  "stderr": "",
+  "stdout_b64": "RXJyb3I6IHBvcnQgbXVzdCBiZSBhIG51bWJlciBiZXR3ZWVuIDEgYW5kIDY1NTM1Lg0K",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "pgpass",
+      "sha256": null,
+      "text": null
+    }
+  ],
+  "notes": [
+    "porta fora de 1–65535; o curinga `*` passa"
+  ]
+}

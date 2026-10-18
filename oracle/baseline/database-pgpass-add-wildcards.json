@@ -1,0 +1,35 @@
+{
+  "slug": "database-pgpass-add-wildcards",
+  "argv": [
+    "database",
+    "pgpass",
+    "add",
+    "--database",
+    "*",
+    "--host",
+    "*",
+    "--port",
+    "*",
+    "--username",
+    "*",
+    "--password",
+    "senhapadrao"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "absent",
+  "exit_code": 0,
+  "stdout": "Entry added: *:*:*:*\r\n",
+  "stderr": "",
+  "stdout_b64": "RW50cnkgYWRkZWQ6ICo6KjoqOioNCg==",
+  "stderr_b64": "",
+  "artifacts": [
+    {
+      "path": "pgpass",
+      "sha256": "3a2339ae979e8c385a211191000b7ffc8d0cf2544af83d6f08d7bdad858bbe56",
+      "text": "*:*:*:*:senhapadrao\r\n"
+    }
+  ],
+  "notes": [
+    "curinga em host, porta, banco e usuário (spec `pgpass-wildcard-validation`)"
+  ]
+}

@@ -8,6 +8,7 @@
     "offline"
   ],
   "config_seed": "fixture",
+  "pgpass_seed": "unchanged",
   "exit_code": 40,
   "stdout": "Testing connection to offline (127.0.0.1:1)...\r\nNo password found for 'offline'. Type to test (will not be saved):\r\nPassword: Error: Failed to read input in non-interactive mode.\r\n",
   "stderr": "",

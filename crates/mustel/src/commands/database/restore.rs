@@ -191,6 +191,9 @@ fn resolve_password(
 }
 
 /// Restaura um banco a partir de um arquivo.
+///
+/// O caminho do arquivo é validado aqui (`IsValidPath` → existência), **como no legado**: o
+/// `RestoreSingleDatabase` faz as duas checagens antes de procurar o binário.
 async fn restore_single(
     args: &DatabaseRestoreArgs,
     connection: &Connection,
@@ -202,8 +205,9 @@ async fn restore_single(
         .input_file
         .clone()
         .unwrap_or_else(|| dump_file_name(&connection.database));
+    let full_path = resolve_input_file(&input_path).map_err(Failure::Printed)?;
 
-    run_restore_for_file(args, connection, password, locator, &input_path, token).await
+    pg_restore_file(args, connection, password, locator, &full_path, token).await
 }
 
 /// Caminho do arquivo já validado e existente, ou a falha do legado.
@@ -232,17 +236,19 @@ fn resolve_input_file(input_path: &str) -> Result<String, Printed> {
     Ok(full_path)
 }
 
-/// Restaura um arquivo de dump já resolvido (usado pelo banco único e pelo `--all`).
-async fn run_restore_for_file(
+/// Roda o `pg_restore` para um arquivo já resolvido.
+///
+/// O `--all` chama isto **direto**, sem passar por [`resolve_input_file`]: o legado também não
+/// revalida o arquivo que veio da listagem do diretório (`RestoreSingleDatabaseInternal` não tem
+/// `IsValidPath` nem `File.Exists`).
+async fn pg_restore_file(
     args: &DatabaseRestoreArgs,
     connection: &Connection,
     password: &str,
     locator: &PostgresBinaryLocator,
-    input_path: &str,
+    full_path: &str,
     token: &CancellationToken,
 ) -> Result<i32, Failure> {
-    let full_path = resolve_input_file(input_path).map_err(Failure::Printed)?;
-
     let Some(pg_restore) = locator.find_pg_restore() else {
         return Err(Failure::Printed(Printed::new(
             1,
@@ -253,7 +259,7 @@ async fn run_restore_for_file(
     create_database_if_needed(locator, connection, password, &connection.database, token).await?;
 
     let options = ProcessOptions::new(&pg_restore)
-        .with_args(build_pg_restore_args(args, connection, &full_path))
+        .with_args(build_pg_restore_args(args, connection, full_path))
         .with_env("PGPASSWORD", password);
     let options = with_connection_environment(options, args);
 
@@ -331,11 +337,11 @@ async fn restore_all(
             host: connection.host.clone(),
             port: connection.port.clone(),
             username: connection.username.clone(),
-            database,
+            database: database.clone(),
         };
         let input_path = dump.display().to_string();
 
-        match run_restore_for_file(
+        match pg_restore_file(
             &single,
             &single_connection,
             password,
@@ -346,8 +352,12 @@ async fn restore_all(
         .await
         {
             Ok(_) => {}
-            // Uma falha por banco não derruba o comando: o legado registra e segue.
-            Err(Failure::Printed(printed)) => println!("{}", printed.message),
+            // Uma falha por arquivo não derruba o comando: o legado embrulha a mensagem da exceção
+            // no `LogError` (`Failed to restore database 'x': {ex.Message}`) e segue.
+            Err(Failure::Printed(printed)) => println!(
+                "Failed to restore database '{database}': {}",
+                printed.bare_message()
+            ),
             Err(failure) => return Err(failure),
         }
     }
@@ -804,6 +814,35 @@ mod tests {
 
         // No `restore` o binário ausente sai com 1; no `backup` sai com 3.
         assert_eq!(exit, 1);
+    }
+
+    #[tokio::test]
+    async fn all_wraps_each_failure_like_the_legacy() {
+        // Um `.dump` cujo banco não existe: o legado imprime (via `LogError`)
+        // `Failed to restore database 'x': {ex.Message}` e **segue**, terminando com 0.
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        std::fs::write(
+            dir.path().join("banco_inexistente.dump"),
+            b"nao sou um dump",
+        )
+        .expect("cria dump");
+
+        let mut command = args(None);
+        command.all = true;
+        command.directory = Some(dir.path().display().to_string());
+
+        // O localizador vazio faz o comando parar antes do `pg_restore`: a mensagem embrulhada
+        // também vale para o binário ausente.
+        let exit = run_with(
+            command,
+            &empty_locator(),
+            &always_stored,
+            &cancellation_token(),
+        )
+        .await
+        .expect("roda");
+
+        assert_eq!(exit, 0, "falha por arquivo não derruba o `--all`");
     }
 
     #[tokio::test]

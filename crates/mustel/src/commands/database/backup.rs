@@ -245,9 +245,11 @@ async fn backup_all(
         };
 
         match run_pg_dump(&pg_dump, args, &single, password, &output_path, token).await {
-            // Uma falha por banco não derruba o comando: o legado imprime o erro e segue.
-            Ok(PgDumpOutcome::Failed { exit_code, .. }) => println!(
-                "Failed to backup database '{database}': pg_dump failed with exit code {exit_code}"
+            // Uma falha por banco não derruba o comando: o legado embrulha a mensagem da exceção no
+            // `LogError` (`Failed to backup database 'x': {ex.Message}`) e segue.
+            Ok(PgDumpOutcome::Failed { exit_code, stderr }) => println!(
+                "Failed to backup database '{database}': pg_dump failed with exit code {exit_code}. \
+                 Error: {stderr}"
             ),
             Ok(PgDumpOutcome::Success) => {}
             // Cancelamento e erro de execução não são "falha daquele banco" e sobem.

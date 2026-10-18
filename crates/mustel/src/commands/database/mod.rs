@@ -40,6 +40,35 @@ impl Printed {
             message: message.into(),
         }
     }
+
+    /// Mensagem **sem** o prefixo `Error: ` — o texto da exceção do legado.
+    ///
+    /// O legado imprime os erros de duas formas: `"Error: " + ex.Message` nos caminhos diretos e
+    /// `"Failed to X database 'y': " + ex.Message` nos laços do `--all`. Guardar a mensagem final e
+    /// tirar o prefixo aqui reproduz exatamente isso, sem duplicar as mensagens.
+    pub fn bare_message(&self) -> &str {
+        self.message
+            .strip_prefix("Error: ")
+            .unwrap_or(&self.message)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bare_message_drops_the_legacy_prefix() {
+        let printed = Printed::new(1, "Error: pg_restore failed with exit code 1. Error: boom");
+        assert_eq!(
+            printed.bare_message(),
+            "pg_restore failed with exit code 1. Error: boom"
+        );
+
+        // Mensagem sem o prefixo volta como veio.
+        let sem_prefixo = Printed::new(1, "Invalid database name: 'x'");
+        assert_eq!(sem_prefixo.bare_message(), "Invalid database name: 'x'");
+    }
 }
 
 /// Desfecho de um comando do grupo `database`.

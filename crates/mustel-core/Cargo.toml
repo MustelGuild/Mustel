@@ -18,6 +18,9 @@ dirs = "6"
 thiserror = "2"
 regex = "1"
 tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
+# `numeric` não tem `FromSql` no driver; o `rust_decimal` (feature `db-postgres`) traz o do
+# `numeric` e um `Display` que **preserva a escala** — o CSV do oráculo mostra `0.00`, não `0`.
+rust_decimal = { version = "1", features = ["db-postgres"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "fs", "process", "sync", "io-util"] }
 tokio-util = "0.7"
 

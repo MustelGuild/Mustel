@@ -36,13 +36,13 @@ use std::sync::Arc;
 use mustel_core::config::ServerConfigEntry;
 use mustel_core::error::CoreError;
 use mustel_core::query::analyzer::{self, QueryType};
-use mustel_core::query::executor::{self, ExecutionRequest, ServerPlan};
+use mustel_core::query::executor::{self, ExecutionEvent, ExecutionRequest, ServerPlan};
 use mustel_core::query::{csv_writer, discovery};
 use mustel_core::signal::CancellationToken;
 use mustel_core::validation;
 
 use crate::cli::QueryRunArgs;
-use crate::ui::{prompts, style, table};
+use crate::ui::{progress, prompts, style, table};
 
 use super::settings;
 
@@ -240,8 +240,20 @@ async fn execute(
     // entra no plano, mesmo sem banco: o `Servers:` do resumo e a ordem do merge do consolidado
     // contam com eles (o legado monta a tabela e o merge da mesma lista).
     let exclude_names = discovery::exclude_names(args.exclude.as_deref());
+
+    // A descoberta tem indicador próprio no legado (`AnsiConsole.Status`, só quando algum servidor
+    // vai descobrir os bancos).
+    let discovering = servers
+        .iter()
+        .any(|server| args.all || server.fetch_all_databases)
+        .then(|| progress::Progress::spinner("Discovering databases..."));
+
     let mut plans: Vec<ServerPlan> = Vec::new();
     for server in &servers {
+        if let Some(status) = &discovering {
+            status.set_message(format!("Discovering databases on {}...", server.name));
+        }
+
         let databases = databases_for_server(server, args, &exclude_names).await?;
         let databases = databases
             .iter()
@@ -253,6 +265,10 @@ async fn execute(
             max_parallelism: server.max_parallelism as usize,
             databases,
         });
+    }
+
+    if let Some(status) = discovering {
+        status.finish();
     }
 
     if plans.iter().all(|plan| plan.databases.is_empty()) {
@@ -272,7 +288,28 @@ async fn execute(
         ),
     };
 
-    let outcome = executor::execute(&request, token).await?;
+    // A tabela ao vivo do legado: uma linha por banco que termina, desenhada no lugar e deixada na
+    // tela no fim (fora de terminal, nada é escrito).
+    let results = progress::LiveTable::new();
+    let outcome = executor::execute(
+        &request,
+        &|event| match event {
+            ExecutionEvent::DatabaseFinished {
+                server,
+                database,
+                status,
+                rows,
+                duration,
+                error,
+            } => results.database_finished(server, database, status, rows, duration, error),
+            ExecutionEvent::ServerWithoutDatabases { server } => {
+                results.server_without_databases(server);
+            }
+        },
+        token,
+    )
+    .await?;
+    results.finish();
 
     println!();
     if let Some(consolidated) = &outcome.consolidated {

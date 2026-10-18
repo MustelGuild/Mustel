@@ -107,8 +107,13 @@ pub struct ExecutionOutcome {
 }
 
 /// Executa a consulta nos servidores escolhidos e escreve os CSVs da execução.
+///
+/// `events` recebe cada banco que termina e cada servidor que fica sem banco, na ordem em que
+/// acontecerem — é de onde sai a tabela de progresso. Quem não quer acompanhar passa um coletor
+/// vazio (ver os testes).
 pub async fn execute(
     request: &ExecutionRequest,
+    events: &dyn Fn(ExecutionEvent<'_>),
     token: &CancellationToken,
 ) -> Result<ExecutionOutcome, CoreError> {
     let (sender, receiver) = mpsc::channel::<Message>(request.max_parallelism.max(1) * 2);
@@ -118,7 +123,9 @@ pub async fn execute(
         let servers = Semaphore::new(request.max_parallelism.max(1));
         let mut running = FuturesUnordered::new();
         for server in &request.servers {
-            running.push(run_server(request, server, &servers, &sender, token));
+            running.push(run_server(
+                request, server, &servers, &sender, events, token,
+            ));
         }
 
         let mut counts = Counts::default();
@@ -187,6 +194,7 @@ async fn run_server(
     server: &ServerPlan,
     servers: &Semaphore,
     sender: &mpsc::Sender<Message>,
+    events: &dyn Fn(ExecutionEvent<'_>),
     token: &CancellationToken,
 ) -> Result<Counts, CoreError> {
     if token.is_cancelled() {
@@ -198,11 +206,20 @@ async fn run_server(
         return Ok(Counts::default());
     };
 
+    if server.databases.is_empty() {
+        // O legado marca o servidor sem banco com uma linha própria e não roda nada nele.
+        events(ExecutionEvent::ServerWithoutDatabases {
+            server: &server.name,
+        });
+
+        return Ok(Counts::default());
+    }
+
     let databases = Semaphore::new(server.max_parallelism.max(1));
     let mut running = FuturesUnordered::new();
     for target in &server.databases {
         running.push(run_database(
-            request, server, target, &databases, sender, token,
+            request, server, target, &databases, sender, events, token,
         ));
     }
 
@@ -221,6 +238,7 @@ async fn run_database(
     target: &DatabaseTarget,
     databases: &Semaphore,
     sender: &mpsc::Sender<Message>,
+    events: &dyn Fn(ExecutionEvent<'_>),
     token: &CancellationToken,
 ) -> Result<Counts, CoreError> {
     if token.is_cancelled() {
@@ -241,6 +259,7 @@ async fn run_database(
     loop {
         match stream_once(request, server, target, sender, token, &mut sent_rows).await {
             Ok(rows) => {
+                let duration = started.elapsed();
                 send(
                     sender,
                     Message::Finished(LogEntry {
@@ -249,11 +268,20 @@ async fn run_database(
                         executed_at,
                         status: Status::Success,
                         rows,
-                        duration_ms: milliseconds(started.elapsed()),
+                        duration_ms: milliseconds(duration),
                         error: String::new(),
                     }),
                 )
                 .await?;
+
+                events(ExecutionEvent::DatabaseFinished {
+                    server: &server.name,
+                    database: &target.database,
+                    status: Status::Success,
+                    rows,
+                    duration,
+                    error: "",
+                });
 
                 return Ok(Counts {
                     successes: 1,
@@ -281,6 +309,7 @@ async fn run_database(
                 }
 
                 // No erro o legado marca `DurationMs` como 0 e tira o `ExecutedAt` na hora da falha.
+                let message = error.to_string();
                 send(
                     sender,
                     Message::Finished(LogEntry {
@@ -290,10 +319,19 @@ async fn run_database(
                         status: Status::Error,
                         rows: 0,
                         duration_ms: "0".to_string(),
-                        error: error.to_string(),
+                        error: message.clone(),
                     }),
                 )
                 .await?;
+
+                events(ExecutionEvent::DatabaseFinished {
+                    server: &server.name,
+                    database: &target.database,
+                    status: Status::Error,
+                    rows: 0,
+                    duration: Duration::ZERO,
+                    error: &message,
+                });
 
                 return Ok(Counts {
                     successes: 0,
@@ -423,7 +461,7 @@ struct LogEntry {
 
 /// Como a execução terminou.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Status {
+pub enum Status {
     Success,
     Error,
 }
@@ -435,6 +473,30 @@ impl Status {
             Self::Error => "Error",
         }
     }
+}
+
+/// O que acontece durante a execução, para quem desenha o progresso.
+///
+/// É o material da **tabela ao vivo** do legado
+/// (`Status | Server | Database | Rows | Duration | Detail`): uma linha por banco que terminou e uma
+/// por servidor que ficou sem banco. Quem escuta decide o que fazer (a tabela do terminal, e mais
+/// tarde o `EventSink` do T40). Não carrega caminho de arquivo: a tabela do legado não o mostra.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionEvent<'a> {
+    /// Um banco terminou — sucesso ou erro.
+    DatabaseFinished {
+        server: &'a str,
+        database: &'a str,
+        status: Status,
+        /// Linhas trazidas (0 no erro).
+        rows: u64,
+        /// Quanto durou a execução daquele banco (zero no erro, como o legado).
+        duration: Duration,
+        /// Mensagem do erro, vazia no sucesso.
+        error: &'a str,
+    },
+    /// O servidor não tem banco nenhum para rodar (a linha `no databases` do legado).
+    ServerWithoutDatabases { server: &'a str },
 }
 
 /// O **escritor único**: consome o canal e grava os arquivos na ordem em que as mensagens chegam.
@@ -754,9 +816,14 @@ mod tests {
             command_timeout: Duration::from_secs(300),
         };
 
-        let outcome = execute(&request, &CancellationToken::new())
-            .await
-            .expect("executa");
+        let events = std::cell::RefCell::new(Vec::new());
+        let outcome = execute(
+            &request,
+            &|event| events.borrow_mut().push(format!("{event:?}")),
+            &CancellationToken::new(),
+        )
+        .await
+        .expect("executa");
 
         assert_eq!(outcome.successes, 0);
         assert_eq!(outcome.failures, 0);
@@ -766,6 +833,17 @@ mod tests {
         assert!(
             !outcome.log.exists(),
             "sem execução nenhuma, o log não é criado (o caminho ainda é impresso)"
+        );
+        assert_eq!(
+            events.borrow().len(),
+            1,
+            "o servidor sem banco vira uma linha da tabela: {:?}",
+            events.borrow()
+        );
+        assert!(
+            events.borrow()[0].contains("ServerWithoutDatabases"),
+            "{:?}",
+            events.borrow()
         );
     }
 

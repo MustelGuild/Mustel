@@ -384,12 +384,18 @@ pub async fn list_databases_for_discovery(
 }
 
 /// Classifica o erro do driver no erro do núcleo.
+///
+/// A mensagem do erro **do Postgres** sai no formato do Npgsql, medido no oráculo: `SQLSTATE: texto`
+/// (ex.: `3D000: database "nao_existe" does not exist`). Como o texto vem do servidor, os dois lados
+/// ficam iguais quando o erro nasce lá; sem SQLSTATE (falha de conexão, por exemplo) não há prefixo e
+/// a redação é a do driver — é o que a divergência 14 registra.
 fn map_error(error: tokio_postgres::Error) -> CoreError {
     let sqlstate = error.code().map(|code| code.code().to_string());
-    let message = error
-        .as_db_error()
-        .map(|db_error| format!("{}: {}", db_error.severity(), db_error.message()))
-        .unwrap_or_else(|| error.to_string());
+    let message = match (error.as_db_error(), &sqlstate) {
+        (Some(db_error), Some(state)) => format!("{state}: {}", db_error.message()),
+        (Some(db_error), None) => db_error.message().to_string(),
+        (None, _) => error.to_string(),
+    };
 
     CoreError::Postgres { sqlstate, message }
 }

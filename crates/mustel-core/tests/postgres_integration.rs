@@ -274,7 +274,7 @@ async fn run_two_servers(settings: &ConnectionSettings, max_parallelism: usize) 
     };
 
     let started = Instant::now();
-    let outcome = executor::execute(&request, &cancellation_token())
+    let outcome = executor::execute(&request, &|_event| {}, &cancellation_token())
         .await
         .expect("executa");
     let elapsed = started.elapsed().as_secs_f64();

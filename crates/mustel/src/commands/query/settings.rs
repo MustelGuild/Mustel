@@ -98,6 +98,18 @@ pub fn target_for(
     })
 }
 
+/// Conexão para a **descoberta** de bancos: vai no banco de manutenção, como o
+/// `BuildConnectionStringForServer(server, "postgres", null)` do legado.
+///
+/// O `null` do legado importa: a senha não vem das flags, e sim do cofre/prompt pela precedência
+/// normal — daqui sai a mesma [`connection_settings`], só trocando o banco.
+pub fn discovery_settings(
+    server: &ServerConfigEntry,
+    args: &QueryRunArgs,
+) -> Result<ConnectionSettings, CoreError> {
+    connection_settings(server, "postgres", args)
+}
+
 /// Monta a conexão de um banco, aplicando os overrides e resolvendo a senha.
 fn connection_settings(
     server: &ServerConfigEntry,

@@ -1,9 +1,8 @@
 //! `mustel query run` — executa a consulta nos bancos escolhidos e exporta o CSV.
 //!
-//! Escopo desta entrega (T32, 5a): **um servidor, um ou poucos bancos**, com export CSV. O que fica
-//! para as sub-entregas seguintes, registrado aqui para não parecer esquecimento:
+//! Escopo desta entrega (T32 + T33): descoberta incluída; ficam para as próximas sub-entregas, e
+//! está registrado aqui para não parecer esquecimento:
 //!
-//! - **T33**: descoberta de bancos (`--all`, `fetchAllDatabases`, `excludePatterns`) e `--exclude`;
 //! - **T34**: execução em paralelo (`maxParallelism`), `--separate-files` e escrita incremental;
 //! - **T35**: detecção de consulta destrutiva com confirmação e a tabela de progresso ao vivo.
 //!
@@ -13,6 +12,11 @@
 //!   inexistente, consulta vazia, nenhum servidor cadastrado, nada selecionado;
 //! - o texto da consulta vem de `-c` (com o "desescape" de aspas externas do legado) ou do arquivo
 //!   `-i`, lido como UTF-8;
+//! - **descoberta de bancos** (T33): `--all` liga `fetchAllDatabases` em **todos** os servidores
+//!   escolhidos; quem descobre consulta `pg_database` no banco `postgres` e filtra pelos
+//!   `excludePatterns` do cadastro (curinga `*`); falha de descoberta **avisa e cai para os bancos do
+//!   cadastro** em vez de derrubar o comando; e o `--exclude` (nomes exatos, sem diferenciar
+//!   maiúsculas) filtra os dois caminhos, no fim;
 //! - a saída vai para `<diretório>/<timestamp>/`, com um CSV por servidor, o consolidado, o de
 //!   erros (só quando falha) e o de log — nomes e conteúdo iguais aos do oráculo (ver
 //!   `mustel_core::query::csv_writer`);
@@ -28,7 +32,7 @@ use std::path::PathBuf;
 use mustel_core::config::ServerConfigEntry;
 use mustel_core::error::CoreError;
 use mustel_core::postgres::client::query_rows;
-use mustel_core::query::csv_writer;
+use mustel_core::query::{csv_writer, discovery};
 use mustel_core::signal::CancellationToken;
 use mustel_core::validation;
 
@@ -74,7 +78,6 @@ pub async fn run(args: QueryRunArgs, token: &CancellationToken) -> Result<i32, C
 
     execute(selected, &sql, &args, token).await
 }
-
 /// Texto da consulta: `-c` (com desescape) ou o arquivo de `-i`.
 ///
 /// As mensagens e a ordem das checagens são as do legado; todas saem com exit 1.
@@ -174,11 +177,13 @@ async fn execute(
     let directory = PathBuf::from(&base_directory).join(&timestamp);
     std::fs::create_dir_all(&directory).map_err(CoreError::Io)?;
 
-    // Alvos: para cada servidor, os bancos do cadastro (a descoberta é o T33).
+    // Alvos: para cada servidor, os bancos do cadastro ou os descobertos (`--all` /
+    // `fetchAllDatabases`), já filtrados pelos dois critérios do legado.
+    let exclude_names = discovery::exclude_names(args.exclude.as_deref());
     let mut targets: Vec<Target> = Vec::new();
     for server in &servers {
-        for database in &server.databases {
-            targets.push(settings::target_for(server, database, args)?);
+        for database in databases_for_server(server, args, &exclude_names).await? {
+            targets.push(settings::target_for(server, &database, args)?);
         }
     }
 
@@ -374,6 +379,48 @@ fn header_for(columns: &[String]) -> Vec<String> {
     let mut header = vec!["Server".to_string(), "Database".to_string()];
     header.extend(columns.iter().cloned());
     header
+}
+
+/// Bancos de um servidor, como o `GetDatabasesForServerAsync` do legado.
+///
+/// Descobre quando o servidor pede (`--all` liga em todos); se a descoberta falhar, **avisa e usa os
+/// bancos do cadastro** (ou nenhum, quando não há). Os dois avisos aparecem porque são `LogWarning`
+/// no legado, que imprime desse nível para cima.
+async fn databases_for_server(
+    server: &ServerConfigEntry,
+    args: &QueryRunArgs,
+    exclude_names: &std::collections::HashSet<String>,
+) -> Result<Vec<String>, CoreError> {
+    let discover = args.all || server.fetch_all_databases;
+
+    let databases = if discover {
+        // A conexão da descoberta vai no banco de manutenção, como no legado.
+        let settings = settings::discovery_settings(server, args)?;
+        match discovery::discover_databases(&settings).await {
+            Ok(databases) => databases,
+            Err(error) => {
+                println!(
+                    "Warning: Auto-discovery failed for '{}': {error}",
+                    server.name
+                );
+                if server.databases.is_empty() {
+                    return Ok(Vec::new());
+                }
+
+                println!("Falling back to configured databases.");
+                server.databases.clone()
+            }
+        }
+    } else {
+        server.databases.clone()
+    };
+
+    // Os padrões do cadastro entram na descoberta; os nomes do `--exclude`, no fim (como no legado).
+    Ok(discovery::filter_databases(
+        databases,
+        &server.exclude_patterns,
+        exclude_names,
+    ))
 }
 
 /// Linha do CSV de log (o `DurationMs` fica vazio: o legado mede o tempo por banco, que só o

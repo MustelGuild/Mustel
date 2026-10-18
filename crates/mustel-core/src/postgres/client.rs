@@ -299,6 +299,26 @@ pub async fn query_rows(
     Ok((columns, data))
 }
 
+/// Lista os bancos para a **descoberta** do `query run`, com a query do legado.
+///
+/// Diferente de [`list_databases`] em dois pontos que o legado também tem: filtra
+/// `datallowconn = true` e **não** ordena (a ordem é a que o servidor devolver).
+pub async fn list_databases_for_discovery(
+    settings: &ConnectionSettings,
+) -> Result<Vec<String>, CoreError> {
+    let client = connect(settings).await?;
+
+    let rows = client
+        .query(
+            "SELECT datname FROM pg_database WHERE datistemplate = false AND datallowconn = true",
+            &[],
+        )
+        .await
+        .map_err(map_error)?;
+
+    Ok(rows.iter().map(|row| row.get::<_, String>(0)).collect())
+}
+
 /// Classifica o erro do driver no erro do núcleo.
 fn map_error(error: tokio_postgres::Error) -> CoreError {
     let sqlstate = error.code().map(|code| code.code().to_string());

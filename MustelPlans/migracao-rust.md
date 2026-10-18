@@ -747,13 +747,16 @@ testes de execução. Como reproduzir (tudo sem admin, nada disso é versionado)
 | Autenticação | `pg_hba.conf` com **`scram-sha-256`** nas linhas `host` (o `trust` do `initdb` faz o servidor aceitar qualquer senha e quebra o teste de senha errada); senha do `postgres` é `dev` |
 | Subir | `Start-Process -FilePath %LOCALAPPDATA%\pgsql\bin\postgres.exe -ArgumentList '-D', '%LOCALAPPDATA%\pgsql-data' -WindowStyle Hidden -RedirectStandardOutput <log> -RedirectStandardError <log>` |
 | Parar | `%LOCALAPPDATA%\pgsql\bin\pg_ctl.exe -D %LOCALAPPDATA%\pgsql-data stop` |
-| Bancos | `mustel_test` (fixture do ciclo: `clientes`, `pedidos`, `log_eventos`, `auditoria`) e os auxiliares criados pela verificação (`nc_m`, `nc_o`, `flags_m`, `f1`–`f4`, `implicito`, `restaurado_m`, `restaurado_o`) |
+| Bancos | `mustel_test` (fixture do ciclo: `clientes`, `pedidos`, `log_eventos`, `auditoria`) — os auxiliares criados durante a verificação (`nc_m`, `restaurado_*`, `f1`–`f4`, `implicito`, `flag_cria`, `all_*`, …) foram **derrubados** no fim |
 
 **Armadilhas aprendidas aqui** (custaram tempo): `pg_ctl start` chamado pelo terminal do agente
 **morre com o terminal** (`0xC000013A`, porque o processo fica no grupo de console); `pg_ctl start -Wait`
-com saída redirecionada **trava** (o servidor herda o cano e o `-Wait` nunca retorna); e `kill -0 <pid>`
+com saída redirecionada **trava** (o servidor herda o cano e o `-Wait` nunca retorna); `kill -0 <pid>`
 sucede em **zumbis**, então checar vivacidade por ele engana — para provar que uma árvore de processos
-morreu, o confiável é o efeito observável (arquivo que o neto escreveria).
+morreu, o confiável é o efeito observável (arquivo que o neto escreveria); e `psql -tAc` no Windows
+devolve **CRLF**, então nome de banco capturado em laço precisa de `tr -d '\r'` (sem isso o
+`DROP DATABASE IF EXISTS "x\r"` responde "não existe, pulando" com exit 0 e o laço **parece** ter
+funcionado).
 
 O Docker Desktop também foi iniciado nesta rodada (o daemon estava parado) para rodar os testes
 `#[cfg(unix)]` do runner em container `rust:1-bookworm`. O servidor local continua **de pé** na porta

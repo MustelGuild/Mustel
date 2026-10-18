@@ -22,7 +22,8 @@ está disponível na máquina da migração). Cada linha é a mediana de 30 exec
 
 ## Pendentes (dependem de Postgres)
 
-- export CSV de 100k linhas — medir em T32 (o comando tem container de teste);
+- export CSV de 100k linhas — **medido no T36**: ver `oracle/perf/query.md` (2,72 s × 1,07 s e
+  318,8 MB × 11,6 MB);
 - `database backup` de um dump de fixture — medir em T28.
 
 ## Comparação com o Mustel (parcial, T11)

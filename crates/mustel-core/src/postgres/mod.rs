@@ -5,9 +5,12 @@
 //!
 //! Organização: [`settings`] monta a configuração de conexão a partir do cadastro e das flags;
 //! [`tls`] traduz o `sslMode` do legado; [`value`] converte valores do servidor para o texto que vai
-//! ao CSV (a parte sensível a paridade); [`client`] é a fronteira fina com o driver.
+//! ao CSV (a parte sensível a paridade); [`client`] é a fronteira fina com o driver; [`locator`]
+//! acha os binários do PostgreSQL e [`password`] resolve de onde vem a senha.
 
 pub mod client;
+pub mod locator;
+pub mod password;
 pub mod settings;
 pub mod tls;
 pub mod value;

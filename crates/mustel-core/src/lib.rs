@@ -12,5 +12,6 @@ pub mod credentials;
 pub mod error;
 pub mod pgpass;
 pub mod postgres;
+pub mod process;
 pub mod signal;
 pub mod validation;

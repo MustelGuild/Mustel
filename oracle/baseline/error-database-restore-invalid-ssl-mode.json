@@ -1,0 +1,23 @@
+{
+  "slug": "error-database-restore-invalid-ssl-mode",
+  "argv": [
+    "database",
+    "restore",
+    "mydb",
+    "--ssl-mode",
+    "Allow",
+    "-W",
+    "senha"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "unchanged",
+  "exit_code": 2,
+  "stdout": "Error: Invalid SSL mode: 'Allow'. Valid values: Disable, Prefer, Require, \r\nVerifyCA, VerifyFull.\r\n",
+  "stderr": "",
+  "stdout_b64": "RXJyb3I6IEludmFsaWQgU1NMIG1vZGU6ICdBbGxvdycuIFZhbGlkIHZhbHVlczogRGlzYWJsZSwgUHJlZmVyLCBSZXF1aXJlLCANClZlcmlmeUNBLCBWZXJpZnlGdWxsLg0K",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "`Allow` existe na tradução de TLS do núcleo, mas o `restore` do legado só aceita Disable/Prefer/Require/VerifyCA/VerifyFull — e o `backup` nem valida"
+  ]
+}

@@ -26,6 +26,8 @@ pub const MIGRATED_COMMANDS: &[&[&str]] = &[
     &["database", "pgpass", "add"],
     &["database", "pgpass", "list"],
     &["database", "pgpass", "remove"],
+    &["database", "backup"],
+    &["database", "restore"],
 ];
 
 /// Caminhos dos artefatos do Mustel na execução isolada do comparador.

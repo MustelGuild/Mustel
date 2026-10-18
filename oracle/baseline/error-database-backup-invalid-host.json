@@ -1,0 +1,23 @@
+{
+  "slug": "error-database-backup-invalid-host",
+  "argv": [
+    "database",
+    "backup",
+    "mydb",
+    "-H",
+    "host_com_underscore",
+    "-W",
+    "senha"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "unchanged",
+  "exit_code": 2,
+  "stdout": "Error: Invalid host: 'host_com_underscore'\r\n",
+  "stderr": "",
+  "stdout_b64": "RXJyb3I6IEludmFsaWQgaG9zdDogJ2hvc3RfY29tX3VuZGVyc2NvcmUnDQo=",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "host recusado por `SecurityUtils.IsValidHost`"
+  ]
+}

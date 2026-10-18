@@ -1,0 +1,23 @@
+{
+  "slug": "error-database-backup-invalid-port",
+  "argv": [
+    "database",
+    "backup",
+    "mydb",
+    "-p",
+    "70000",
+    "-W",
+    "senha"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "unchanged",
+  "exit_code": 2,
+  "stdout": "Error: Invalid port: '70000'. Port must be between 1 and 65535.\r\n",
+  "stderr": "",
+  "stdout_b64": "RXJyb3I6IEludmFsaWQgcG9ydDogJzcwMDAwJy4gUG9ydCBtdXN0IGJlIGJldHdlZW4gMSBhbmQgNjU1MzUuDQo=",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "porta fora de 1–65535"
+  ]
+}

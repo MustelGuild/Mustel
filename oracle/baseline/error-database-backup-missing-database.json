@@ -1,0 +1,18 @@
+{
+  "slug": "error-database-backup-missing-database",
+  "argv": [
+    "database",
+    "backup"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "unchanged",
+  "exit_code": 2,
+  "stdout": "Error: Database name is required when --all is not specified.\r\n",
+  "stderr": "",
+  "stdout_b64": "RXJyb3I6IERhdGFiYXNlIG5hbWUgaXMgcmVxdWlyZWQgd2hlbiAtLWFsbCBpcyBub3Qgc3BlY2lmaWVkLg0K",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "sem banco e sem `--all`: exit 2 vem do corpo do comando"
+  ]
+}

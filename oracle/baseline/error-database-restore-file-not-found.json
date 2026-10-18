@@ -1,0 +1,22 @@
+{
+  "slug": "error-database-restore-file-not-found",
+  "argv": [
+    "database",
+    "restore",
+    "mydb",
+    "nao-existe.dump",
+    "-W",
+    "senha"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "unchanged",
+  "exit_code": 2,
+  "stdout": "Error: File not found: \r\n<REPO>\\oracle\\\r\nworkdir\\nao-existe.dump\r\n",
+  "stderr": "",
+  "stdout_b64": "RXJyb3I6IEZpbGUgbm90IGZvdW5kOiANCjxSRVBPPlxvcmFjbGVcDQp3b3JrZGlyXG5hby1leGlzdGUuZHVtcA0K",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "arquivo ausente: exit 2 (`FurLabFileNotFoundException`) com o caminho absoluto"
+  ]
+}

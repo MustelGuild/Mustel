@@ -157,6 +157,108 @@ pub fn error_cases() -> Vec<Case> {
             seed: ConfigSeed::Fixture,
             pgpass_seed: PgPassSeed::Unchanged,
         },
+        // Validação do `database backup`: o legado valida **antes** de pedir senha, então estes casos
+        // não dependem de Postgres nem de `pg_dump` (o `-W` está aí para não haver dúvida de que
+        // nenhum prompt seria alcançado).
+        Case {
+            slug: "error-database-backup-missing-database",
+            argv: &["database", "backup"],
+            notes: &["sem banco e sem `--all`: exit 2 vem do corpo do comando"],
+            seed: ConfigSeed::Absent,
+            pgpass_seed: PgPassSeed::Unchanged,
+        },
+        Case {
+            slug: "error-database-backup-invalid-host",
+            argv: &[
+                "database",
+                "backup",
+                "mydb",
+                "-H",
+                "host_com_underscore",
+                "-W",
+                "senha",
+            ],
+            notes: &["host recusado por `SecurityUtils.IsValidHost`"],
+            seed: ConfigSeed::Absent,
+            pgpass_seed: PgPassSeed::Unchanged,
+        },
+        Case {
+            slug: "error-database-backup-invalid-port",
+            argv: &["database", "backup", "mydb", "-p", "70000", "-W", "senha"],
+            notes: &["porta fora de 1–65535"],
+            seed: ConfigSeed::Absent,
+            pgpass_seed: PgPassSeed::Unchanged,
+        },
+        Case {
+            slug: "error-database-backup-invalid-username",
+            argv: &[
+                "database",
+                "backup",
+                "mydb",
+                "-U",
+                "com espaco",
+                "-W",
+                "senha",
+            ],
+            notes: &[
+                "usuário recusado por `SecurityUtils.IsValidUsername` (só é validado quando informado)",
+            ],
+            seed: ConfigSeed::Absent,
+            pgpass_seed: PgPassSeed::Unchanged,
+        },
+        // Validação/arquivo do `database restore`: com `-W` o comando não pede senha, e o arquivo é
+        // checado **antes** de procurar o `pg_restore` — então nada aqui depende de Postgres, de
+        // `pg_restore` ou do estado da máquina.
+        Case {
+            slug: "error-database-restore-file-not-found",
+            argv: &[
+                "database",
+                "restore",
+                "mydb",
+                "nao-existe.dump",
+                "-W",
+                "senha",
+            ],
+            notes: &[
+                "arquivo ausente: exit 2 (`FurLabFileNotFoundException`) com o caminho absoluto",
+            ],
+            seed: ConfigSeed::Absent,
+            pgpass_seed: PgPassSeed::Unchanged,
+        },
+        Case {
+            slug: "error-database-restore-path-traversal",
+            argv: &[
+                "database",
+                "restore",
+                "mydb",
+                "%2e%2e%2fsegredo.dump",
+                "-W",
+                "senha",
+            ],
+            notes: &[
+                "caminho codificado sobrevive ao `GetFullPath` e cai na checagem de travessia (exit 2)",
+                "com `..` literal o caminho é resolvido antes e o erro passa a ser o de arquivo ausente",
+            ],
+            seed: ConfigSeed::Absent,
+            pgpass_seed: PgPassSeed::Unchanged,
+        },
+        Case {
+            slug: "error-database-restore-invalid-ssl-mode",
+            argv: &[
+                "database",
+                "restore",
+                "mydb",
+                "--ssl-mode",
+                "Allow",
+                "-W",
+                "senha",
+            ],
+            notes: &[
+                "`Allow` existe na tradução de TLS do núcleo, mas o `restore` do legado só aceita Disable/Prefer/Require/VerifyCA/VerifyFull — e o `backup` nem valida",
+            ],
+            seed: ConfigSeed::Absent,
+            pgpass_seed: PgPassSeed::Unchanged,
+        },
     ]
 }
 

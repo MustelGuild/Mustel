@@ -220,11 +220,7 @@ fn pgpass_add_accepts_the_database_as_a_positional_argument() {
 ///
 /// Ao migrar um comando, remova-o desta lista: ele deixa de ser stub e passa a ter comportamento
 /// próprio (ver `settings db-servers ls`, migrado no T16).
-const STUB_INVOCATIONS: &[&[&str]] = &[
-    &["query", "run"],
-    &["database", "backup"],
-    &["database", "restore"],
-];
+const STUB_INVOCATIONS: &[&[&str]] = &[&["query", "run"]];
 
 /// Comandos já migrados: precisam executar de verdade (sem "not implemented").
 const IMPLEMENTED_COMMANDS: &[&[&str]] = &[
@@ -236,6 +232,10 @@ const IMPLEMENTED_COMMANDS: &[&[&str]] = &[
     &["database", "pgpass", "add"],
     &["database", "pgpass", "list"],
     &["database", "pgpass", "remove", "mydb"],
+    // Sem argumento nenhum, `backup` e `restore` param na validação (exit 2) antes de tocar qualquer
+    // coisa (o `restore` também não acha o arquivo, mas a validação vem antes).
+    &["database", "backup"],
+    &["database", "restore"],
 ];
 
 #[test]

@@ -1,0 +1,23 @@
+{
+  "slug": "error-database-backup-invalid-username",
+  "argv": [
+    "database",
+    "backup",
+    "mydb",
+    "-U",
+    "com espaco",
+    "-W",
+    "senha"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "unchanged",
+  "exit_code": 2,
+  "stdout": "Error: Invalid username: 'com espaco'\r\n",
+  "stderr": "",
+  "stdout_b64": "RXJyb3I6IEludmFsaWQgdXNlcm5hbWU6ICdjb20gZXNwYWNvJw0K",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "usuário recusado por `SecurityUtils.IsValidUsername` (só é validado quando informado)"
+  ]
+}

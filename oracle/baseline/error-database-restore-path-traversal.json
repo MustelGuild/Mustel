@@ -1,0 +1,23 @@
+{
+  "slug": "error-database-restore-path-traversal",
+  "argv": [
+    "database",
+    "restore",
+    "mydb",
+    "%2e%2e%2fsegredo.dump",
+    "-W",
+    "senha"
+  ],
+  "config_seed": "absent",
+  "pgpass_seed": "unchanged",
+  "exit_code": 2,
+  "stdout": "Error: Path traversal detected: %2e%2e%2fsegredo.dump\r\n",
+  "stderr": "",
+  "stdout_b64": "RXJyb3I6IFBhdGggdHJhdmVyc2FsIGRldGVjdGVkOiAlMmUlMmUlMmZzZWdyZWRvLmR1bXANCg==",
+  "stderr_b64": "",
+  "artifacts": [],
+  "notes": [
+    "caminho codificado sobrevive ao `GetFullPath` e cai na checagem de travessia (exit 2)",
+    "com `..` literal o caminho é resolvido antes e o erro passa a ser o de arquivo ausente"
+  ]
+}

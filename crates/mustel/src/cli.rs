@@ -196,14 +196,20 @@ pub struct DatabaseBackupArgs {
     pub password: Option<String>,
 
     /// SSL mode for the database connection.
+    ///
+    /// Aceito por compatibilidade: o legado **não** usa este valor no `pg_dump`.
     #[arg(long = "ssl-mode", value_name = "mode")]
     pub ssl_mode: Option<String>,
 
     /// Timeout in seconds for the backup operation.
+    ///
+    /// Aceito por compatibilidade: o legado **não** usa este valor no `pg_dump`.
     #[arg(long = "timeout", value_name = "seconds")]
     pub timeout: Option<i32>,
 
     /// Command timeout in seconds for the backup operation.
+    ///
+    /// Aceito por compatibilidade: o legado **não** usa este valor no `pg_dump`.
     #[arg(long = "command-timeout", value_name = "seconds")]
     pub command_timeout: Option<i32>,
 
@@ -211,12 +217,12 @@ pub struct DatabaseBackupArgs {
     #[arg(short = 'a', long = "all")]
     pub all: bool,
 
-    /// Databases to exclude (repeat the flag for multiple values).
-    #[arg(long = "exclude", value_name = "database")]
+    /// Table patterns to exclude entirely from the backup (repeat the flag for multiple values).
+    #[arg(long = "exclude", value_name = "pattern")]
     pub exclude: Vec<String>,
 
-    /// Tables whose data should be excluded (repeat the flag for multiple values).
-    #[arg(long = "exclude-table-data", value_name = "table")]
+    /// Table patterns whose data should be excluded (repeat the flag for multiple values).
+    #[arg(long = "exclude-table-data", value_name = "pattern")]
     pub exclude_table_data: Vec<String>,
 
     /// Enable verbose output from pg_dump.

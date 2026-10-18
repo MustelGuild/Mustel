@@ -30,13 +30,23 @@ pub fn warning(text: &str) -> String {
         .to_string()
 }
 
+/// Texto de perigo (só coloriza em terminal).
+pub fn danger(text: &str) -> String {
+    Style::new()
+        .red()
+        .bold()
+        .for_stdout()
+        .apply_to(text)
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn plain_text_outside_a_terminal() {
-        for styled in [bold("x"), dim("x"), success("x"), warning("x")] {
+        for styled in [bold("x"), dim("x"), success("x"), warning("x"), danger("x")] {
             assert_eq!(styled, "x", "sem terminal não deve haver ANSI");
         }
     }

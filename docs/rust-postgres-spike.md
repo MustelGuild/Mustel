@@ -41,7 +41,13 @@ o que separa o exit `10` do `11` no oráculo.
    `bytea`, `timestamptz` e `numeric`) é decisão de formatação que só o T32 fecha, comparando o mesmo
    dado nos dois binários. O mapeamento está isolado em `format_cell` justamente para ser corrigido
    num lugar só.
-4. **Pool**: as opções (`pooling`, `min/max pool size`, `keepalive`, `connection lifetime`) já estão
-   na configuração, mas ainda não há uma implementação de pool — o driver abre conexão direta. O
-   pool entra quando o `query run` precisar de paralelismo real (T34), e a biblioteca será escolhida
-   ali (`deadpool-postgres` ou `bb8`), reusando os mesmos campos.
+4. **Pool**: as opções (`pooling`, `min/max pool size`, `keepalive`, `connection lifetime`) estão
+   na configuração porque são superfície do `query run`, mas **não há implementação de pool** — o
+   driver abre uma conexão direta por banco, como o legado abre uma `NpgsqlConnection` por banco.
+   Decidido no T34, quando o paralelismo real entrou: paralelismo não precisa de pool (o grau é
+   limitado por semáforo, não por reuso de conexão), e as consultas do `query run` são longas, que é
+   o caso em que pool ajuda menos. O que tem efeito é o `--keepalive`, que vai para o socket
+   (`keepalives`/`keepalives_idle`); `pooling`, `min/max pool size` e `connection lifetime` ficam
+   inertes e documentados em `postgres/settings.rs`. Se um dia alguma tarefa precisar de pool (T40
+   em diante, com a GUI), a biblioteca a escolher é `deadpool-postgres` ou `bb8`, reusando os mesmos
+   campos.

@@ -35,13 +35,14 @@ use std::sync::Arc;
 
 use mustel_core::config::ServerConfigEntry;
 use mustel_core::error::CoreError;
+use mustel_core::query::analyzer::{self, QueryType};
 use mustel_core::query::executor::{self, ExecutionRequest, ServerPlan};
 use mustel_core::query::{csv_writer, discovery};
 use mustel_core::signal::CancellationToken;
 use mustel_core::validation;
 
 use crate::cli::QueryRunArgs;
-use crate::ui::prompts;
+use crate::ui::{prompts, style, table};
 
 use super::settings;
 
@@ -71,7 +72,68 @@ pub async fn run(args: QueryRunArgs, token: &CancellationToken) -> Result<i32, C
         return Ok(1);
     }
 
+    // A confirmação vem **depois** da seleção e do `--all`, como no legado — é quando já se sabe
+    // quantos servidores e bancos a consulta vai atingir.
+    if analyzer::analyze(&sql) == QueryType::Destructive
+        && !args.no_confirm
+        && settings::defaults()?.require_confirmation
+    {
+        let databases = selected
+            .iter()
+            .map(|server| {
+                if args.all || server.fetch_all_databases {
+                    // O legado conta 1 por servidor quando vai descobrir os bancos: não sabe quantos são.
+                    1
+                } else {
+                    server.databases.len().max(1)
+                }
+            })
+            .sum();
+
+        if !confirm_destructive(
+            &analyzer::description(&sql),
+            selected.len(),
+            databases,
+            &sql,
+        )? {
+            println!("Query execution cancelled by user.");
+            return Ok(1);
+        }
+    }
+
     execute(selected, &sql, &args, token).await
+}
+
+/// Aviso + tabela + confirmação do `ConfirmDestructiveQuery` do legado.
+///
+/// A tabela é N4 (o legado a desenha com bordas do Spectre); o que compõe contrato aqui é o texto da
+/// pergunta e a decisão de seguir ou cancelar com exit 1.
+fn confirm_destructive(
+    description: &str,
+    servers: usize,
+    databases: usize,
+    sql: &str,
+) -> Result<bool, CoreError> {
+    let preview: String = sql.chars().take(200).collect();
+    let preview = if sql.chars().count() > 200 {
+        format!("{preview}...")
+    } else {
+        preview
+    };
+
+    let rows = vec![
+        vec!["Query Type".to_string(), description.to_string()],
+        vec!["Servers Affected".to_string(), servers.to_string()],
+        vec!["Databases Affected".to_string(), format!("~{databases}")],
+        vec!["Preview".to_string(), preview],
+    ];
+
+    println!();
+    println!("{}", style::danger("WARNING: DESTRUCTIVE QUERY DETECTED"));
+    println!("{}", table::render(&["Property", "Value"], &rows));
+    println!();
+
+    prompts::confirm("Proceed with execution?", true)
 }
 /// Texto da consulta: `-c` (com desescape) ou o arquivo de `-i`.
 ///

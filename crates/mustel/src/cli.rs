@@ -308,6 +308,15 @@ pub struct DatabaseRestoreArgs {
     /// Number of parallel jobs for restore (custom-format only).
     #[arg(short = 'j', long = "jobs", value_name = "count")]
     pub jobs: Option<i32>,
+
+    /// Create the target database when it does not exist.
+    ///
+    /// **Adição do Mustel**: o legado tentava criar o banco por `psql`, mas a checagem dele nunca
+    /// dava certo (o `psql` sai com 0 existindo ou não o banco), então restaurar para um banco
+    /// inexistente sempre falhou. Sem esta flag o comportamento continua o do legado (falha); com
+    /// ela, o banco é criado pelo driver antes do `pg_restore`.
+    #[arg(long = "create-if-not-exists")]
+    pub create_if_not_exists: bool,
 }
 
 /// Argumentos do grupo `database pgpass`.

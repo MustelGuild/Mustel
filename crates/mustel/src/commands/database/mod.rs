@@ -32,6 +32,7 @@ pub(crate) struct Printed {
     /// Mensagem já pronta, com o prefixo `Error: ` quando o legado o usa.
     pub message: String,
 }
+
 impl Printed {
     /// Monta a falha com a mensagem final.
     pub fn new(code: i32, message: impl Into<String>) -> Self {
@@ -53,24 +54,6 @@ impl Printed {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn bare_message_drops_the_legacy_prefix() {
-        let printed = Printed::new(1, "Error: pg_restore failed with exit code 1. Error: boom");
-        assert_eq!(
-            printed.bare_message(),
-            "pg_restore failed with exit code 1. Error: boom"
-        );
-
-        // Mensagem sem o prefixo volta como veio.
-        let sem_prefixo = Printed::new(1, "Invalid database name: 'x'");
-        assert_eq!(sem_prefixo.bare_message(), "Invalid database name: 'x'");
-    }
-}
-
 /// Desfecho de um comando do grupo `database`.
 ///
 /// Unifica as duas formas de terminar do legado: imprimir a mensagem e devolver código (o caso
@@ -82,6 +65,7 @@ pub(crate) enum Failure {
     /// Sobe como erro do núcleo.
     Fatal(CoreError),
 }
+
 impl Failure {
     /// Aplica o desfecho.
     pub fn resolve(self) -> Result<i32, CoreError> {
@@ -122,5 +106,23 @@ pub async fn run(args: DatabaseArgs, token: &CancellationToken) -> Result<i32, C
             PgpassCommand::List => pgpass::list::run(),
             PgpassCommand::Remove(args) => pgpass::remove::run(args),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bare_message_drops_the_legacy_prefix() {
+        let printed = Printed::new(1, "Error: pg_restore failed with exit code 1. Error: boom");
+        assert_eq!(
+            printed.bare_message(),
+            "pg_restore failed with exit code 1. Error: boom"
+        );
+
+        // Mensagem sem o prefixo volta como veio.
+        let sem_prefixo = Printed::new(1, "Invalid database name: 'x'");
+        assert_eq!(sem_prefixo.bare_message(), "Invalid database name: 'x'");
     }
 }

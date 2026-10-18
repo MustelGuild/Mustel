@@ -52,6 +52,42 @@ pub async fn list_databases(client: &tokio_postgres::Client) -> Result<Vec<Strin
     Ok(rows.iter().map(|row| row.get::<_, String>(0)).collect())
 }
 
+/// Cria o banco `database` se ele ainda **não** existir; devolve `true` quando criou.
+///
+/// Adição do Mustel (não existe no legado): o `CreateDatabaseIfNeeded` do FurLab só criava quando o
+/// `psql` saísse com código **3**, o que nunca acontece — um `SELECT` sem linhas sai com **0** —,
+/// então restaurar para um banco inexistente sempre falhava. Este é o comportamento que a flag
+/// `--create-if-not-exists` liga, e ele vai pelo **driver** (D12): nem o `psql` nem o parsing de
+/// código de saída entram na conta.
+///
+/// Conecta no banco de manutenção (`postgres`), como o `psql -d postgres` do legado, porque o banco
+/// alvo é justamente o que pode não existir. O nome vai **citado** com aspas dobradas, como no
+/// `CREATE DATABASE \"...\"` do original.
+pub async fn create_database_if_missing(
+    settings: &ConnectionSettings,
+    database: &str,
+) -> Result<bool, CoreError> {
+    let maintenance = ConnectionSettings {
+        database: Some("postgres".to_string()),
+        ..settings.clone()
+    };
+    let client = connect(&maintenance).await?;
+
+    let existing = client
+        .query("SELECT 1 FROM pg_database WHERE datname = $1", &[&database])
+        .await
+        .map_err(map_error)?;
+    if !existing.is_empty() {
+        return Ok(false);
+    }
+
+    // Nome citado como identificador: a aspa dobrada é o escape do SQL, como no legado.
+    let statement = format!("CREATE DATABASE \"{}\"", database.replace('"', "\"\""));
+    client.batch_execute(&statement).await.map_err(map_error)?;
+
+    Ok(true)
+}
+
 /// Classifica o erro do driver no erro do núcleo.
 fn map_error(error: tokio_postgres::Error) -> CoreError {
     let sqlstate = error.code().map(|code| code.code().to_string());

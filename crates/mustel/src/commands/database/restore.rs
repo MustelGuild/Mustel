@@ -32,8 +32,10 @@ use std::path::{Path, PathBuf};
 use mustel_core::config::ConfigStore;
 use mustel_core::credentials::SystemKeyring;
 use mustel_core::error::CoreError;
+use mustel_core::postgres::client;
 use mustel_core::postgres::locator::{PG_RESTORE, PSQL, PostgresBinaryLocator};
 use mustel_core::postgres::password::{self, PASSWORD_PROMPT};
+use mustel_core::postgres::settings::ConnectionSettings;
 use mustel_core::process::{self, ProcessOptions};
 use mustel_core::signal::CancellationToken;
 use mustel_core::validation;
@@ -256,7 +258,15 @@ async fn pg_restore_file(
         )));
     };
 
-    create_database_if_needed(locator, connection, password, &connection.database, token).await?;
+    create_database_if_needed(
+        args,
+        connection,
+        password,
+        &connection.database,
+        locator,
+        token,
+    )
+    .await?;
 
     let options = ProcessOptions::new(&pg_restore)
         .with_args(build_pg_restore_args(args, connection, full_path))
@@ -429,11 +439,16 @@ fn with_connection_environment(
 }
 
 /// Cria o banco alvo quando ele não existe, como o legado faz por `psql`.
+///
+/// Com `--create-if-not-exists` (adição do Mustel), a criação é feita **pelo driver** e de fato
+/// acontece: o passo por `psql` do legado é substituído, e nem o binário é exigido. Sem a flag, o
+/// comportamento é o do legado — inclusive o `psql` que **nunca** cria (o código 3 não acontece).
 async fn create_database_if_needed(
-    locator: &PostgresBinaryLocator,
+    args: &DatabaseRestoreArgs,
     connection: &Connection,
     password: &str,
     database: &str,
+    locator: &PostgresBinaryLocator,
     token: &CancellationToken,
 ) -> Result<(), Failure> {
     if !validation::is_valid_postgres_identifier(database) {
@@ -444,6 +459,10 @@ async fn create_database_if_needed(
             1,
             format!("{message}\n{message}"),
         )));
+    }
+
+    if args.create_if_not_exists {
+        return create_database_through_driver(args, connection, password, database).await;
     }
 
     let Some(psql) = locator.find_psql() else {
@@ -474,6 +493,44 @@ async fn create_database_if_needed(
     }
 
     Ok(())
+}
+
+/// Criação de verdade pelo driver (`--create-if-not-exists`).
+///
+/// A falha vira `Failed to create database: ...` com exit **1**, como a falha de criação do legado.
+/// `--ssl-mode` e `--timeout` são respeitados aqui (a flag é adição do Mustel; o `psql` do caminho do
+/// legado os ignorava).
+async fn create_database_through_driver(
+    args: &DatabaseRestoreArgs,
+    connection: &Connection,
+    password: &str,
+    database: &str,
+) -> Result<(), Failure> {
+    let settings = ConnectionSettings {
+        host: connection.host.clone(),
+        port: connection.port.parse().unwrap_or(5432),
+        user: connection.username.clone().unwrap_or_default(),
+        password: Some(password.to_string()),
+        database: Some("postgres".to_string()),
+        ssl_mode: args
+            .ssl_mode
+            .as_deref()
+            .unwrap_or_default()
+            .parse()
+            .unwrap_or_default(),
+        connect_timeout: std::time::Duration::from_secs(args.timeout.unwrap_or(30).max(1) as u64),
+        ..ConnectionSettings::default()
+    };
+
+    client::create_database_if_missing(&settings, database)
+        .await
+        .map(|_created| ())
+        .map_err(|error| {
+            Failure::Printed(Printed::new(
+                1,
+                format!("Error: Failed to create database: {error}"),
+            ))
+        })
 }
 
 /// `psql` com o `SELECT`/`CREATE` do legado (só `PGPASSWORD` no ambiente).
@@ -554,6 +611,7 @@ fn clone_args(args: &DatabaseRestoreArgs) -> DatabaseRestoreArgs {
         no_acl: args.no_acl,
         single_transaction: args.single_transaction,
         jobs: args.jobs,
+        create_if_not_exists: args.create_if_not_exists,
     }
 }
 
@@ -581,6 +639,7 @@ mod tests {
             no_acl: false,
             single_transaction: false,
             jobs: None,
+            create_if_not_exists: false,
         }
     }
 
@@ -792,6 +851,19 @@ mod tests {
             "o caminho resolvido não mantém `..`: {}",
             error.message
         );
+    }
+
+    #[test]
+    fn the_create_flag_is_off_by_default_and_not_part_of_the_legacy_surface() {
+        // A flag é adição do Mustel (`known-divergences.md`): sozinha ela não muda a validação, e o
+        // comportamento padrão continua sendo o do legado (falhar quando o banco não existe).
+        let padrao = args(Some("mydb"));
+        assert!(!padrao.create_if_not_exists);
+        assert!(validate(&padrao).is_ok());
+
+        let mut com_flag = args(Some("mydb"));
+        com_flag.create_if_not_exists = true;
+        assert!(validate(&com_flag).is_ok());
     }
 
     #[tokio::test]

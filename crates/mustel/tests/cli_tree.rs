@@ -125,6 +125,8 @@ fn flags_follow_the_legacy_contract() {
         "--single-transaction",
         "-j, --jobs",
         "-d, --directory",
+        // Adição do Mustel (o legado não tem): cria o banco alvo quando ele não existe.
+        "--create-if-not-exists",
     ] {
         assert!(
             restore_help.contains(flag),

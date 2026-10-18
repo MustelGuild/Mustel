@@ -12,7 +12,7 @@
 
 use std::str::FromStr;
 
-use mustel_core::postgres::client::connect;
+use mustel_core::postgres::client::{connect, create_database_if_missing};
 use mustel_core::postgres::settings::ConnectionSettings;
 use mustel_core::postgres::value::{TextValue, format_cell};
 
@@ -108,6 +108,59 @@ async fn an_unreachable_server_fails_instead_of_hanging() {
         started.elapsed() < std::time::Duration::from_secs(10),
         "não pode ficar pendurado no timeout"
     );
+}
+
+#[tokio::test]
+async fn create_database_if_missing_creates_it_once() {
+    let Some(settings) = settings() else {
+        eprintln!("skipped: set MUSTEL_PG_TEST_URL");
+        return;
+    };
+
+    // Nome fixo para o teste conseguir limpar o que cria, mesmo se falhar no meio.
+    let name = "mustel_it_banco_criado";
+    drop_database(&settings, name).await;
+
+    let created = create_database_if_missing(&settings, name)
+        .await
+        .expect("cria o banco");
+    assert!(created, "a primeira chamada cria");
+
+    let created_again = create_database_if_missing(&settings, name)
+        .await
+        .expect("confere o banco");
+    assert!(!created_again, "a segunda chamada só confirma que existe");
+
+    // E é um banco de verdade: aceita conexão.
+    {
+        let target = ConnectionSettings {
+            database: Some(name.to_string()),
+            ..settings.clone()
+        };
+        let client = connect(&target).await.expect("conecta no banco criado");
+        let one: i32 = client
+            .query_one("SELECT 1", &[])
+            .await
+            .expect("roda consulta")
+            .get(0);
+        assert_eq!(one, 1);
+    }
+
+    drop_database(&settings, name).await;
+}
+
+/// Derruba o banco de teste que este arquivo cria (o nome é fixo, então o teste é o dono dele).
+async fn drop_database(settings: &ConnectionSettings, name: &str) {
+    let maintenance = ConnectionSettings {
+        database: Some("postgres".to_string()),
+        ..settings.clone()
+    };
+
+    if let Ok(client) = connect(&maintenance).await {
+        let _ = client
+            .batch_execute(&format!("DROP DATABASE IF EXISTS \"{name}\""))
+            .await;
+    }
 }
 
 #[tokio::test]

@@ -98,6 +98,7 @@ backlog na seção 10 — mantendo dois produtos vivos até que sejam migrados o
 | D21 | Backlog                                   | Grupos fora do escopo serão migrados numa **segunda onda**, depois do 1.0 (não é descarte) | Usuário (Q11): "será feito depois"                                    |
 | D22 | Pacote winget antigo                      | `FurLab.CLI` permanece como está; nenhuma ação sobre ele                 | Usuário (Q12): "não mexer no antigo pacote"                           |
 | D23 | Notarização/code-signing macOS            | Fora do escopo; documentar `xattr -d com.apple.quarantine` no README     | Default mantido (não confirmado explicitamente em Q12)                |
+| D24 | Automação de CI e scaffolding de agentes | **Removidos pelo dono do projeto** (commit `3c81ff1`, 2026-10-18): os workflows (`.github/workflows/*`) e o scaffolding de prompts/skills (`.github/prompts`, `.github/skills`) não existem mais | Decisão explícita do usuário, commitada e publicada por ele; **não reverter**. Consequências: o gate de paridade passa a rodar **à mão** (`oracle-compare` local), `cargo fmt/clippy/test` idem, e o release do T44 precisa de estratégia nova, a definir com o usuário |
 
 ---
 
@@ -134,7 +135,7 @@ raiz do repositório
 │   └── known-divergences.md   ← divergências N4 aceitas
 ├── legacy/                    ← FurLab.Core | CLI | Tests | slnx (temporário)
 ├── docs/  openspec/  MustelPlans/
-└── .github/workflows/         ← ci.yml, compat.yml, release.yml
+└── .github/                  ← **sem workflows** (removidos pelo dono em D24)
 ```
 
 ### 4.2 Fluxo do oráculo (paridade)
@@ -220,7 +221,7 @@ raiz do repositório
 
 - `AGENTS.md` / `CLAUDE.md` — reescritos para convenções Rust (workspace, crates, `cargo fmt`/`clippy`,
   regras de paridade, guard rails de git preservados).
-- `.github/workflows/` — `build.yml`→`ci.yml` (Rust), novo `compat.yml` (oráculo .NET vs mustel), `publish.yml`→`release.yml` (matriz 4 alvos + SHA256).
+- `.github/` — **sem workflows nem scaffolding** desde `3c81ff1` (D24). O gate de paridade e os checks de qualidade rodam à mão; o release do T44 precisa de estratégia nova.
 - `README.md` / `README.pt-BR.md` / `docs/**` — Mustel + Rust; docs de arquitetura e especificação reescritas no corte.
 - `openspec/specs/**` — **preservadas** como contrato comportamental (pt-BR); specs novas só quando o fluxo OpenSpec for reaberto.
 
@@ -308,10 +309,11 @@ não invalidar as referências entre tarefas.
 - [x] **T10** — Harness de comparação + CI
   - Depende de: T2, T9
   - Paralelizável com: T3, T4, T5, T6, T7, T8, T11
-  - Concluído quando: `oracle-compare` compara exit code, stdout/stderr normalizados (`FurLab|fur` ↔ `mustel`) e artefatos byte a byte, classifica divergências N1–N3 (falha) e N4 (aviso), gera `oracle/reports/<ts>/report.md` e sai != 0 em falha; `ci.yml` (fmt/clippy/test em 3 SOs) e `compat.yml` (oráculo em windows + ubuntu) rodam verdes com o esqueleto stub
+  - Concluído quando: `oracle-compare` compara exit code, stdout/stderr normalizados (`FurLab|fur` ↔ `mustel`) e artefatos byte a byte, classifica divergências N1–N3 (falha) e N4 (aviso), gera `oracle/reports/<ts>/report.md` e sai != 0 em falha
+  - **Ressalva (D24)**: o critério previa `ci.yml`/`compat.yml`, que o dono removeu em `3c81ff1`. O entregável que permanece é o comparador rodando **localmente**; automação de CI deixou de ser requisito
   - Nota (desenho derivado do T9): comparar **sempre** exit code e artefatos (SHA-256 + texto) — são o contrato duro; comparar stdout/stderr como **aviso N4** (a redação difere por framework), com normalização de CRLF→LF e sem comparar texto quando a saída do legado **não é UTF-8** (tabela do `ls` sai em codepage do console: 414 bytes inválidos em UTF-8) — nesse caso o relatório marca "texto pulado (codepage)". Manter no binário uma lista explícita de comandos já migrados: caso ainda seja stub, registrar como "pulado (não migrado)" em vez de falha, para o gate não mentir
   - Nota: o `oracle-capture` já grava `stdout_b64`/`stderr_b64`; o comparador deve usá-los para decidir se o texto é comparável
-  - Arquivos: `crates/mustel-testkit/src/{oracle.rs,normalize.rs}`, `.github/workflows/{ci.yml,compat.yml}`
+  - Arquivos: `crates/mustel-testkit/src/{oracle.rs,normalize.rs}`
 
 - [x] **T11** — Baseline de performance do .NET
   - Notas de execução: (a) `hyperfine` **não** está instalado nesta máquina — a medição foi implementada no harness (`mustel-testkit::perf` + bin `oracle-perf`, mediana de 30 execuções do processo completo), o que também a torna reproduzível no CI; (b) o relatório mede **os dois lados** a cada execução (nada de número fixado no gerador); (c) métricas dependentes de Postgres (CSV de 100k linhas, `database backup`) ficam para T32/T28, que terão container; (d) o tamanho do oráculo publicado é **framework-dependent** e não é comparável ao binário auto-contido do Mustel — o relatório alerta sobre isso
@@ -479,8 +481,9 @@ não invalidar as referências entre tarefas.
 - [ ] **T44** — Release matrix + empacotamento
   - Depende de: T36, T43
   - Paralelizável com: T45, T46
-  - Concluído quando: `release.yml` produz `mustel.exe` (win-x64), `mustel` (linux-x64 musl) e `mustel` (macOS x64/arm64) com SHA256 no corpo da release e validação `winget validate` do manifesto (`Mustel.CLI`, installer `portable`, command `mustel`); download do artefato publicado executa `mustel --version`, `mustel --help` e abre `mustel gui` nas 3 plataformas; `cargo publish` (dry-run e real) de `mustel-core` → `mustel-gui` → `mustel`, com `license = "GPL-3.0-only"`, `repository` e `description`; `cargo install mustel` instala o binário `mustel` funcionando nas 3 plataformas
-  - Arquivos: `.github/workflows/release.yml`, `winget-publish.ps1`, `packaging/winget/**`, `crates/*/Cargo.toml`
+  - Concluído quando: o release entrega `mustel.exe` (win-x64), `mustel` (linux-x64 musl) e `mustel` (macOS x64/arm64) com SHA256, validação `winget validate` do manifesto (`Mustel.CLI`, installer `portable`, command `mustel`) e publicação no crates.io (`mustel-core` → `mustel-gui` → `mustel`, com `license = "GPL-3.0-only"`, `repository`, `description`); `cargo install mustel` funciona nas 3 plataformas
+  - **Ressalva (D24)**: com os workflows removidos pelo dono, **como** o release é produzido (script local, GitHub Actions recriado, outra automação) é decisão em aberto — perguntar antes de implementar
+  - Arquivos: `winget-publish.ps1`, `packaging/winget/**`, `crates/*/Cargo.toml`
 
 - [ ] **T45** — Documentação final
   - Depende de: T36, T43
@@ -652,6 +655,7 @@ Append-only. Registrar início, conclusão, bloqueio, paralelização e falhas.
 - `[2026-10-15 05:15]` `settings db-servers test` implementado e verificado ponta a ponta contra o container: sucesso imprime `Testing connection to ...`, `Connection to localhost:55432 successful`, `Authenticated as postgres` e `Databases found: mustel_test, postgres` (exit 0); senha errada → `Authentication failed: ...` (**exit 40**, não 10/11 — o legado embrulha em `InvalidOperationException`); servidor inexistente → 41. **Descoberta de paridade**: o legado **não usa o driver** nesse comando — lista bancos com o **`psql` externo**, exigindo o binário instalado; o Mustel usa o driver com a mesma query (divergência registrada)
 - `[2026-10-15 05:15]` **vazamento de credencial encontrado e corrigido**: um `dev.mustel` órfão ficou no Windows Credential Manager porque o teste do `add -W` gravava no cofre real sem limpar. O teste agora apaga o que cria, com asserção de limpeza, e o órfão foi removido à mão (`cmdkey /delete:dev.mustel`). Vale como lembrete: **teste que toca o cofre precisa limpar**
 - `[2026-10-15 05:15]` **T22 (gate da Fase 1) concluída** — `oracle-compare --scope settings`: **11 casos, 0 falhas, 0 pulados** (2 em profundidade, 9 N4), e o fluxo manual `add` → `set-password` → `test` → `ls` → `rm` executado contra o container com o cofre limpo no fim. Estado: **114 testes**, `fmt`/`clippy` limpos. Próxima fase: pgpass (T23/T26), depois `database` (T27–T31) e `query run` (T32–T36)
+- `[2026-10-18]` **mudança do dono do projeto detectada no repositório**: o commit `3c81ff1` ("Remove GitHub automation and AI prompt scaffolding"), **do próprio usuário e já publicado**, apagou os quatro workflows (`.github/workflows/*`, incluindo o `ci.yml` e o `compat.yml` criados no T10) e o scaffolding de prompts/skills do OpenSpec. Registrado como **D24** e **não revertido** — foi decisão explícita do dono. Efeitos no plano: o gate de paridade e os checks de qualidade passam a rodar **à mão**; os critérios de T10 e T44 foram ajustados (o T44 agora tem uma decisão em aberto: **como** o release é produzido, já que não há mais matrix de Actions)
 
 ---
 

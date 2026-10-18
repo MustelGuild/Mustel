@@ -496,4 +496,8 @@ pub struct DbServersSetPasswordArgs {
     /// Name of the server whose password will be stored.
     #[arg(value_name = "name")]
     pub name: Option<String>,
+
+    /// Password to store, instead of prompting (Mustel addition, like `add -W`).
+    #[arg(short = 'W', long = "password", value_name = "password")]
+    pub password: Option<String>,
 }

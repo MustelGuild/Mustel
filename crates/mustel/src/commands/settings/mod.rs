@@ -27,6 +27,6 @@ pub(crate) async fn dispatch_db_servers(
         DbServersCommand::Add(args) => db_servers::add::run(args),
         DbServersCommand::Rm(args) => db_servers::remove::run(args),
         DbServersCommand::Test(_) => not_implemented("settings db-servers test"),
-        DbServersCommand::SetPassword(_) => not_implemented("settings db-servers set-password"),
+        DbServersCommand::SetPassword(args) => db_servers::set_password::run(args),
     }
 }

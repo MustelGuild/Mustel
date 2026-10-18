@@ -362,7 +362,7 @@ não invalidar as referências entre tarefas.
   - Concluído quando: conecta com as mesmas credenciais/parâmetros; sucesso e falhas (host inválido, senha errada, banco inexistente, timeout) produzem as mesmas classes de exit code e mensagens equivalentes do oráculo
   - Arquivos: `crates/mustel/src/commands/settings/db_servers/test.rs`
 
-- [ ] **T21** — `settings db-servers set-password` (keyring)
+- [x] **T21** — `settings db-servers set-password` (keyring)
   - Depende de: T7, T17
   - Paralelizável com: T19, T20
   - Concluído quando: prompt de senha com máscara, grava no keyring, `mustel.jsonc` não contém senha em claro nem blob DPAPI; `query run`/`database` passam a usar a senha do keyring; spec `credential-storage` coberta (com a divergência DPAPI→keyring registrada)
@@ -644,6 +644,9 @@ Append-only. Registrar início, conclusão, bloqueio, paralelização e falhas.
 - `[2026-10-15 04:20]` camada Postgres implementada em `mustel-core::postgres`: `tls.rs` (6 modos de `sslMode` do Npgsql, com a diferença sutil `VerifyCA` não valida hostname), `settings.rs` (defaults do legado e tradução para `tokio_postgres::Config`), `value.rs` (`TextValue` + `format_cell`, a parte sensível a paridade do CSV, isolada de propósito) e `client.rs` (conexão sem TLS + erro classificado em `CoreError::Postgres { sqlstate }`, que é o que separa os exit codes 10 e 11). **105 testes** no workspace, `fmt`/`clippy` limpos
 - `[2026-10-15 04:20]` **bloqueio de ambiente**: o Docker Desktop está **parado** nesta máquina, então o Postgres de teste não subiu e os testes de integração (escritos em `crates/mustel-core/tests/postgres_integration.rs`, gateados por `MUSTEL_PG_TEST_URL`) **não** foram executados. T19 fica **aberta** por isso — não marco o critério como atendido sem ter rodado. Para destravar: subir o Docker e rodar `MUSTEL_PG_TEST_URL=postgres://postgres:dev@localhost:55432/mustel_test cargo test -p mustel-core --test postgres_integration`
 - `[2026-10-15 04:20]` pendências registradas para o T19/T32: TLS não ligada (`Require`/`VerifyCA`/`VerifyFull` falham com mensagem clara em vez de degradar para texto puro), pool ainda inexistente (campos prontos; biblioteca em T34) e **formato exato do texto do CSV não confirmado contra o oráculo** — `bytea`, `timestamptz` e `numeric` precisam do T32 para fechar
+- `[2026-10-15 04:45]` **T21 concluída** — `settings db-servers set-password` com o contrato do legado: sem `name` → seleção de servidor (sem servidores cadastrados → mensagem e exit 0); `name` inexistente → **41** `Server 'x' not found.`; sucesso → `Password saved securely for 'x'.` e exit 0. A senha vai para o **cofre** (D6) e o comando ganhou `-W/--password` para uso em script (o legado só sabia ler do console)
+- `[2026-10-15 04:45]` detalhe de paridade que **só o código mostrava** e que meu primeiro teste errou: com um nome informado e config vazia o legado **não** imprime "No servers configured" — ele vai direto ao `GetServer` e devolve 41. A mensagem de config vazia vive dentro da seleção interativa, ou seja, só aparece quando **nenhum** nome é passado. Corrigi o teste (o código já estava certo)
+- `[2026-10-15 04:45]` verificação do caminho que escreve no cofre: com `MUSTEL_KEYRING_TESTS=1` o teste passou, confirmando leitura direta sob `mustel/<servidor>` e limpeza depois (`cmdkey /list` sem resíduo). Estado: **110 testes**, `fmt`/`clippy` limpos. Smoke manual conferiu os três caminhos (0, 41 e o prompt abrindo em terminal real)
 
 ---
 

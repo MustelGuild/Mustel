@@ -386,18 +386,59 @@ pub async fn list_databases_for_discovery(
 /// Classifica o erro do driver no erro do núcleo.
 ///
 /// A mensagem do erro **do Postgres** sai no formato do Npgsql, medido no oráculo: `SQLSTATE: texto`
-/// (ex.: `3D000: database "nao_existe" does not exist`). Como o texto vem do servidor, os dois lados
-/// ficam iguais quando o erro nasce lá; sem SQLSTATE (falha de conexão, por exemplo) não há prefixo e
-/// a redação é a do driver — é o que a divergência 14 registra.
+/// mais os campos extras que o servidor mandar (ver [`postgres_message`]). Como o texto vem do
+/// servidor, os dois lados ficam iguais quando o erro nasce lá; sem SQLSTATE (falha de conexão, por
+/// exemplo) não há prefixo e a redação é a do driver — é o que a divergência 14 registra.
 fn map_error(error: tokio_postgres::Error) -> CoreError {
     let sqlstate = error.code().map(|code| code.code().to_string());
     let message = match (error.as_db_error(), &sqlstate) {
-        (Some(db_error), Some(state)) => format!("{state}: {}", db_error.message()),
+        (Some(db_error), Some(state)) => {
+            let position = db_error.position().map(|position| match position {
+                tokio_postgres::error::ErrorPosition::Original(position) => *position,
+                tokio_postgres::error::ErrorPosition::Internal { position, .. } => *position,
+            });
+
+            postgres_message(
+                state,
+                db_error.message(),
+                db_error.detail().is_some(),
+                position,
+            )
+        }
         (Some(db_error), None) => db_error.message().to_string(),
         (None, _) => error.to_string(),
     };
 
     CoreError::Postgres { sqlstate, message }
+}
+
+/// Texto que o Npgsql põe no lugar do detalhe quando o `Include Error Detail` está desligado.
+///
+/// É o **default** do Npgsql, e o legado nunca o liga (a connection string dele não tem essa chave),
+/// então é esta sentença fixa que aparece no log e no `_erros.csv` — não o detalhe do servidor.
+const REDACTED_DETAIL: &str = "Detail redacted as it may contain sensitive data. Specify 'Include Error Detail' in the connection string to include this information.";
+
+/// Mensagem de um erro do Postgres no formato do Npgsql, medido no oráculo.
+///
+/// O que foi medido, byte a byte (T32/T36):
+///
+/// - `SQLSTATE: texto`;
+/// - `DETAIL` (redigido, ver [`REDACTED_DETAIL`]) e `POSITION`, **nesta ordem**, cada um numa linha
+///   própria depois de uma linha em branco (`\r\n\r\n`);
+/// - o `HINT` **não** entra: medido num `42883` em que o servidor manda o hint e o Npgsql o omite.
+fn postgres_message(sqlstate: &str, text: &str, has_detail: bool, position: Option<u32>) -> String {
+    let mut message = format!("{sqlstate}: {text}");
+
+    if has_detail {
+        message.push_str("\r\n\r\nDETAIL: ");
+        message.push_str(REDACTED_DETAIL);
+    }
+
+    if let Some(position) = position {
+        message.push_str(&format!("\r\n\r\nPOSITION: {position}"));
+    }
+
+    message
 }
 
 #[cfg(test)]
@@ -418,5 +459,71 @@ mod tests {
         let message = error.to_string();
         assert!(message.contains("sslMode 'Require'"), "{message}");
         assert!(message.contains("docs/rust-postgres-spike.md"), "{message}");
+    }
+
+    #[test]
+    fn a_plain_postgres_error_is_the_sqlstate_and_the_text() {
+        assert_eq!(
+            postgres_message(
+                "3D000",
+                "database \"nao_existe\" does not exist",
+                false,
+                None
+            ),
+            "3D000: database \"nao_existe\" does not exist"
+        );
+    }
+
+    #[test]
+    fn the_position_comes_after_a_blank_line_like_npgsql_writes_it() {
+        // Medido no oráculo (`SELECT nao_existe FROM clientes`): os bytes do `_erros.csv` são
+        // `"42703: column ""nao_existe"" does not exist\r\n\r\nPOSITION: 8"`.
+        assert_eq!(
+            postgres_message(
+                "42703",
+                "column \"nao_existe\" does not exist",
+                false,
+                Some(8)
+            ),
+            "42703: column \"nao_existe\" does not exist\r\n\r\nPOSITION: 8"
+        );
+    }
+
+    #[test]
+    fn the_detail_is_the_redacted_sentence_npgsql_shows_by_default() {
+        // Medido no oráculo (`INSERT INTO clientes SELECT * FROM clientes`, que falha e não muda
+        // nada): o `DETAIL` do servidor **não** aparece — o Npgsql o redige por default.
+        assert_eq!(
+            postgres_message(
+                "23505",
+                "duplicate key value violates unique constraint \"clientes_pkey\"",
+                true,
+                None
+            ),
+            "23505: duplicate key value violates unique constraint \"clientes_pkey\"\r\n\r\n\
+             DETAIL: Detail redacted as it may contain sensitive data. Specify 'Include Error \
+             Detail' in the connection string to include this information."
+        );
+    }
+
+    #[test]
+    fn the_hint_is_left_out_and_the_detail_comes_before_the_position() {
+        // O servidor manda `HINT` no `42883` e a mensagem do oráculo **não** o mostra (medido).
+        assert_eq!(
+            postgres_message(
+                "42883",
+                "function to_date(unknown) does not exist",
+                false,
+                Some(8)
+            ),
+            "42883: function to_date(unknown) does not exist\r\n\r\nPOSITION: 8"
+        );
+
+        // Com os dois campos, a ordem é a do Npgsql: `DETAIL` e depois `POSITION`.
+        let both = postgres_message("23505", "duplicado", true, Some(3));
+        assert!(
+            both.find("DETAIL") < both.find("POSITION"),
+            "o detalhe vem antes da posição: {both}"
+        );
     }
 }

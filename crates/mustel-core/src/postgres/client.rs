@@ -171,13 +171,22 @@ impl RawValue {
 }
 
 /// Lê todos os valores de uma linha como texto, na ordem das colunas.
+///
+/// O `Option` é obrigatório: `NULL` não chega ao `from_sql` (o driver devolve `None`), e sem ele o
+/// `try_get` falha com "error deserializing column".
 pub fn row_text(row: &tokio_postgres::Row) -> Result<Vec<String>, CoreError> {
     (0..row.len())
         .map(|index| {
-            let raw: RawValue = row
+            let raw: Option<RawValue> = row
                 .try_get(index)
                 .map_err(|error| CoreError::postgres(error.to_string()))?;
-            raw.to_text()
+
+            match raw {
+                Some(raw) => raw.to_text(),
+                None => Ok(crate::postgres::value::format_cell(
+                    &crate::postgres::value::TextValue::Null,
+                )),
+            }
         })
         .collect()
 }
@@ -246,6 +255,48 @@ fn octet(bytes: &[u8]) -> Result<[u8; 8], CoreError> {
     bytes
         .try_into()
         .map_err(|_| CoreError::InvalidState("valor com tamanho inesperado".to_string()))
+}
+
+/// Roda uma consulta e devolve `(colunas, linhas)` com os valores **já formatados** para o CSV.
+///
+/// O texto de cada célula sai daqui com a semântica do `ToString()` do .NET (ver
+/// [`crate::postgres::value`]) — é a fronteira entre o driver e o export.
+///
+/// As linhas são trazidas de uma vez, como no legado (que também materializa tudo antes de escrever).
+/// A escrita **incremental** com memória limitada é critério do T34, e é lá que a leitura vira
+/// `query_raw` com `StreamExt`.
+pub async fn query_rows(
+    settings: &ConnectionSettings,
+    sql: &str,
+    command_timeout: std::time::Duration,
+) -> Result<(Vec<String>, Vec<Vec<String>>), CoreError> {
+    let client = connect(settings).await?;
+
+    let statement = client.prepare(sql).await.map_err(map_error)?;
+    let columns: Vec<String> = statement
+        .columns()
+        .iter()
+        .map(|column| column.name().to_string())
+        .collect();
+
+    let fetch = async {
+        let rows = client.query(&statement, &[]).await.map_err(map_error)?;
+
+        rows.iter()
+            .map(row_text)
+            .collect::<Result<Vec<Vec<String>>, CoreError>>()
+    };
+
+    let data = match tokio::time::timeout(command_timeout, fetch).await {
+        Ok(result) => result?,
+        Err(_) => {
+            return Err(CoreError::Timeout(format!(
+                "query exceeded {command_timeout:?}"
+            )));
+        }
+    };
+
+    Ok((columns, data))
 }
 
 /// Classifica o erro do driver no erro do núcleo.

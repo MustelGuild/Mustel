@@ -222,9 +222,11 @@ fn pgpass_add_accepts_the_database_as_a_positional_argument() {
 ///
 /// Ao migrar um comando, remova-o desta lista: ele deixa de ser stub e passa a ter comportamento
 /// próprio (ver `settings db-servers ls`, migrado no T16).
-const STUB_INVOCATIONS: &[&[&str]] = &[&["query", "run"]];
-
-/// Comandos já migrados: precisam executar de verdade (sem "not implemented").
+/// Comandos do escopo, **todos migrados**: nenhum pode reportar "not implemented".
+///
+/// As invocações mínimas de cada um são válidas o bastante para chegar ao comando (quando o
+/// posicional é obrigatório, ele vem preenchido) e terminam sem tocar servidor, cofre ou arquivo
+/// real: validação, ajuda ou leitura isolada.
 const IMPLEMENTED_COMMANDS: &[&[&str]] = &[
     &["settings", "db-servers", "ls"],
     &["settings", "db-servers", "add"],
@@ -238,10 +240,12 @@ const IMPLEMENTED_COMMANDS: &[&[&str]] = &[
     // coisa (o `restore` também não acha o arquivo, mas a validação vem antes).
     &["database", "backup"],
     &["database", "restore"],
+    // `query run` sem `-c`/`-i` para na validação (exit 1), como o oráculo.
+    &["query", "run"],
 ];
 
 #[test]
-fn migrated_commands_run_instead_of_reporting_not_implemented() {
+fn no_command_reports_not_implemented() {
     for path in IMPLEMENTED_COMMANDS {
         let output = mustel(path);
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -249,24 +253,6 @@ fn migrated_commands_run_instead_of_reporting_not_implemented() {
             !stdout.contains("not implemented yet"),
             "`mustel {}` já foi migrado e não pode ser stub: {stdout}",
             path.join(" ")
-        );
-    }
-}
-
-#[test]
-fn not_yet_migrated_commands_fail_loudly_with_exit_code_one() {
-    for path in STUB_INVOCATIONS {
-        let output = mustel(path);
-        assert_eq!(
-            output.status.code(),
-            Some(1),
-            "`mustel {}` stub must exit 1",
-            path.join(" ")
-        );
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            stdout.contains("not implemented yet"),
-            "stub must say it is not implemented: {stdout}"
         );
     }
 }

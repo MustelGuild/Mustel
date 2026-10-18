@@ -59,10 +59,7 @@ pub fn write_record(out: &mut String, fields: &[String]) {
 }
 
 /// Conteúdo completo de um CSV com o cabeçalho e as linhas dadas (BOM incluído).
-pub fn render_csv(
-    header: &[String],
-    rows: &[Vec<String>],
-) -> String {
+pub fn render_csv(header: &[String], rows: &[Vec<String>]) -> String {
     // O BOM vem antes de tudo — inclusive do cabeçalho.
     let mut out = String::from(UTF8_BOM);
     write_record(&mut out, header);
@@ -95,7 +92,8 @@ pub fn log_file_name(timestamp: &str) -> String {
 
 /// Caracteres que o legado troca por `_` no nome do arquivo (`Path.GetInvalidFileNameChars` no
 /// Windows, com a lista dele).
-const WINDOWS_INVALID_FILE_NAME_CHARS: [char; 10] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'];
+const WINDOWS_INVALID_FILE_NAME_CHARS: [char; 10] =
+    ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'];
 
 /// Troca os caracteres inválidos de nome de arquivo por `_`, como o `SanitizeFilename` do legado.
 pub fn sanitize_filename(name: &str) -> String {
@@ -131,9 +129,7 @@ pub fn iso8601_for(now: std::time::SystemTime) -> String {
     // O .NET escreve 7 casas (ticks de 100 ns); os microssegundos entram com um zero à direita.
     let fraction = duration.subsec_micros();
 
-    format!(
-        "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{fraction:06}0Z"
-    )
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{fraction:06}0Z")
 }
 
 /// Data/hora civil (UTC) a partir de microssegundos desde 1970-01-01.
@@ -195,7 +191,10 @@ mod tests {
 
     #[test]
     fn a_csv_starts_with_the_bom_and_uses_crlf() {
-        let csv = render_csv(&header_of(&["id"]), &[vec!["s".into(), "d".into(), "1".into()]]);
+        let csv = render_csv(
+            &header_of(&["id"]),
+            &[vec!["s".into(), "d".into(), "1".into()]],
+        );
 
         assert!(csv.starts_with('\u{feff}'), "o BOM vem primeiro");
         assert_eq!(csv.as_bytes()[..3], [0xEF, 0xBB, 0xBF]);
@@ -235,7 +234,10 @@ mod tests {
 
     #[test]
     fn file_names_follow_the_legacy() {
-        assert_eq!(server_file_name("127.0.0.1", "2026-10-18_143228"), "127.0.0.1_2026-10-18_143228.csv");
+        assert_eq!(
+            server_file_name("127.0.0.1", "2026-10-18_143228"),
+            "127.0.0.1_2026-10-18_143228.csv"
+        );
         assert_eq!(consolidated_file_name("ts"), "consolidated_ts.csv");
         assert_eq!(errors_file_name("ts"), "ts_erros.csv");
         assert_eq!(log_file_name("ts"), "ts_log.csv");
@@ -250,17 +252,20 @@ mod tests {
 
     #[test]
     fn the_execution_timestamp_matches_the_legacy_pattern() {
-        // 2026-10-18T14:32:28Z em microssegundos desde a época Unix.
-        let unix_micros: i64 = 1_792_326_748 * 1_000_000;
-        let stamp = timestamp_for(std::time::UNIX_EPOCH + std::time::Duration::from_micros(unix_micros as u64));
+        // 2026-10-18T14:32:28Z — época conferida no próprio Postgres:
+        // `SELECT extract(epoch from '2026-10-18T14:32:28Z'::timestamptz)` = 1792333948.
+        let unix_micros: i64 = 1_792_333_948 * 1_000_000;
+        let stamp = timestamp_for(
+            std::time::UNIX_EPOCH + std::time::Duration::from_micros(unix_micros as u64),
+        );
 
         assert_eq!(stamp, "2026-10-18_143228");
     }
 
     #[test]
     fn the_log_timestamp_uses_the_dotnet_round_trip_format() {
-        let now = std::time::UNIX_EPOCH + std::time::Duration::from_micros(1_792_326_748_228_411);
-        // `ExecutedAt` do oráculo: `2026-10-18T14:32:28.2284119Z` (7 casas).
+        let now = std::time::UNIX_EPOCH + std::time::Duration::from_micros(1_792_333_948_228_411);
+        // `ExecutedAt` do oráculo: `2026-10-18T14:32:28.2284119Z` (7 casas de fração).
         assert_eq!(iso8601_for(now), "2026-10-18T14:32:28.2284110Z");
     }
 
@@ -272,7 +277,12 @@ mod tests {
 
         assert_eq!(
             data_row("s", "d", &columns, &values),
-            vec!["s".to_string(), "d".to_string(), "1".to_string(), String::new()]
+            vec![
+                "s".to_string(),
+                "d".to_string(),
+                "1".to_string(),
+                String::new()
+            ]
         );
     }
 }

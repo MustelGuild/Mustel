@@ -13,5 +13,6 @@ pub mod error;
 pub mod pgpass;
 pub mod postgres;
 pub mod process;
+pub mod query;
 pub mod signal;
 pub mod validation;

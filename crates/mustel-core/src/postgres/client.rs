@@ -1,0 +1,68 @@
+//! Fronteira fina com o driver `tokio-postgres`.
+//!
+//! Estado (T19, parcial): a conexão **sem TLS** está implementada e é exercitada pelos testes de
+//! integração; os modos que exigem TLS devolvem erro explícito em vez de silenciosamente cair para
+//! texto puro. Ligar TLS (rustls + certificados do sistema) e separar `VerifyCA` de `VerifyFull` é o
+//! que falta — ver `docs/rust-postgres-spike.md`.
+
+use crate::error::CoreError;
+use crate::postgres::settings::ConnectionSettings;
+
+/// Abre uma conexão e devolve o cliente pronto para consultas.
+///
+/// Erros de conexão viram [`CoreError::Postgres`] **com** `sqlstate` quando o servidor informou um (o
+/// oráculo usa `10` nesse caso e `11` quando não há SQLSTATE).
+pub async fn connect(settings: &ConnectionSettings) -> Result<tokio_postgres::Client, CoreError> {
+    if settings.ssl_mode.requires_tls() {
+        return Err(CoreError::InvalidState(format!(
+            "sslMode '{}' ainda não é suportado pelo Mustel; use Prefer, Allow ou Disable enquanto a \
+             TLS não é ligada (ver docs/rust-postgres-spike.md)",
+            settings.ssl_mode
+        )));
+    }
+
+    let config = settings.to_pg_config();
+    let (client, connection) = config
+        .connect(tokio_postgres::NoTls)
+        .await
+        .map_err(map_error)?;
+
+    // A conexão precisa de uma task própria; quando ela cai, `client.is_closed()` fica true.
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    Ok(client)
+}
+
+/// Classifica o erro do driver no erro do núcleo.
+fn map_error(error: tokio_postgres::Error) -> CoreError {
+    let sqlstate = error.code().map(|code| code.code().to_string());
+    let message = error
+        .as_db_error()
+        .map(|db_error| format!("{}: {}", db_error.severity(), db_error.message()))
+        .unwrap_or_else(|| error.to_string());
+
+    CoreError::Postgres { sqlstate, message }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::postgres::tls::SslMode;
+
+    #[tokio::test]
+    async fn tls_modes_fail_clearly_instead_of_silently_downgrading() {
+        let settings = ConnectionSettings {
+            host: "localhost".to_string(),
+            user: "postgres".to_string(),
+            ssl_mode: SslMode::Require,
+            ..ConnectionSettings::default()
+        };
+
+        let error = connect(&settings).await.expect_err("must fail");
+        let message = error.to_string();
+        assert!(message.contains("sslMode 'Require'"), "{message}");
+        assert!(message.contains("docs/rust-postgres-spike.md"), "{message}");
+    }
+}

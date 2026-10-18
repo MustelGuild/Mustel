@@ -10,5 +10,6 @@
 pub mod config;
 pub mod credentials;
 pub mod error;
+pub mod postgres;
 pub mod signal;
 pub mod validation;

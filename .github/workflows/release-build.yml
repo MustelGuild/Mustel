@@ -1,0 +1,54 @@
+# Empacota o executável do Mustel para publicação manual.
+#
+# **Só roda quando alguém pede** (`workflow_dispatch`, o botão "Run workflow"): as portas de
+# qualidade (fmt/clippy/test, paridade com o oráculo) continuam rodando **à mão**, como decidido no
+# D24 — foi o que tirou o ruído de CI vermelho durante o desenvolvimento. Este workflow existe só
+# para produzir o artefato de release, que segue sendo publicado manualmente (D26/D27).
+#
+# Para acrescentar outra plataforma, basta uma entrada em `matrix` (o `publish.sh` já cobre Unix).
+name: release-build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: empacotar (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: instalar Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: cache do cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: empacotar (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./publish.ps1
+
+      - name: empacotar (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./publish.sh
+
+      - name: publicar o artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: mustel-${{ matrix.os }}
+          path: |
+            packaging/*.zip
+            packaging/*.tar.gz
+            packaging/*.sha256
+          if-no-files-found: error
+          retention-days: 30

@@ -2,7 +2,7 @@
 //
 // Copie para:
 //   Windows: %APPDATA%\Mustel\mustel.jsonc
-//   Linux:   ~/.config/mustel/mustel.jsonc
+//   Linux:   $XDG_CONFIG_HOME/Mustel/mustel.jsonc (ou ~/.config/Mustel/mustel.jsonc)
 //   macOS:   ~/Library/Application Support/Mustel/mustel.jsonc
 //
 // Passwords are NOT stored here: they live in the system keyring

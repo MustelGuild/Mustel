@@ -45,7 +45,7 @@ backlog na seção 10 — mantendo dois produtos vivos até que sejam migrados o
   `furlab.jsonc` legado (Q8).
 - Credenciais via `keyring` nativo (Windows Credential Manager / macOS Keychain / Secret Service).
 - Harness de oráculo + baseline versionado (`oracle/`) e infra de testes (unit, CLI, PTY, integração Postgres).
-- CI (fmt/clippy/test em Windows, Linux, macOS) e release matrix (win-x64, linux-x64 musl, macos-x64, macos-arm64).
+- ~~CI (fmt/clippy/test em Windows, Linux, macOS)~~ — **revogado pelo D24**: o dono removeu os workflows; fmt/clippy/test e o gate de paridade rodam **à mão** — e release matrix (win-x64, linux-x64 musl, macos-x64, macos-arm64), hoje por **scripts locais** (D26, `publish.ps1`/`publish.sh`), com publicação manual.
 - Publicação no **crates.io** (`mustel-core`, `mustel-gui`, `mustel`), habilitando `cargo install mustel`,
   e no **winget** sob o novo id `Mustel.CLI`.
 - GUI `mustel gui` em egui (fase 5), consumindo `mustel-core` em processo.
@@ -180,8 +180,8 @@ raiz do repositório
 - **Cancelamento:** `tokio_util::sync::CancellationToken` disparado por botão na GUI ou Ctrl+C no CLI.
 - **Distribuição (decidida em Q1):** **binário único** `mustel` com subcomando `mustel gui`; `eframe`/`egui`
   ficam atrás da feature `gui`, ligada por padrão. Custos aceitos de forma consciente: quem instala só o CLI
-  compila a árvore do egui, o binário fica maior e o CI precisa de um job `--no-default-features` para
-  garantir que o corte continua válido. Como o código segue dividido em `mustel-core`/`mustel-gui`,
+  compila a árvore do egui, o binário fica maior e é preciso conferir à mão que
+  `--no-default-features` continua produzindo um CLI válido (D24: sem CI, a conferência é manual). Como o código segue dividido em `mustel-core`/`mustel-gui`,
   separar em dois binários depois é uma linha de `[[bin]]`, não um refactor.
 - **Alternativa documentada (se Q1 = B):** GUI como subprocesso lendo NDJSON (`mustel <cmd> --output json`).
   Custo: novo contrato de saída para manter + building de argv; ganho: isolamento total. Só faz sentido
@@ -252,7 +252,7 @@ não invalidar as referências entre tarefas.
   - Depende de: —
   - Paralelizável com: —
   - Concluído quando: branch existe a partir de `main`; `legacy/FurLab.slnx` + `legacy/FurLab.Core|CLI|Tests` presentes; `dotnet build legacy/FurLab.slnx` e `dotnet test legacy/FurLab.slnx` verdes; `git status` limpo
-  - Arquivos: `legacy/**`, `.github/workflows/**`
+  - Arquivos: `legacy/**` (os workflows do legado saíram com o D24)
   - Autorização: **pedir antes** (D14)
 
 - [x] **T2** — Criar o workspace Cargo com os 4 crates
@@ -516,7 +516,7 @@ não invalidar as referências entre tarefas.
 - [ ] **T41** — Subcomando `gui`: egui sobre o mesmo núcleo, em binário único
   - Depende de: T40
   - Paralelizável com: —
-  - Concluído quando: `mustel gui` abre a janela (eframe) a partir de `crates/mustel-gui`; runtime tokio em background; `ChannelSink` entrega eventos com `ctx.request_repaint()`; cancelamento via `CancellationToken`; `eframe`/`egui` estão atrás da feature `gui` (ligada por padrão) e `cargo build --no-default-features` produz CLI sem egui (`cargo tree -p mustel --no-default-features` limpo), validado em CI
+  - Concluído quando: `mustel gui` abre a janela (eframe) a partir de `crates/mustel-gui`; runtime tokio em background; `ChannelSink` entrega eventos com `ctx.request_repaint()`; cancelamento via `CancellationToken`; `eframe`/`egui` estão atrás da feature `gui` (ligada por padrão) e `cargo build --no-default-features` produz CLI sem egui (`cargo tree -p mustel --no-default-features` limpo), **conferido à mão** (D24: não há CI para isso)
   - Arquivos: `crates/mustel-gui/**`, `crates/mustel/src/commands/gui.rs`, `crates/mustel/Cargo.toml`
 
 - [ ] **T42** — Telas MVP da GUI
@@ -565,7 +565,7 @@ não invalidar as referências entre tarefas.
   - Depende de: T47 (obrigatoriamente **depois** do gate final)
   - Paralelizável com: —
   - Concluído quando: `legacy/` **preservado** (é o produto .NET dos grupos fora do escopo e a fonte do oráculo) com `legacy/README.md` explicando o status congelado; workflow de publicação NuGet removido; `publish.ps1`, `format.ps1` e `dotnet-tools.json` sob `legacy/`; `version.json`/NBGV mantidos para o build do legado; `grep -ri fur --exclude-dir={.git,openspec,docs,legacy}` só retorna ocorrências justificadas; `cargo build --workspace` e `cargo test --workspace` verdes
-  - Arquivos: `legacy/README.md`, `.github/workflows/**`, `legacy/**`
+  - Arquivos: `legacy/README.md`, `legacy/**` (os workflows saíram com o D24)
   - Autorização: **pedir antes** (remoção de arquivos rastreados, D14)
 
 ---

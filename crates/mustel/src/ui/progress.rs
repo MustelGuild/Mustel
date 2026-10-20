@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use indicatif::{ProgressBar, ProgressStyle};
 
-use mustel_core::query::executor::Status;
+use mustel_core::events::{CoreEvent, EventSink, Status};
 
 use super::{is_interactive, table};
 
@@ -63,6 +63,41 @@ impl Progress {
     /// Encerra e limpa o indicador.
     pub fn finish(&self) {
         self.bar.finish_and_clear();
+    }
+}
+
+/// Leva os eventos do núcleo para a tabela do terminal.
+///
+/// É o `TerminalSink` do T40 no pedaço que já existe: o núcleo emite [`CoreEvent`] e esta camada
+/// decide o desenho. A GUI (T41) vai implementar a mesma trait com a tabela dela.
+pub struct TableSink<'a> {
+    table: &'a LiveTable,
+}
+
+impl<'a> TableSink<'a> {
+    /// Escuta os eventos para a tabela dada.
+    pub fn new(table: &'a LiveTable) -> Self {
+        Self { table }
+    }
+}
+
+impl EventSink for TableSink<'_> {
+    fn emit(&self, event: CoreEvent<'_>) {
+        match event {
+            CoreEvent::DatabaseFinished {
+                server,
+                database,
+                status,
+                rows,
+                duration,
+                error,
+            } => self
+                .table
+                .database_finished(server, database, status, rows, duration, error),
+            CoreEvent::ServerWithoutDatabases { server } => {
+                self.table.server_without_databases(server);
+            }
+        }
     }
 }
 

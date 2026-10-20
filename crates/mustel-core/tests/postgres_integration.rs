@@ -274,9 +274,13 @@ async fn run_two_servers(settings: &ConnectionSettings, max_parallelism: usize) 
     };
 
     let started = Instant::now();
-    let outcome = executor::execute(&request, &|_event| {}, &cancellation_token())
-        .await
-        .expect("executa");
+    let outcome = executor::execute(
+        &request,
+        &mustel_core::events::NoopSink,
+        &cancellation_token(),
+    )
+    .await
+    .expect("executa");
     let elapsed = started.elapsed().as_secs_f64();
 
     assert_eq!(outcome.successes, 2, "os dois servidores responderam");

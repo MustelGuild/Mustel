@@ -36,7 +36,7 @@ use std::sync::Arc;
 use mustel_core::config::ServerConfigEntry;
 use mustel_core::error::CoreError;
 use mustel_core::query::analyzer::{self, QueryType};
-use mustel_core::query::executor::{self, ExecutionEvent, ExecutionRequest, ServerPlan};
+use mustel_core::query::executor::{self, ExecutionRequest, ServerPlan};
 use mustel_core::query::{csv_writer, discovery};
 use mustel_core::signal::CancellationToken;
 use mustel_core::validation;
@@ -291,24 +291,8 @@ async fn execute(
     // A tabela ao vivo do legado: uma linha por banco que termina, desenhada no lugar e deixada na
     // tela no fim (fora de terminal, nada é escrito).
     let results = progress::LiveTable::new();
-    let outcome = executor::execute(
-        &request,
-        &|event| match event {
-            ExecutionEvent::DatabaseFinished {
-                server,
-                database,
-                status,
-                rows,
-                duration,
-                error,
-            } => results.database_finished(server, database, status, rows, duration, error),
-            ExecutionEvent::ServerWithoutDatabases { server } => {
-                results.server_without_databases(server);
-            }
-        },
-        token,
-    )
-    .await?;
+    let sink = progress::TableSink::new(&results);
+    let outcome = executor::execute(&request, &sink, token).await?;
     results.finish();
 
     println!();

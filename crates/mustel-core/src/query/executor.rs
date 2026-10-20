@@ -38,6 +38,7 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::{Semaphore, mpsc};
 
 use crate::error::CoreError;
+use crate::events::{CoreEvent, EventSink, Status};
 use crate::postgres::client::QueryStream;
 use crate::postgres::settings::ConnectionSettings;
 use crate::query::csv_writer::{self, Appender};
@@ -113,7 +114,7 @@ pub struct ExecutionOutcome {
 /// vazio (ver os testes).
 pub async fn execute(
     request: &ExecutionRequest,
-    events: &dyn Fn(ExecutionEvent<'_>),
+    events: &dyn EventSink,
     token: &CancellationToken,
 ) -> Result<ExecutionOutcome, CoreError> {
     let (sender, receiver) = mpsc::channel::<Message>(request.max_parallelism.max(1) * 2);
@@ -194,7 +195,7 @@ async fn run_server(
     server: &ServerPlan,
     servers: &Semaphore,
     sender: &mpsc::Sender<Message>,
-    events: &dyn Fn(ExecutionEvent<'_>),
+    events: &dyn EventSink,
     token: &CancellationToken,
 ) -> Result<Counts, CoreError> {
     if token.is_cancelled() {
@@ -208,7 +209,7 @@ async fn run_server(
 
     if server.databases.is_empty() {
         // O legado marca o servidor sem banco com uma linha própria e não roda nada nele.
-        events(ExecutionEvent::ServerWithoutDatabases {
+        events.emit(CoreEvent::ServerWithoutDatabases {
             server: &server.name,
         });
 
@@ -238,7 +239,7 @@ async fn run_database(
     target: &DatabaseTarget,
     databases: &Semaphore,
     sender: &mpsc::Sender<Message>,
-    events: &dyn Fn(ExecutionEvent<'_>),
+    events: &dyn EventSink,
     token: &CancellationToken,
 ) -> Result<Counts, CoreError> {
     if token.is_cancelled() {
@@ -274,7 +275,7 @@ async fn run_database(
                 )
                 .await?;
 
-                events(ExecutionEvent::DatabaseFinished {
+                events.emit(CoreEvent::DatabaseFinished {
                     server: &server.name,
                     database: &target.database,
                     status: Status::Success,
@@ -324,7 +325,7 @@ async fn run_database(
                 )
                 .await?;
 
-                events(ExecutionEvent::DatabaseFinished {
+                events.emit(CoreEvent::DatabaseFinished {
                     server: &server.name,
                     database: &target.database,
                     status: Status::Error,
@@ -457,46 +458,6 @@ struct LogEntry {
     /// Já formatado, como o `double` do legado (`0` no caso de erro).
     duration_ms: String,
     error: String,
-}
-
-/// Como a execução terminou.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Status {
-    Success,
-    Error,
-}
-
-impl Status {
-    fn text(self) -> &'static str {
-        match self {
-            Self::Success => "Success",
-            Self::Error => "Error",
-        }
-    }
-}
-
-/// O que acontece durante a execução, para quem desenha o progresso.
-///
-/// É o material da **tabela ao vivo** do legado
-/// (`Status | Server | Database | Rows | Duration | Detail`): uma linha por banco que terminou e uma
-/// por servidor que ficou sem banco. Quem escuta decide o que fazer (a tabela do terminal, e mais
-/// tarde o `EventSink` do T40). Não carrega caminho de arquivo: a tabela do legado não o mostra.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecutionEvent<'a> {
-    /// Um banco terminou — sucesso ou erro.
-    DatabaseFinished {
-        server: &'a str,
-        database: &'a str,
-        status: Status,
-        /// Linhas trazidas (0 no erro).
-        rows: u64,
-        /// Quanto durou a execução daquele banco (zero no erro, como o legado).
-        duration: Duration,
-        /// Mensagem do erro, vazia no sucesso.
-        error: &'a str,
-    },
-    /// O servidor não tem banco nenhum para rodar (a linha `no databases` do legado).
-    ServerWithoutDatabases { server: &'a str },
 }
 
 /// O **escritor único**: consome o canal e grava os arquivos na ordem em que as mensagens chegam.
@@ -659,6 +620,16 @@ impl OutputFiles {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::events::CoreEvent;
+
+    /// Escuta que guarda os eventos em texto, para os testes conferirem a sequência.
+    struct Collector<'a>(&'a std::cell::RefCell<Vec<String>>);
+
+    impl EventSink for Collector<'_> {
+        fn emit(&self, event: CoreEvent<'_>) {
+            self.0.borrow_mut().push(format!("{event:?}"));
+        }
+    }
 
     fn columns(names: &[&str]) -> Arc<[String]> {
         Arc::from(
@@ -817,13 +788,9 @@ mod tests {
         };
 
         let events = std::cell::RefCell::new(Vec::new());
-        let outcome = execute(
-            &request,
-            &|event| events.borrow_mut().push(format!("{event:?}")),
-            &CancellationToken::new(),
-        )
-        .await
-        .expect("executa");
+        let outcome = execute(&request, &Collector(&events), &CancellationToken::new())
+            .await
+            .expect("executa");
 
         assert_eq!(outcome.successes, 0);
         assert_eq!(outcome.failures, 0);

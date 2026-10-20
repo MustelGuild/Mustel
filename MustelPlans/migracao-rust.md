@@ -504,6 +504,8 @@ não invalidar as referências entre tarefas.
 ### Fase 5 — GUI em egui
 
 - [ ] **T40** — Extrair casos de uso + `EventSink` no core
+  - **Feito nesta rodada (2026-10-18) — o vocabulário de eventos**: `mustel-core::events` com `CoreEvent` (hoje `DatabaseFinished` e `ServerWithoutDatabases`), `Status` (com o `text()` que o log usa) e a trait `EventSink` (`emit(&self, CoreEvent)`, mais `NoopSink`). O executor deixou de receber um `Fn` e passou a receber `&dyn EventSink`; o CLI implementa a trait no novo `ui::progress::TableSink`, que leva os eventos para a `LiveTable` — a mesma trait que a GUI vai implementar. Nada mudou de comportamento: a tabela, os caminhos e o resumo saíram iguais na execução real, e o oráculo segue com 47 casos e 0 falhas
+  - **O que falta para fechar**: mover a **orquestração** dos comandos para `usecases/**` no core (hoje ela está em `crates/mustel/src/commands/**`) e emitir por `CoreEvent` as mensagens que ainda são `println!` no CLI (avisos de descoberta, resumo, caminhos dos arquivos) — `query_run`, `db_servers_*`, `database_backup`/`restore` e `pgpass_*`
   - Depende de: T32–T36
   - Paralelizável com: —
   - Concluído quando: `query_run`, `db_servers_*`, `database_backup`/`database_restore` e `pgpass_*` são funções de core que recebem entrada resolvida e emitem `CoreEvent`; o CLI passa a consumi-las via `TerminalSink` sem mudança de comportamento (oráculo segue verde); nenhuma dependência de UI no `mustel-core` (`cargo tree -p mustel-core` sem `inquire`/`indicatif`/`eframe`)
@@ -818,3 +820,4 @@ funcionado).
 O Docker Desktop também foi iniciado nesta rodada (o daemon estava parado) para rodar os testes
 `#[cfg(unix)]` do runner em container `rust:1-bookworm`. O servidor local continua **de pé** na porta
 55432 para as próximas tarefas (`query run`).
+- `[2026-10-18]` **T40 começada pelo vocabulário de eventos** — `mustel-core::events` (`CoreEvent`, `Status`, trait `EventSink`, `NoopSink`), o executor passou a receber `&dyn EventSink` em vez de um `Fn`, e o CLI ganhou `ui::progress::TableSink` levando os eventos para a `LiveTable`: é a mesma trait que a GUI vai implementar no T41. Zero mudança de comportamento (tabela, caminhos e resumo idênticos na execução real; `oracle-compare` com 47 casos e 0 falhas; **286 testes**). Falta para fechar o T40 mover a orquestração para `usecases/**` e emitir por evento as mensagens que ainda são `println!` (avisos de descoberta, resumo e caminhos)

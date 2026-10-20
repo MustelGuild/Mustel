@@ -10,6 +10,7 @@
 pub mod config;
 pub mod credentials;
 pub mod error;
+pub mod events;
 pub mod pgpass;
 pub mod postgres;
 pub mod process;

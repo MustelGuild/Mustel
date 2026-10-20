@@ -8,6 +8,7 @@
 //! redesenha a tabela a cada banco que termina e a **deixa na tela** no fim (`AutoClear(false)`).
 
 use std::cell::RefCell;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use indicatif::{ProgressBar, ProgressStyle};
@@ -77,7 +78,7 @@ impl Progress {
 /// É o adaptador que a GUI (T41) vai espelhar com um canal e `ctx.request_repaint()`.
 #[derive(Debug, Default)]
 pub struct TerminalSink {
-    state: RefCell<TerminalState>,
+    state: Mutex<TerminalState>,
 }
 
 #[derive(Debug, Default)]
@@ -101,7 +102,7 @@ impl TerminalSink {
     /// Quem chama é o comando, **depois** de o caso de uso terminar — inclusive quando ele devolve
     /// erro: no legado o resumo sai antes da mensagem de erro.
     pub fn finish(&self) {
-        let mut state = self.state.borrow_mut();
+        let mut state = self.state.lock().expect("o sink não fica envenenado");
         state.stop_discovery();
 
         if let Some(table) = state.table.take() {
@@ -135,7 +136,7 @@ impl TerminalState {
 
 impl EventSink for TerminalSink {
     fn emit(&self, event: CoreEvent<'_>) {
-        let mut state = self.state.borrow_mut();
+        let mut state = self.state.lock().expect("o sink não fica envenenado");
 
         // A fase de descoberta anda por todos os servidores da fila (inclusive os que só leem o
         // cadastro, como no legado) e é a única que usa o spinner.

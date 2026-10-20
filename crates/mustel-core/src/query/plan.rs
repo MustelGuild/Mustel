@@ -138,14 +138,14 @@ pub fn maintenance_settings(template: &ConnectionSettings) -> ConnectionSettings
 mod tests {
     use super::*;
     use crate::events::{CoreEvent, NoopSink};
-    use std::cell::RefCell;
+    use std::sync::Mutex;
 
     /// Escuta que guarda os eventos em texto, para os testes conferirem a sequência.
-    struct Collector<'a>(&'a RefCell<Vec<String>>);
+    struct Collector<'a>(&'a Mutex<Vec<String>>);
 
     impl EventSink for Collector<'_> {
         fn emit(&self, event: CoreEvent<'_>) {
-            self.0.borrow_mut().push(format!("{event:?}"));
+            self.0.lock().expect("collector").push(format!("{event:?}"));
         }
     }
 
@@ -189,7 +189,7 @@ mod tests {
     #[tokio::test]
     async fn without_discovery_the_plan_uses_the_configured_databases_filtered() {
         let servers = vec![server("dev", &["app", "template_extra", "outro"])];
-        let events = RefCell::new(Vec::new());
+        let events = Mutex::new(Vec::new());
 
         let plans = plan(
             &servers,
@@ -216,9 +216,9 @@ mod tests {
             Some("app")
         );
         assert!(
-            events.borrow().is_empty(),
+            events.lock().expect("collector").is_empty(),
             "sem descoberta não há fase para anunciar: {:?}",
-            events.borrow()
+            events.lock().expect("collector")
         );
     }
 
@@ -242,7 +242,7 @@ mod tests {
         server.settings.connect_timeout = std::time::Duration::from_millis(1);
         server.settings.ssl_mode = crate::postgres::tls::SslMode::Disable;
 
-        let events = RefCell::new(Vec::new());
+        let events = Mutex::new(Vec::new());
         let plans = plan(&[server], false, &HashSet::new(), &Collector(&events)).await;
 
         assert_eq!(
@@ -255,7 +255,7 @@ mod tests {
             "a falha não derruba o comando: fica o banco do cadastro"
         );
 
-        let seen = events.borrow();
+        let seen = events.lock().expect("collector");
         assert!(
             seen.iter()
                 .any(|event| event.contains("DiscoveringDatabases")),

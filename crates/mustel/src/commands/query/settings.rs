@@ -28,6 +28,7 @@ use mustel_core::error::CoreError;
 use mustel_core::postgres::settings::ConnectionSettings;
 use mustel_core::postgres::tls::SslMode;
 use mustel_core::query::plan::ServerRun;
+use mustel_core::usecases::query_run;
 
 use crate::cli::QueryRunArgs;
 use crate::ui::prompts;
@@ -62,7 +63,7 @@ pub fn servers_from_settings(
 pub fn defaults() -> Result<UserDefaults, CoreError> {
     let store = ConfigStore::with_default_path()?;
 
-    Ok(store.load()?.defaults.unwrap_or_default())
+    query_run::defaults(&store)
 }
 
 /// Diretório base da saída: `-o` quando informado (absolutizado, como o `Path.GetFullPath` do

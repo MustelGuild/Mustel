@@ -624,11 +624,11 @@ mod tests {
     use crate::events::CoreEvent;
 
     /// Escuta que guarda os eventos em texto, para os testes conferirem a sequência.
-    struct Collector<'a>(&'a std::cell::RefCell<Vec<String>>);
+    struct Collector<'a>(&'a std::sync::Mutex<Vec<String>>);
 
     impl EventSink for Collector<'_> {
         fn emit(&self, event: CoreEvent<'_>) {
-            self.0.borrow_mut().push(format!("{event:?}"));
+            self.0.lock().expect("collector").push(format!("{event:?}"));
         }
     }
 
@@ -788,7 +788,7 @@ mod tests {
             command_timeout: Duration::from_secs(300),
         };
 
-        let events = std::cell::RefCell::new(Vec::new());
+        let events = std::sync::Mutex::new(Vec::new());
         let outcome = execute(&request, &Collector(&events), &CancellationToken::new())
             .await
             .expect("executa");
@@ -803,15 +803,15 @@ mod tests {
             "sem execução nenhuma, o log não é criado (o caminho ainda é impresso)"
         );
         assert_eq!(
-            events.borrow().len(),
+            events.lock().expect("collector").len(),
             1,
             "o servidor sem banco vira uma linha da tabela: {:?}",
-            events.borrow()
+            events.lock().expect("collector")
         );
         assert!(
-            events.borrow()[0].contains("ServerWithoutDatabases"),
+            events.lock().expect("collector")[0].contains("ServerWithoutDatabases"),
             "{:?}",
-            events.borrow()
+            events.lock().expect("collector")
         );
     }
 

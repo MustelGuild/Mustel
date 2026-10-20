@@ -19,6 +19,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use crate::config::{ConfigStore, UserDefaults};
 use crate::error::CoreError;
 use crate::events::{CoreEvent, EventSink};
 use crate::query::csv_writer;
@@ -51,6 +52,14 @@ pub enum QueryRunOutcome {
     NoAccessibleDatabases,
     /// A consulta rodou (com sucesso, com falha, ou com as duas coisas).
     Executed(ExecutionOutcome),
+}
+
+/// Preferências do arquivo (`defaults`): diretório de saída, paralelismo e confirmação.
+///
+/// Fica no núcleo porque os dois frontends precisam do **mesmo** default: o CLI para montar a entrada
+/// do comando, a GUI para preencher a tela.
+pub fn defaults(store: &ConfigStore) -> Result<UserDefaults, CoreError> {
+    Ok(store.load()?.defaults.unwrap_or_default())
 }
 
 /// Executa a consulta nos servidores escolhidos.
@@ -114,14 +123,14 @@ mod tests {
     use crate::events::NoopSink;
     use crate::postgres::settings::ConnectionSettings;
     use crate::postgres::tls::SslMode;
-    use std::cell::RefCell;
+    use std::sync::Mutex;
 
     /// Escuta que guarda os eventos em texto, para os testes conferirem a sequência.
-    struct Collector<'a>(&'a RefCell<Vec<String>>);
+    struct Collector<'a>(&'a Mutex<Vec<String>>);
 
     impl EventSink for Collector<'_> {
         fn emit(&self, event: CoreEvent<'_>) {
-            self.0.borrow_mut().push(format!("{event:?}"));
+            self.0.lock().expect("collector").push(format!("{event:?}"));
         }
     }
 
@@ -163,7 +172,7 @@ mod tests {
         let output = tempfile::tempdir().expect("tempdir");
         // Servidor sem banco e sem descoberta: o plano sai vazio.
         let request = request(vec![server("vazio", &[])], output.path());
-        let events = RefCell::new(Vec::new());
+        let events = Mutex::new(Vec::new());
 
         let outcome = run(&request, &Collector(&events), &CancellationToken::new())
             .await
@@ -171,7 +180,7 @@ mod tests {
 
         assert!(matches!(outcome, QueryRunOutcome::NoAccessibleDatabases));
 
-        let seen = events.borrow();
+        let seen = events.lock().expect("collector");
         assert_eq!(seen.len(), 1, "só o aviso de que não há banco: {seen:?}");
         assert!(seen[0].contains("NoAccessibleDatabases"), "{seen:?}");
 
@@ -215,12 +224,12 @@ mod tests {
     async fn the_summary_and_the_file_paths_are_emitted_after_the_run() {
         let output = tempfile::tempdir().expect("tempdir");
         let request = request(vec![server("fora-do-ar", &["app"])], output.path());
-        let events = RefCell::new(Vec::new());
+        let events = Mutex::new(Vec::new());
 
         // O erro vem junto: os números finais saem **antes** dele, como o legado imprime.
         let _ = run(&request, &Collector(&events), &CancellationToken::new()).await;
 
-        let seen = events.borrow();
+        let seen = events.lock().expect("collector");
         assert!(
             seen.iter().any(|event| event.contains("Summary")),
             "o resumo chega por evento: {seen:?}"

@@ -360,14 +360,14 @@ mod tests {
     use super::*;
     use crate::events::CoreEvent;
     use crate::signal::cancellation_token;
-    use std::cell::RefCell;
+    use std::sync::Mutex;
 
     /// Escuta que guarda os eventos em texto, para os testes conferirem a sequência.
-    struct Collector<'a>(&'a RefCell<Vec<String>>);
+    struct Collector<'a>(&'a Mutex<Vec<String>>);
 
     impl EventSink for Collector<'_> {
         fn emit(&self, event: CoreEvent<'_>) {
-            self.0.borrow_mut().push(format!("{event:?}"));
+            self.0.lock().expect("collector").push(format!("{event:?}"));
         }
     }
 
@@ -569,7 +569,7 @@ mod tests {
         connection.port = "1".to_string();
         connection.username = Some("postgres".to_string());
 
-        let events = RefCell::new(Vec::new());
+        let events = Mutex::new(Vec::new());
         let error = backup(
             &command,
             &connection,
@@ -596,9 +596,9 @@ mod tests {
         }
 
         assert!(
-            events.borrow().is_empty(),
+            events.lock().expect("collector").is_empty(),
             "sem lista não há evento de banco: {:?}",
-            events.borrow()
+            events.lock().expect("collector")
         );
     }
 

@@ -14,11 +14,18 @@ workspace = true
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 mustel-core = { path = "../mustel-core", version = "1.0.0" }
+# O frontend gráfico entra por feature: `--no-default-features` produz um CLI sem `egui`.
+mustel-gui = { path = "../mustel-gui", version = "1.0.0", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 inquire = "0.9"
 indicatif = "0.18"
 tabled = "0.22"
 console = "0.16"
+
+[features]
+default = ["gui"]
+# Liga `mustel gui` (eframe/egui). Desligada, o binário é só CLI.
+gui = ["dep:mustel-gui"]
 
 [dev-dependencies]
 insta = "1"

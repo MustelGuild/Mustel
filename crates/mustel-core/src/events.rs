@@ -128,10 +128,15 @@ pub enum DatabaseStep {
 /// Quem escuta os eventos do núcleo.
 ///
 /// `&self` (e não `&mut self`) porque os produtores rodam concorrentes dentro de um mesmo caso de
-/// uso; quem precisar de estado usa interior mutabilidade (`RefCell`, `Mutex`, canal).
+/// uso; quem precisar de estado usa interior mutabilidade (`Mutex`, canal).
+///
+/// `Send + Sync` porque o sink **atravessa threads**: no CLI os produtores rodam em tarefas do mesmo
+/// runtime, e na GUI ([T41]) o caso de uso inteiro roda num runtime de background enquanto a janela
+/// desenha na thread principal. Sem essas bounds, o `egui` não conseguiria disparar o job com o sink
+/// emprestado.
 ///
 /// O padrão dos testes e de quem não quer acompanhar é o [`NoopSink`].
-pub trait EventSink {
+pub trait EventSink: Send + Sync {
     /// Recebe um evento.
     fn emit(&self, event: CoreEvent<'_>);
 }
@@ -147,16 +152,16 @@ impl EventSink for NoopSink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
+    use std::sync::Mutex;
 
     /// Escuta que guarda os eventos em forma legível — é o que os testes usam para conferir a
     /// sequência emitida sem depender de texto de interface.
     #[derive(Default)]
-    struct VecSink(RefCell<Vec<String>>);
+    struct VecSink(Mutex<Vec<String>>);
 
     impl EventSink for VecSink {
         fn emit(&self, event: CoreEvent<'_>) {
-            self.0.borrow_mut().push(format!("{event:?}"));
+            self.0.lock().expect("collector").push(format!("{event:?}"));
         }
     }
 
@@ -179,7 +184,7 @@ mod tests {
             error: "",
         });
 
-        let seen = sink.0.borrow();
+        let seen = sink.0.lock().expect("collector");
         assert_eq!(seen.len(), 2, "dois eventos: {seen:?}");
         assert!(seen[0].contains("ServerWithoutDatabases"), "{:?}", seen[0]);
         assert!(seen[1].contains("Success"), "{:?}", seen[1]);

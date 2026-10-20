@@ -574,14 +574,14 @@ fn clone_options(options: &RestoreOptions) -> RestoreOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
+    use std::sync::Mutex;
 
     /// Escuta que guarda os eventos em texto, para os testes conferirem a sequência.
-    struct Collector<'a>(&'a RefCell<Vec<String>>);
+    struct Collector<'a>(&'a Mutex<Vec<String>>);
 
     impl EventSink for Collector<'_> {
         fn emit(&self, event: CoreEvent<'_>) {
-            self.0.borrow_mut().push(format!("{event:?}"));
+            self.0.lock().expect("collector").push(format!("{event:?}"));
         }
     }
 
@@ -712,7 +712,7 @@ mod tests {
         command.all = true;
         command.directory = Some(directory.path().display().to_string());
 
-        let events = RefCell::new(Vec::new());
+        let events = Mutex::new(Vec::new());
         restore(
             &command,
             &connection("mydb"),
@@ -725,12 +725,12 @@ mod tests {
         .expect("sem arquivos não é erro");
 
         assert_eq!(
-            events.borrow().len(),
+            events.lock().expect("collector").len(),
             1,
             "só o aviso: {:?}",
-            events.borrow()
+            events.lock().expect("collector")
         );
-        assert!(events.borrow()[0].contains("NoDumpFilesFound"));
+        assert!(events.lock().expect("collector")[0].contains("NoDumpFilesFound"));
     }
 
     #[tokio::test]
@@ -741,7 +741,7 @@ mod tests {
         command.all = true;
         command.directory = Some(directory.path().display().to_string());
 
-        let events = RefCell::new(Vec::new());
+        let events = Mutex::new(Vec::new());
         restore(
             &command,
             &connection("mydb"),
@@ -753,7 +753,7 @@ mod tests {
         .await
         .expect("nome inválido não é erro no --all");
 
-        let seen = events.borrow();
+        let seen = events.lock().expect("collector");
         assert!(
             seen.iter().any(|event| event.contains("SkippingDatabase")),
             "{seen:?}"

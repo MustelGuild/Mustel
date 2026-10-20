@@ -19,6 +19,25 @@ pub async fn dispatch(cli: MustelCli, token: &CancellationToken) -> Result<i32, 
         TopCommand::Query(args) => query::run(args, token).await,
         TopCommand::Database(args) => database::run(args, token).await,
         TopCommand::Settings(args) => settings::run(args, token).await,
-        TopCommand::Gui(_) => Err(CoreError::Other("`gui` is not implemented yet".to_string())),
+        TopCommand::Gui(_) => gui(token),
     }
+}
+
+/// Abre a janela do `mustel gui`.
+///
+/// Sem a feature `gui` (build `--no-default-features`), o subcomando existe na árvore mas explica a
+/// ausência em vez de abrir a janela — assim o CLI sem `egui` continua com a mesma superfície.
+#[cfg(feature = "gui")]
+fn gui(_token: &CancellationToken) -> Result<i32, CoreError> {
+    mustel_gui::run().map_err(|error| CoreError::Other(error.to_string()))?;
+
+    Ok(0)
+}
+
+#[cfg(not(feature = "gui"))]
+fn gui(_token: &CancellationToken) -> Result<i32, CoreError> {
+    Err(CoreError::InvalidState(
+        "this build has no GUI support; rebuild without --no-default-features to get `mustel gui`"
+            .to_string(),
+    ))
 }

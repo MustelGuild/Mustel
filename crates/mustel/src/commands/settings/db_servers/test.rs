@@ -18,8 +18,7 @@
 use mustel_core::config::ConfigStore;
 use mustel_core::credentials::{CredentialStore, SystemKeyring};
 use mustel_core::error::CoreError;
-use mustel_core::postgres::client::{connect, list_databases};
-use mustel_core::postgres::settings::ConnectionSettings;
+use mustel_core::usecases::db_servers;
 
 use crate::cli::DbServersTestArgs;
 use crate::ui::prompts;
@@ -31,7 +30,7 @@ pub async fn run(args: DbServersTestArgs) -> Result<i32, CoreError> {
     let name = match args.name.as_deref().filter(|name| !name.trim().is_empty()) {
         Some(name) => name.to_string(),
         None => {
-            let servers = store.get_servers()?;
+            let servers = db_servers::list(&store)?;
             if servers.is_empty() {
                 println!("No servers configured. Use 'mustel settings db-servers add' to add one.");
                 return Ok(0);
@@ -62,76 +61,15 @@ pub async fn run(args: DbServersTestArgs) -> Result<i32, CoreError> {
         }
     };
 
-    let settings = ConnectionSettings {
-        host: server.host.clone(),
-        port: server.port,
-        user: server.username.clone(),
-        password: Some(password),
-        database: Some("postgres".to_string()),
-        ssl_mode: server.ssl_mode.parse().unwrap_or_default(),
-        connect_timeout: std::time::Duration::from_secs(u64::from(server.timeout)),
-        ..ConnectionSettings::default()
-    };
-
-    // O legado embrulha tudo em InvalidOperationException → exit 40, com prefixo diferente quando o
-    // erro parece de autenticação.
-    let client = match connect(&settings).await {
-        Ok(client) => client,
-        Err(error) => return Err(wrap_connection_error(server.username.clone(), &error)),
-    };
-
-    let databases = match list_databases(&client).await {
-        Ok(databases) => databases,
-        Err(error) => return Err(wrap_connection_error(server.username.clone(), &error)),
-    };
+    let report = db_servers::test_connection(&server, &password).await?;
 
     println!("Connection to {}:{} successful", server.host, server.port);
     println!("Authenticated as {}", server.username);
-    if databases.is_empty() {
+    if report.databases.is_empty() {
         println!("No accessible databases found");
     } else {
-        println!("Databases found: {}", databases.join(", "));
+        println!("Databases found: {}", report.databases.join(", "));
     }
 
     Ok(0)
-}
-
-/// Aplica o embrulho do legado: `Authentication failed:` vs `Connection failed:` → exit 40.
-fn wrap_connection_error(_username: String, error: &CoreError) -> CoreError {
-    let message = error.to_string();
-    let lowercase = message.to_ascii_lowercase();
-    let looks_like_auth = lowercase.contains("authentication") || lowercase.contains("password");
-
-    let prefix = if looks_like_auth {
-        "Authentication failed"
-    } else {
-        "Connection failed"
-    };
-    CoreError::InvalidState(format!("{prefix}: {message}"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn error_wrapping_matches_the_legacy_prefixes() {
-        let auth = CoreError::Postgres {
-            sqlstate: Some("28P01".to_string()),
-            message: "password authentication failed for user \"postgres\"".to_string(),
-        };
-        let wrapped = wrap_connection_error("postgres".to_string(), &auth);
-        assert!(wrapped.to_string().starts_with("Authentication failed:"));
-        assert_eq!(
-            wrapped.exit_code(),
-            mustel_core::error::exit_code::INVALID_STATE
-        );
-
-        let refused = CoreError::Postgres {
-            sqlstate: None,
-            message: "connection refused".to_string(),
-        };
-        let wrapped = wrap_connection_error("postgres".to_string(), &refused);
-        assert!(wrapped.to_string().starts_with("Connection failed:"));
-    }
 }

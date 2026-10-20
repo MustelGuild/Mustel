@@ -10,8 +10,8 @@
 //! - sucesso imprime `Server 'x' added successfully.` e a dica do `set-password` (exit 0).
 
 use mustel_core::config::{ConfigStore, ServerConfigEntry};
-use mustel_core::credentials::{CredentialStore, SystemKeyring};
 use mustel_core::error::CoreError;
+use mustel_core::usecases::db_servers;
 use mustel_core::validation::{is_port_in_range, is_valid_host, is_valid_username};
 
 use crate::cli::DbServersAddArgs;
@@ -38,37 +38,12 @@ fn add_direct(args: &DbServersAddArgs) -> Result<i32, CoreError> {
     let name = require(args.name.as_deref(), "--name (-n)")?;
     let host = require(args.host.as_deref(), "--host (-H)")?;
 
-    if !is_valid_host(host) {
-        return Err(CoreError::InvalidArgument(format!(
-            "Invalid host: '{host}'."
-        )));
-    }
-    if !is_port_in_range(i64::from(args.port)) {
-        return Err(CoreError::InvalidArgument(format!(
-            "Invalid port: {}. Must be between 1 and 65535.",
-            args.port
-        )));
-    }
-    if let Some(username) = args.username.as_deref()
-        && !is_valid_username(username)
-    {
-        return Err(CoreError::InvalidArgument(format!(
-            "Invalid username: '{username}'."
-        )));
-    }
-
     let store = ConfigStore::with_default_path()?;
-    if store.get_server(name)?.is_some() {
-        return Err(CoreError::InvalidState(format!(
-            "Server '{name}' already exists. Use a different name or remove the existing one first."
-        )));
-    }
-
-    let server = build_entry(args, name, host);
-    store.add_or_update_server(&server)?;
+    let server = build_entry(args, name, host)?;
+    db_servers::add(&store, &server)?;
 
     if let Some(password) = args.password.as_deref() {
-        store_password(name, password)?;
+        db_servers::set_password(&store, name, password)?;
     }
 
     println!("Server '{name}' added successfully.");
@@ -141,6 +116,7 @@ fn add_interactive(args: &DbServersAddArgs) -> Result<i32, CoreError> {
 
     let store = ConfigStore::with_default_path()?;
     if store.get_server(&name)?.is_some() {
+        // O fluxo interativo recusa antes do menu, com texto próprio (sem a dica do nome alternativo).
         return Err(CoreError::InvalidState(format!(
             "Server '{name}' already exists."
         )));
@@ -173,12 +149,12 @@ fn add_interactive(args: &DbServersAddArgs) -> Result<i32, CoreError> {
         timeout: u32::try_from(timeout).unwrap_or(30),
         max_parallelism: u32::try_from(max_parallelism).unwrap_or(4),
     };
-    store.add_or_update_server(&server)?;
+    db_servers::add(&store, &server)?;
 
     match action.as_str() {
         "Save and set password" => {
             let password = prompts::password("Password: ")?;
-            store_password(&name, &password)?;
+            db_servers::set_password(&store, &name, &password)?;
             println!("Password saved securely for '{name}'.");
         }
         "Save and test connection" => {
@@ -229,8 +205,22 @@ fn default_exclude_patterns() -> Vec<String> {
 }
 
 /// Monta a entrada a partir das flags (defaults iguais aos do legado).
-fn build_entry(args: &DbServersAddArgs, name: &str, host: &str) -> ServerConfigEntry {
-    ServerConfigEntry {
+///
+/// A **porta** é checada aqui, e não no núcleo, porque a mensagem do legado cita o valor cru da flag
+/// (`Invalid port: 99999.`), que não sobrevive à conversão para `u16` da entrada.
+fn build_entry(
+    args: &DbServersAddArgs,
+    name: &str,
+    host: &str,
+) -> Result<ServerConfigEntry, CoreError> {
+    if !is_port_in_range(i64::from(args.port)) {
+        return Err(CoreError::InvalidArgument(format!(
+            "Invalid port: {}. Must be between 1 and 65535.",
+            args.port
+        )));
+    }
+
+    Ok(ServerConfigEntry {
         name: name.to_string(),
         host: host.to_string(),
         port: u16::try_from(args.port).unwrap_or(5432),
@@ -258,14 +248,7 @@ fn build_entry(args: &DbServersAddArgs, name: &str, host: &str) -> ServerConfigE
             .max_parallelism
             .and_then(|value| u32::try_from(value).ok())
             .unwrap_or(4),
-    }
-}
-
-/// Guarda a senha no cofre do sistema (D6) — o legado gravava um blob no arquivo de config.
-fn store_password(server: &str, password: &str) -> Result<(), CoreError> {
-    SystemKeyring::new()
-        .set(server, password)
-        .map_err(|error| CoreError::InvalidState(error.to_string()))
+    })
 }
 
 #[cfg(test)]

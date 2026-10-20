@@ -10,6 +10,7 @@
 
 use mustel_core::config::{ConfigStore, ServerConfigEntry};
 use mustel_core::error::CoreError;
+use mustel_core::usecases::db_servers;
 
 use crate::ui::table;
 
@@ -19,7 +20,7 @@ const HEADERS: [&str; 6] = ["Name", "Host", "Port", "Username", "Databases", "Au
 /// Executa o comando.
 pub fn run() -> Result<i32, CoreError> {
     let store = ConfigStore::with_default_path()?;
-    let servers = store.get_servers()?;
+    let servers = db_servers::list(&store)?;
 
     if servers.is_empty() {
         // O legado diz `'fur settings db-servers add'`; aqui o binário é o `mustel` (divergência

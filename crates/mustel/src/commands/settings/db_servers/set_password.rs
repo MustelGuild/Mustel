@@ -11,8 +11,8 @@
 //! que o comando seja utilizável em script, onde não há terminal para prompt.
 
 use mustel_core::config::ConfigStore;
-use mustel_core::credentials::{CredentialStore, SystemKeyring};
 use mustel_core::error::CoreError;
+use mustel_core::usecases::db_servers;
 
 use crate::cli::DbServersSetPasswordArgs;
 use crate::ui::prompts;
@@ -24,7 +24,7 @@ pub fn run(args: DbServersSetPasswordArgs) -> Result<i32, CoreError> {
     let name = match args.name.as_deref().filter(|name| !name.trim().is_empty()) {
         Some(name) => name.to_string(),
         None => {
-            let servers = store.get_servers()?;
+            let servers = db_servers::list(&store)?;
             if servers.is_empty() {
                 println!("No servers configured. Use 'mustel settings db-servers add' to add one.");
                 return Ok(0);
@@ -35,25 +35,12 @@ pub fn run(args: DbServersSetPasswordArgs) -> Result<i32, CoreError> {
         }
     };
 
-    if store.get_server(&name)?.is_none() {
-        return Err(CoreError::InvalidArgument(format!(
-            "Server '{name}' not found."
-        )));
-    }
-
     let password = match args.password.as_deref() {
         Some(password) => password.to_string(),
         None => prompts::password("Password: ")?,
     };
 
-    store_password(&name, &password)?;
+    db_servers::set_password(&store, &name, &password)?;
     println!("Password saved securely for '{name}'.");
     Ok(0)
-}
-
-/// Guarda a senha no cofre do sistema (D6).
-fn store_password(server: &str, password: &str) -> Result<(), CoreError> {
-    SystemKeyring::new()
-        .set(server, password)
-        .map_err(|error| CoreError::InvalidState(error.to_string()))
 }

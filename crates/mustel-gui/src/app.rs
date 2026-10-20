@@ -19,6 +19,7 @@ use mustel_core::events::Status;
 use mustel_core::signal::CancellationToken;
 use mustel_core::usecases::{db_servers, query_run};
 
+use crate::actions;
 use crate::events::{ChannelSink, GuiEvent};
 use crate::query;
 use crate::request::{JobResult, Request};
@@ -122,40 +123,29 @@ impl App {
             Request::ReloadServers => {
                 let results = self.results.clone();
                 self.spawn("reload servers", ctx, move |_token| async move {
-                    let outcome = load_servers();
-                    let _ = results.send(outcome);
+                    let result = with_store(actions::load_servers);
+                    let _ = results.send(result);
                 });
             }
             Request::SaveServer(server) => {
                 let results = self.results.clone();
                 self.spawn("save server", ctx, move |_token| async move {
-                    let result = save_server(&server);
+                    let result = with_store(|store| actions::save_server(store, &server));
                     let _ = results.send(result);
                 });
             }
             Request::RemoveServer(name) => {
                 let results = self.results.clone();
                 self.spawn("remove server", ctx, move |_token| async move {
-                    let result = match ConfigStore::with_default_path()
-                        .map_err(mustel_core::error::CoreError::from)
-                        .and_then(|store| db_servers::remove(&store, &name))
-                    {
-                        Ok(()) => JobResult::Removed(name),
-                        Err(error) => JobResult::Failed(error.to_string()),
-                    };
+                    let result = with_store(|store| actions::remove_server(store, &name));
                     let _ = results.send(result);
                 });
             }
             Request::SetPassword { name, password } => {
                 let results = self.results.clone();
                 self.spawn("set password", ctx, move |_token| async move {
-                    let result = match ConfigStore::with_default_path()
-                        .map_err(mustel_core::error::CoreError::from)
-                        .and_then(|store| db_servers::set_password(&store, &name, &password))
-                    {
-                        Ok(()) => JobResult::PasswordSaved(name),
-                        Err(error) => JobResult::Failed(error.to_string()),
-                    };
+                    let result =
+                        with_store(|store| actions::save_password(store, &name, &password));
                     let _ = results.send(result);
                 });
             }
@@ -409,34 +399,10 @@ impl eframe::App for App {
     }
 }
 
-/// Lê o cadastro do disco.
-fn load_servers() -> JobResult {
-    match ConfigStore::with_default_path()
-        .map_err(mustel_core::error::CoreError::from)
-        .and_then(|store| db_servers::list(&store))
-    {
-        Ok(servers) => JobResult::Servers(servers),
-        Err(error) => JobResult::Failed(error.to_string()),
-    }
-}
-
-/// Grava um servidor: `update` quando ele já existe, `add` quando é novo.
-fn save_server(server: &ServerConfigEntry) -> JobResult {
-    let outcome = ConfigStore::with_default_path()
-        .map_err(mustel_core::error::CoreError::from)
-        .and_then(|store| {
-            let exists = db_servers::list(&store)?
-                .iter()
-                .any(|current| current.name.eq_ignore_ascii_case(&server.name));
-            if exists {
-                db_servers::update(&store, server)
-            } else {
-                db_servers::add(&store, server)
-            }
-        });
-
-    match outcome {
-        Ok(()) => JobResult::Saved(server.name.clone()),
-        Err(error) => JobResult::Failed(error.to_string()),
+/// Abre o cadastro do caminho padrão e roda `action`; erro de configuração vira `JobResult::Failed`.
+fn with_store(action: impl FnOnce(&ConfigStore) -> JobResult) -> JobResult {
+    match ConfigStore::with_default_path() {
+        Ok(store) => action(&store),
+        Err(error) => JobResult::Failed(mustel_core::error::CoreError::from(error).to_string()),
     }
 }

@@ -92,6 +92,7 @@ pub struct ExecutionRequest {
 }
 
 /// Números do resumo final e os arquivos gerados.
+#[derive(Debug)]
 pub struct ExecutionOutcome {
     /// Bancos que responderam com sucesso.
     pub successes: usize,

@@ -8,6 +8,7 @@
 //! Entrada vem **resolvida** (quem resolve é o frontend, com os prompts) e saída sai por
 //! [`EventSink`].
 
+use std::path::Path;
 use std::time::Duration;
 
 /// Como uma execução terminou.
@@ -52,6 +53,48 @@ pub enum CoreEvent<'a> {
     ServerWithoutDatabases {
         /// Nome do servidor.
         server: &'a str,
+    },
+    /// A fila de descoberta chegou neste servidor (o `Discovering databases on x...` do legado).
+    ///
+    /// Sai para **todo** servidor da fila quando algum descobre, inclusive para os que só vão ler o
+    /// cadastro: é o que o legado faz com o `ctx.Status` dentro do laço.
+    DiscoveringDatabases {
+        /// Nome do servidor.
+        server: &'a str,
+    },
+    /// A descoberta automática falhou; o comando segue com o que o cadastro tiver.
+    DiscoveryFailed {
+        /// Nome do servidor.
+        server: &'a str,
+        /// Mensagem do driver.
+        error: &'a str,
+    },
+    /// O servidor não tem banco no cadastro e a descoberta falhou: ele entra sem banco.
+    FallingBackToConfiguredDatabases {
+        /// Nome do servidor.
+        server: &'a str,
+    },
+    /// Nenhum banco acessível entre os servidores escolhidos: a execução não começa.
+    NoAccessibleDatabases,
+    /// Os arquivos da execução, para quem quiser mostrar os caminhos.
+    FilesWritten {
+        /// Consolidado, quando houve alguma linha de dados.
+        consolidated: Option<&'a Path>,
+        /// `_erros.csv`, quando houve falha.
+        errors: Option<&'a Path>,
+        /// `_log.csv` (existe caminho mesmo quando o arquivo não foi criado).
+        log: &'a Path,
+    },
+    /// Os números do resumo final.
+    Summary {
+        /// Servidores que entraram na execução.
+        servers: usize,
+        /// Bancos que responderam com sucesso.
+        successes: usize,
+        /// Bancos que falharam.
+        failures: usize,
+        /// Soma das linhas trazidas.
+        total_rows: u64,
     },
 }
 

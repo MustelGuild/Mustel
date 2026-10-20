@@ -16,4 +16,5 @@ pub mod postgres;
 pub mod process;
 pub mod query;
 pub mod signal;
+pub mod usecases;
 pub mod validation;

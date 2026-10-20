@@ -1,10 +1,9 @@
-//! `mustel query run` — executa a consulta nos bancos escolhidos e exporta o CSV.
+//! `mustel query run` — o adaptador de terminal do caso de uso.
 //!
-//! Escopo desta entrega (T32 + T33 + T34): descoberta de bancos, execução em paralelo com um escritor
-//! único e escrita incremental. Fica para a próxima sub-entrega, e está registrado aqui para não
-//! parecer esquecimento:
-//!
-//! - **T35**: detecção de consulta destrutiva com confirmação e a tabela de progresso ao vivo.
+//! A orquestração (plano, descoberta, execução, regra do "nenhum servidor respondeu") mora em
+//! [`mustel_core::usecases::query_run`]; aqui fica o que é de terminal: os prompts (arquivo de
+//! entrada, seleção de servidores, confirmação da consulta destrutiva), a leitura do cadastro e do
+//! cofre para resolver as conexões, e o desenho dos eventos em [`progress::TerminalSink`].
 //!
 //! Paridade medida e conferida no código do legado:
 //!
@@ -12,33 +11,25 @@
 //!   inexistente, consulta vazia, nenhum servidor cadastrado, nada selecionado;
 //! - o texto da consulta vem de `-c` (com o "desescape" de aspas externas do legado) ou do arquivo
 //!   `-i`, lido como UTF-8;
-//! - **descoberta de bancos** (T33): `--all` liga `fetchAllDatabases` em **todos** os servidores
-//!   escolhidos; quem descobre consulta `pg_database` no banco `postgres` e filtra pelos
-//!   `excludePatterns` do cadastro (curinga `*`); falha de descoberta **avisa e cai para os bancos do
-//!   cadastro** em vez de derrubar o comando; e o `--exclude` (nomes exatos, sem diferenciar
-//!   maiúsculas) filtra os dois caminhos, no fim;
-//! - **execução** (T34): `defaults.maxParallelism` servidores ao mesmo tempo e, em cada servidor,
-//!   `server.maxParallelism` bancos — o paralelismo do legado, com um canal para um escritor único
-//!   (ver `mustel_core::query::executor`);
-//! - a saída vai para `<diretório>/<timestamp>/`, com um CSV por servidor, o consolidado, o de
-//!   erros (só quando falha) e o de log — nomes e conteúdo iguais aos do oráculo (ver
-//!   `mustel_core::query::csv_writer`);
-//! - a tabela de resultados do legado é ao vivo; aqui só o resumo final é impresso (a tabela é
-//!   T35) — o texto do resumo é o mesmo;
-//! - se **nenhum** servidor respondeu e houve falha, sai `Error: No server responded successfully. \
-//!   Please check the connections.` com exit 1; se não houve banco nenhum, imprime `No accessible \
-//!   databases found across selected servers.` e sai **0**;
-//! - o legado tenta de novo (3 vezes, com espera exponencial) só para erro de Postgres ou timeout.
+//! - a confirmação da consulta destrutiva vem **depois** da seleção e do `--all`, e só quando o
+//!   cadastro pede (`defaults.requireConfirmation`); responder não sai com exit 1;
+//! - se **nenhum** servidor respondeu e houve falha, o caso de uso devolve
+//!   `No server responded successfully. Please check the connections.` (exit 1); sem banco nenhum,
+//!   sai `No accessible databases found across selected servers.` e exit **0**;
+//! - a senha segue `-W` → cofre (pelo **nome do servidor**) → prompt, com o texto
+//!   `Password for '<servidor>': `, resolvida **uma vez por servidor** (a entrada vai pronta para o
+//!   núcleo; divergência 17 em `oracle/known-divergences.md`).
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use mustel_core::config::ServerConfigEntry;
 use mustel_core::error::CoreError;
 use mustel_core::query::analyzer::{self, QueryType};
-use mustel_core::query::executor::{self, ExecutionRequest, ServerPlan};
-use mustel_core::query::{csv_writer, discovery};
+use mustel_core::query::discovery;
 use mustel_core::signal::CancellationToken;
+use mustel_core::usecases::query_run::{self, QueryRunRequest};
 use mustel_core::validation;
 
 use crate::cli::QueryRunArgs;
@@ -66,17 +57,19 @@ pub async fn run(args: QueryRunArgs, token: &CancellationToken) -> Result<i32, C
         }
     };
 
-    let selected = select_servers(&servers, &args)?;
+    let selected = select_servers(&servers)?;
     if selected.is_empty() {
         println!("No servers selected. Execution cancelled.");
         return Ok(1);
     }
 
+    let defaults = settings::defaults()?;
+
     // A confirmação vem **depois** da seleção e do `--all`, como no legado — é quando já se sabe
     // quantos servidores e bancos a consulta vai atingir.
     if analyzer::analyze(&sql) == QueryType::Destructive
         && !args.no_confirm
-        && settings::defaults()?.require_confirmation
+        && defaults.require_confirmation
     {
         let databases = selected
             .iter()
@@ -101,7 +94,28 @@ pub async fn run(args: QueryRunArgs, token: &CancellationToken) -> Result<i32, C
         }
     }
 
-    execute(selected, &sql, &args, token).await
+    let request = QueryRunRequest {
+        servers: selected
+            .iter()
+            .map(|server| settings::server_run(server, &args))
+            .collect::<Result<Vec<_>, CoreError>>()?,
+        sql: Arc::from(sql.as_str()),
+        output_directory: PathBuf::from(settings::output_directory(&args, &defaults)),
+        max_parallelism: defaults.max_parallelism as usize,
+        command_timeout: Duration::from_secs(args.command_timeout.unwrap_or(300).max(1) as u64),
+        all: args.all,
+        exclude: discovery::exclude_names(args.exclude.as_deref()),
+    };
+
+    // Os eventos vão para a tabela ao vivo; o que sai depois dela (caminhos e resumo) fica na fila
+    // do sink e só aparece em `finish()`. O `finish` roda mesmo quando o caso de uso devolve erro: no
+    // legado o resumo sai antes da mensagem de erro.
+    let sink = progress::TerminalSink::new();
+    let outcome = query_run::run(&request, &sink, token).await;
+    sink.finish();
+    outcome?;
+
+    Ok(0)
 }
 
 /// Aviso + tabela + confirmação do `ConfirmDestructiveQuery` do legado.
@@ -201,10 +215,7 @@ fn unescape_inline_query(query: &str) -> String {
 }
 
 /// Seleção de servidores: um só passa direto; vários abrem a multi-seleção com todos marcados.
-fn select_servers(
-    servers: &[ServerConfigEntry],
-    args: &QueryRunArgs,
-) -> Result<Vec<ServerConfigEntry>, CoreError> {
+fn select_servers(servers: &[ServerConfigEntry]) -> Result<Vec<ServerConfigEntry>, CoreError> {
     if servers.len() == 1 {
         return Ok(servers.to_vec());
     }
@@ -213,154 +224,12 @@ fn select_servers(
     let preselected: Vec<usize> = (0..names.len()).collect();
     let selected =
         prompts::select_many("Select servers to execute query on:", &names, &preselected)?;
-    let _ = args;
 
     Ok(servers
         .iter()
         .filter(|server| selected.contains(&server.name))
         .cloned()
         .collect())
-}
-
-/// Roda a consulta nos bancos de cada servidor e escreve os CSVs.
-async fn execute(
-    servers: Vec<ServerConfigEntry>,
-    sql: &str,
-    args: &QueryRunArgs,
-    token: &CancellationToken,
-) -> Result<i32, CoreError> {
-    let defaults = settings::defaults()?;
-    let base_directory = settings::output_directory(args, &defaults);
-    let timestamp = csv_writer::timestamp_for(std::time::SystemTime::now());
-    let directory = PathBuf::from(&base_directory).join(&timestamp);
-    std::fs::create_dir_all(&directory).map_err(CoreError::Io)?;
-
-    // Alvos: para cada servidor, os bancos do cadastro ou os descobertos (`--all` /
-    // `fetchAllDatabases`), já filtrados pelos dois critérios do legado. Todo servidor selecionado
-    // entra no plano, mesmo sem banco: o `Servers:` do resumo e a ordem do merge do consolidado
-    // contam com eles (o legado monta a tabela e o merge da mesma lista).
-    let exclude_names = discovery::exclude_names(args.exclude.as_deref());
-
-    // A descoberta tem indicador próprio no legado (`AnsiConsole.Status`, só quando algum servidor
-    // vai descobrir os bancos).
-    let discovering = servers
-        .iter()
-        .any(|server| args.all || server.fetch_all_databases)
-        .then(|| progress::Progress::spinner("Discovering databases..."));
-
-    let mut plans: Vec<ServerPlan> = Vec::new();
-    for server in &servers {
-        if let Some(status) = &discovering {
-            status.set_message(format!("Discovering databases on {}...", server.name));
-        }
-
-        let databases = databases_for_server(server, args, &exclude_names).await?;
-        let databases = databases
-            .iter()
-            .map(|database| settings::target_for(server, database, args))
-            .collect::<Result<Vec<_>, CoreError>>()?;
-
-        plans.push(ServerPlan {
-            name: server.name.clone(),
-            max_parallelism: server.max_parallelism as usize,
-            databases,
-        });
-    }
-
-    if let Some(status) = discovering {
-        status.finish();
-    }
-
-    if plans.iter().all(|plan| plan.databases.is_empty()) {
-        // Aqui o legado sai antes de criar o canal, o log e o consolidado — e sem o resumo.
-        println!("No accessible databases found across selected servers.");
-        return Ok(0);
-    }
-
-    let request = ExecutionRequest {
-        servers: plans,
-        sql: Arc::from(sql),
-        directory,
-        timestamp,
-        max_parallelism: defaults.max_parallelism.max(1) as usize,
-        command_timeout: std::time::Duration::from_secs(
-            args.command_timeout.unwrap_or(300).max(1) as u64
-        ),
-    };
-
-    // A tabela ao vivo do legado: uma linha por banco que termina, desenhada no lugar e deixada na
-    // tela no fim (fora de terminal, nada é escrito).
-    let results = progress::LiveTable::new();
-    let sink = progress::TableSink::new(&results);
-    let outcome = executor::execute(&request, &sink, token).await?;
-    results.finish();
-
-    println!();
-    if let Some(consolidated) = &outcome.consolidated {
-        println!("✅ Consolidated → {}", consolidated.display());
-    }
-    if let Some(errors) = &outcome.errors {
-        println!("❌ Errors       → {}", errors.display());
-    }
-    println!("Log           → {}", outcome.log.display());
-    println!();
-    println!(
-        "Servers: {} | Success: {} | Failed: {} | Total rows: {}",
-        request.servers.len(),
-        outcome.successes,
-        outcome.failures,
-        outcome.total_rows
-    );
-
-    if outcome.successes == 0 && outcome.failures > 0 {
-        return Err(CoreError::Other(
-            "No server responded successfully. Please check the connections.".to_string(),
-        ));
-    }
-
-    Ok(0)
-}
-
-/// Bancos de um servidor, como o `GetDatabasesForServerAsync` do legado.
-///
-/// Descobre quando o servidor pede (`--all` liga em todos); se a descoberta falhar, **avisa e usa os
-/// bancos do cadastro** (ou nenhum, quando não há). Os dois avisos aparecem porque são `LogWarning`
-/// no legado, que imprime desse nível para cima.
-async fn databases_for_server(
-    server: &ServerConfigEntry,
-    args: &QueryRunArgs,
-    exclude_names: &std::collections::HashSet<String>,
-) -> Result<Vec<String>, CoreError> {
-    let discover = args.all || server.fetch_all_databases;
-
-    let databases = if discover {
-        // A conexão da descoberta vai no banco de manutenção, como no legado.
-        let settings = settings::discovery_settings(server, args)?;
-        match discovery::discover_databases(&settings).await {
-            Ok(databases) => databases,
-            Err(error) => {
-                println!(
-                    "Warning: Auto-discovery failed for '{}': {error}",
-                    server.name
-                );
-                if server.databases.is_empty() {
-                    return Ok(Vec::new());
-                }
-
-                println!("Falling back to configured databases.");
-                server.databases.clone()
-            }
-        }
-    } else {
-        server.databases.clone()
-    };
-
-    // Os padrões do cadastro entram na descoberta; os nomes do `--exclude`, no fim (como no legado).
-    Ok(discovery::filter_databases(
-        databases,
-        &server.exclude_patterns,
-        exclude_names,
-    ))
 }
 
 /// Caminho absoluto, como o `Path.GetFullPath` do legado.

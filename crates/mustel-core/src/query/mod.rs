@@ -9,3 +9,4 @@ pub mod analyzer;
 pub mod csv_writer;
 pub mod discovery;
 pub mod executor;
+pub mod plan;

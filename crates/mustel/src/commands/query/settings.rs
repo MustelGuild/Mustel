@@ -27,7 +27,7 @@ use mustel_core::credentials::{CredentialStore, SystemKeyring};
 use mustel_core::error::CoreError;
 use mustel_core::postgres::settings::ConnectionSettings;
 use mustel_core::postgres::tls::SslMode;
-use mustel_core::query::executor::DatabaseTarget;
+use mustel_core::query::plan::ServerRun;
 
 use crate::cli::QueryRunArgs;
 use crate::ui::prompts;
@@ -80,34 +80,28 @@ pub fn output_directory(args: &QueryRunArgs, defaults: &UserDefaults) -> String 
     }
 }
 
-/// Resolve o alvo (servidor + banco) de uma execução.
-pub fn target_for(
-    server: &ServerConfigEntry,
-    database: &str,
-    args: &QueryRunArgs,
-) -> Result<DatabaseTarget, CoreError> {
-    Ok(DatabaseTarget {
-        database: database.to_string(),
-        settings: connection_settings(server, database, args)?,
+/// Resolve a entrada de um servidor para o caso de uso: cadastro + overrides + senha, **uma vez**.
+///
+/// A conexão sai sem banco definido (o núcleo troca o banco de cada alvo e o da descoberta); é o que
+/// evita resolver a senha de novo a cada banco — e por isso o prompt de senha aparece no máximo uma
+/// vez por servidor (divergência 17 em `oracle/known-divergences.md`).
+pub fn server_run(server: &ServerConfigEntry, args: &QueryRunArgs) -> Result<ServerRun, CoreError> {
+    Ok(ServerRun {
+        name: server.name.clone(),
+        max_parallelism: server.max_parallelism as usize,
+        databases: server.databases.clone(),
+        exclude_patterns: server.exclude_patterns.clone(),
+        fetch_all_databases: server.fetch_all_databases,
+        settings: connection_settings(server, args)?,
     })
 }
 
-/// Conexão para a **descoberta** de bancos: vai no banco de manutenção, como o
-/// `BuildConnectionStringForServer(server, "postgres", null)` do legado.
+/// Monta a conexão de um servidor, aplicando os overrides e resolvendo a senha.
 ///
-/// O `null` do legado importa: a senha não vem das flags, e sim do cofre/prompt pela precedência
-/// normal — daqui sai a mesma [`connection_settings`], só trocando o banco.
-pub fn discovery_settings(
-    server: &ServerConfigEntry,
-    args: &QueryRunArgs,
-) -> Result<ConnectionSettings, CoreError> {
-    connection_settings(server, "postgres", args)
-}
-
-/// Monta a conexão de um banco, aplicando os overrides e resolvendo a senha.
+/// Sai **sem** banco definido: é o molde das conexões do servidor, e quem troca o banco é o núcleo
+/// ([`mustel_core::query::plan`]), um banco por alvo e o de manutenção na descoberta.
 fn connection_settings(
     server: &ServerConfigEntry,
-    database: &str,
     args: &QueryRunArgs,
 ) -> Result<ConnectionSettings, CoreError> {
     let password = resolve_password(server, args)?;
@@ -118,7 +112,7 @@ fn connection_settings(
         port: resolve_port(args.port.as_deref(), server.port),
         user: resolve_text(args.username.as_deref(), &server.username),
         password: Some(password),
-        database: Some(database.to_string()),
+        database: None,
         ssl_mode,
         connect_timeout: std::time::Duration::from_secs(
             // O `--timeout` do CLI é `i32`; o cadastro guarda segundos (u32).
@@ -352,7 +346,7 @@ mod tests {
         );
 
         // A senha da string **não** entra no cadastro (o `CreateAdHocServer` a descarta).
-        let settings = connection_settings(&ad_hoc, "mustel_test", &command).expect("resolve");
+        let settings = connection_settings(&ad_hoc, &command).expect("resolve");
         assert_eq!(settings.password.as_deref(), Some("senha"), "vem do `-W`");
     }
 
@@ -381,7 +375,7 @@ mod tests {
         command.ssl_mode = Some("Disable".to_string());
         command.timeout = Some(5);
 
-        let settings = connection_settings(&server(), "mydb", &command).expect("resolve");
+        let settings = connection_settings(&server(), &command).expect("resolve");
 
         assert_eq!(settings.host, "10.0.0.9");
         assert_eq!(settings.port, 6543);
@@ -392,7 +386,7 @@ mod tests {
 
     #[test]
     fn without_overrides_the_server_config_is_used() {
-        let settings = connection_settings(&server(), "mydb", &args()).expect("resolve");
+        let settings = connection_settings(&server(), &args()).expect("resolve");
 
         assert_eq!(settings.host, "localhost");
         assert_eq!(settings.port, 5432);
@@ -407,10 +401,20 @@ mod tests {
         command.ssl_mode = Some("Inventado".to_string());
 
         assert_eq!(
-            connection_settings(&server(), "mydb", &command)
+            connection_settings(&server(), &command)
                 .expect("resolve")
                 .ssl_mode,
             SslMode::Prefer
+        );
+    }
+
+    #[test]
+    fn the_template_has_no_database_because_the_core_picks_one_per_target() {
+        let template = connection_settings(&server(), &args()).expect("resolve");
+
+        assert_eq!(
+            template.database, None,
+            "o banco entra no núcleo: um por alvo, e `postgres` na descoberta"
         );
     }
 
@@ -420,7 +424,7 @@ mod tests {
         command.port = Some("nao-e-porta".to_string());
 
         assert_eq!(
-            connection_settings(&server(), "mydb", &command)
+            connection_settings(&server(), &command)
                 .expect("resolve")
                 .port,
             5432

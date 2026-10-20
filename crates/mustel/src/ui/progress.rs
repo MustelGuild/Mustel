@@ -66,23 +66,90 @@ impl Progress {
     }
 }
 
-/// Leva os eventos do núcleo para a tabela do terminal.
+/// Leva os eventos do núcleo para o terminal (T40).
 ///
-/// É o `TerminalSink` do T40 no pedaço que já existe: o núcleo emite [`CoreEvent`] e esta camada
-/// decide o desenho. A GUI (T41) vai implementar a mesma trait com a tabela dela.
-pub struct TableSink<'a> {
-    table: &'a LiveTable,
+/// Uma regra resolve o desenho: **a fase seguinte encerra a anterior**. O spinner da descoberta
+/// existe enquanto chegam eventos de descoberta e sai de cena no primeiro evento de outro tipo; a
+/// tabela ao vivo nasce no primeiro banco que termina. O que o legado imprime **depois** da tabela
+/// (caminhos dos arquivos e resumo) fica numa fila e sai em [`TerminalSink::finish`] — imprimir no
+/// meio da execução faz o redesenho da tabela apagar o texto, medido em 2026-10-20.
+///
+/// É o adaptador que a GUI (T41) vai espelhar com um canal e `ctx.request_repaint()`.
+#[derive(Debug, Default)]
+pub struct TerminalSink {
+    state: RefCell<TerminalState>,
 }
 
-impl<'a> TableSink<'a> {
-    /// Escuta os eventos para a tabela dada.
-    pub fn new(table: &'a LiveTable) -> Self {
-        Self { table }
+#[derive(Debug, Default)]
+struct TerminalState {
+    /// Spinner da fase de descoberta, criado no primeiro evento dela.
+    discovery: Option<Progress>,
+    /// Tabela ao vivo, criada no primeiro banco que termina.
+    table: Option<LiveTable>,
+    /// Linhas que só podem sair depois da tabela.
+    deferred: Vec<String>,
+}
+
+impl TerminalSink {
+    /// Escuta os eventos para o terminal.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Encerra a fase viva e imprime o que estava na fila (caminhos e resumo).
+    ///
+    /// Quem chama é o comando, **depois** de o caso de uso terminar — inclusive quando ele devolve
+    /// erro: no legado o resumo sai antes da mensagem de erro.
+    pub fn finish(&self) {
+        let mut state = self.state.borrow_mut();
+        state.stop_discovery();
+
+        if let Some(table) = state.table.take() {
+            table.finish();
+        }
+
+        if state.deferred.is_empty() {
+            return;
+        }
+
+        println!();
+        for line in state.deferred.drain(..) {
+            println!("{line}");
+        }
     }
 }
 
-impl EventSink for TableSink<'_> {
+impl TerminalState {
+    /// Tira o spinner da tela antes de a próxima fase desenhar.
+    fn stop_discovery(&mut self) {
+        if let Some(discovery) = self.discovery.take() {
+            discovery.finish();
+        }
+    }
+
+    /// A tabela ao vivo, criada na primeira linha (antes disso não há região viva para desenhar).
+    fn table(&mut self) -> &LiveTable {
+        self.table.get_or_insert_with(LiveTable::new)
+    }
+}
+
+impl EventSink for TerminalSink {
     fn emit(&self, event: CoreEvent<'_>) {
+        let mut state = self.state.borrow_mut();
+
+        // A fase de descoberta anda por todos os servidores da fila (inclusive os que só leem o
+        // cadastro, como no legado) e é a única que usa o spinner.
+        if let CoreEvent::DiscoveringDatabases { server } = event {
+            let discovery = state
+                .discovery
+                .get_or_insert_with(|| Progress::spinner("Discovering databases..."));
+            discovery.set_message(format!("Discovering databases on {server}..."));
+
+            return;
+        }
+
+        state.stop_discovery();
+
         match event {
             CoreEvent::DatabaseFinished {
                 server,
@@ -91,12 +158,57 @@ impl EventSink for TableSink<'_> {
                 rows,
                 duration,
                 error,
-            } => self
-                .table
+            } => state
+                .table()
                 .database_finished(server, database, status, rows, duration, error),
             CoreEvent::ServerWithoutDatabases { server } => {
-                self.table.server_without_databases(server);
+                state.table().server_without_databases(server);
             }
+            // Os avisos saem antes de qualquer linha de tabela, então imprimir aqui não disputa a
+            // região viva.
+            CoreEvent::DiscoveryFailed { server, error } => {
+                println!("Warning: Auto-discovery failed for '{server}': {error}");
+            }
+            CoreEvent::FallingBackToConfiguredDatabases { .. } => {
+                println!("Falling back to configured databases.");
+            }
+            CoreEvent::NoAccessibleDatabases => {
+                println!("No accessible databases found across selected servers.");
+            }
+            CoreEvent::FilesWritten {
+                consolidated,
+                errors,
+                log,
+            } => {
+                if let Some(consolidated) = consolidated {
+                    state
+                        .deferred
+                        .push(format!("✅ Consolidated → {}", consolidated.display()));
+                }
+                if let Some(errors) = errors {
+                    state
+                        .deferred
+                        .push(format!("❌ Errors       → {}", errors.display()));
+                }
+                state
+                    .deferred
+                    .push(format!("Log           → {}", log.display()));
+            }
+            CoreEvent::Summary {
+                servers,
+                successes,
+                failures,
+                total_rows,
+            } => {
+                // A linha em branco entre os caminhos e o resumo é do legado.
+                state.deferred.push(String::new());
+                state.deferred.push(format!(
+                    "Servers: {servers} | Success: {successes} | Failed: {failures} | Total rows: \
+                     {total_rows}"
+                ));
+            }
+            // Tratado no começo, antes de encerrar a fase.
+            CoreEvent::DiscoveringDatabases { .. } => {}
         }
     }
 }

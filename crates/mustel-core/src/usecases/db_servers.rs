@@ -56,6 +56,37 @@ pub fn add(store: &ConfigStore, server: &ServerConfigEntry) -> Result<(), CoreEr
     Ok(())
 }
 
+/// Atualiza um servidor existente (tela de edição da GUI, T42).
+///
+/// O CLI não tem comando de edição — lá, mudar um servidor é remover e cadastrar de novo —, então
+/// esta função nasce com a GUI, que precisa do contrário: manter a senha do cofre (o `remove` apaga)
+/// e recusar edição de servidor que não existe. As validações são as mesmas do [`add`].
+pub fn update(store: &ConfigStore, server: &ServerConfigEntry) -> Result<(), CoreError> {
+    if !is_valid_host(&server.host) {
+        return Err(CoreError::InvalidArgument(format!(
+            "Invalid host: '{}'.",
+            server.host
+        )));
+    }
+    if !server.username.trim().is_empty() && !is_valid_username(&server.username) {
+        return Err(CoreError::InvalidArgument(format!(
+            "Invalid username: '{}'.",
+            server.username
+        )));
+    }
+
+    if store.get_server(&server.name)?.is_none() {
+        return Err(CoreError::InvalidArgument(format!(
+            "Server '{}' not found.",
+            server.name
+        )));
+    }
+
+    store.add_or_update_server(server)?;
+
+    Ok(())
+}
+
 /// Remove um servidor e esquece a senha dele.
 ///
 /// Nome inexistente é **erro** (41), com o texto do legado. Apagar a credencial do cofre é adição
@@ -230,6 +261,29 @@ mod tests {
 
         add(&store, &anonymous).expect("o legado só valida usuário quando ele não é branco");
         assert_eq!(list(&store).expect("lista")[0].username, "");
+    }
+
+    #[test]
+    fn updating_requires_the_server_to_exist_and_keeps_the_rest_of_the_file() {
+        let (_directory, store) = store();
+        add(&store, &server("dev")).expect("cadastra");
+        add(&store, &server("outro")).expect("cadastra");
+
+        let edited = ServerConfigEntry {
+            port: 6543,
+            host: "db.interno".to_string(),
+            ..server("dev")
+        };
+        update(&store, &edited).expect("atualiza");
+
+        let servers = list(&store).expect("lista");
+        assert_eq!(servers.len(), 2, "os outros servidores ficam");
+        let dev = servers.iter().find(|s| s.name == "dev").expect("dev");
+        assert_eq!(dev.port, 6543);
+        assert_eq!(dev.host, "db.interno");
+
+        let error = update(&store, &server("fantasma")).expect_err("recusa");
+        assert_eq!(error.to_string(), "Server 'fantasma' not found.");
     }
 
     #[test]

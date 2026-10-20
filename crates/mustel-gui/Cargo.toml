@@ -22,3 +22,5 @@ thiserror = "2"
 
 [dev-dependencies]
 tempfile = "3"
+# Só para o teste de integração gated ler a `MUSTEL_PG_TEST_URL` com o mesmo parser do driver.
+tokio-postgres = "0.7"

@@ -1,15 +1,15 @@
-//! A janela do `mustel gui` (T41).
+//! A janela do `mustel gui` (T42).
 //!
-//! Escopo desta entrega: o encanamento e a primeira tela de verdade. A janela lista os servidores do
-//! cadastro (lidos do núcleo), testa a conexão de um deles no runtime de background e mostra os
-//! eventos do `ChannelSink` num painel. As telas de CRUD e do `query run` são o T42.
+//! O `App` é o **executor**: tem o runtime de background, o `ChannelSink` e o token do job em
+//! andamento. As telas ([`crate::screens`]) só desenham e devolvem [`Request`]s; aqui eles viram
+//! chamadas de caso de uso, e o resultado volta por canal para a tela que o pediu.
 //!
 //! Regras que valem aqui:
 //!
-//! - **nenhuma regra duplicada**: a lista vem de [`mustel_core::usecases::db_servers::list`] e o
-//!   teste de conexão de [`mustel_core::usecases::db_servers::test_connection`]; a janela só desenha;
-//! - **a UI nunca bloqueia**: o teste roda no runtime de background e o resultado chega por canal;
-//! - **cancelar é do usuário**: o botão `Cancel` cancela o token do job em andamento.
+//! - **nenhuma regra duplicada**: tudo passa por `mustel_core::usecases::{db_servers, query_run}`;
+//! - **a UI nunca bloqueia**: todo job roda no runtime de background e avisa por canal +
+//!   `ctx.request_repaint()`;
+//! - **um job por vez**: o botão `Cancel` cancela o token do job atual.
 
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
@@ -17,24 +17,24 @@ use std::sync::mpsc::{Receiver, Sender};
 use mustel_core::config::{ConfigStore, ServerConfigEntry};
 use mustel_core::events::Status;
 use mustel_core::signal::CancellationToken;
-use mustel_core::usecases::db_servers;
+use mustel_core::usecases::{db_servers, query_run};
 
 use crate::events::{ChannelSink, GuiEvent};
 use crate::query;
+use crate::request::{JobResult, Request};
 use crate::runtime::Runtime;
+use crate::screens::{query as query_screen, servers as servers_screen};
 
-/// Como o job de teste de conexão terminou.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TestResult {
-    /// O teste passou, com os bancos encontrados.
-    Databases(Vec<String>),
-    /// O teste falhou, com a mensagem pronta do núcleo.
-    Failed(String),
+/// Qual tela está à frente.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Screen {
+    Servers,
+    Query,
 }
 
-/// O que a janela mostra sobre o job em andamento.
+/// O job em andamento.
 struct Running {
-    /// Rótulo do job (servidor ou "query").
+    /// Rótulo para a barra de estado.
     label: String,
     /// Token para cancelar.
     token: CancellationToken,
@@ -43,165 +43,221 @@ struct Running {
 /// A aplicação.
 pub struct App {
     runtime: Runtime,
-    /// Eventos do núcleo (progresso, avisos, resumo) — a **mesma** trait que o CLI implementa.
+    /// O contexto do `egui`, guardado para pedir repaint de fora do desenho (ao encadear jobs).
+    ctx: egui::Context,
+    /// Eventos do núcleo (progresso, avisos, resumo).
     events: Receiver<GuiEvent>,
-    /// O sink que os jobs do núcleo recebem; mora aqui porque o job só o empresta.
+    /// O sink que os jobs recebem.
     sink: Arc<ChannelSink>,
-    /// Resultado dos jobs que devolvem valor (teste de conexão).
-    results: Sender<TestResult>,
-    results_rx: Receiver<TestResult>,
-    servers: Vec<ServerConfigEntry>,
-    /// Erro ao ler o cadastro, quando houver.
-    config_error: Option<String>,
+    /// Resultados dos jobs.
+    results: Sender<JobResult>,
+    results_rx: Receiver<JobResult>,
+    screen: Screen,
     running: Option<Running>,
-    log: Vec<String>,
     status: String,
-    /// Último resultado de teste, se houver.
-    last_test: Option<TestResult>,
-    /// SQL da tela.
-    sql: String,
+    config_error: Option<String>,
+    servers: servers_screen::State,
+    query: query_screen::State,
 }
 
 impl App {
-    /// Monta a aplicação, carregando o cadastro.
+    /// Monta a aplicação, carregando o cadastro e os defaults.
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         runtime: Runtime,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // O sink pede repaint no contexto do `egui` a cada evento: é o que acorda a janela sem
-        // polling. Ele é compartilhado com os jobs por `Arc` porque `emit` recebe `&self`.
+        // polling.
         let context = cc.egui_ctx.clone();
         let (sink, events) = ChannelSink::with_repaint(Box::new(move || context.request_repaint()));
         let (results, results_rx) = std::sync::mpsc::channel();
 
-        let (servers, config_error) = match ConfigStore::with_default_path() {
-            Ok(store) => match db_servers::list(&store) {
-                Ok(servers) => (servers, None),
-                Err(error) => (Vec::new(), Some(error.to_string())),
-            },
-            Err(error) => (Vec::new(), Some(error.to_string())),
+        let mut config_error = None;
+        let (servers, output_directory) = match ConfigStore::with_default_path() {
+            Ok(store) => {
+                let defaults = query_run::defaults(&store);
+                let servers = db_servers::list(&store);
+                match (servers, defaults) {
+                    (Ok(servers), Ok(defaults)) => (servers, defaults.output_directory),
+                    (Err(error), _) | (_, Err(error)) => {
+                        config_error = Some(error.to_string());
+                        (Vec::new(), String::new())
+                    }
+                }
+            }
+            Err(error) => {
+                config_error = Some(error.to_string());
+                (Vec::new(), String::new())
+            }
         };
+
+        let mut query = query_screen::State::with_output_directory(output_directory);
+        query.sync_servers(&servers);
 
         Ok(Self {
             runtime,
+            ctx: cc.egui_ctx.clone(),
             events,
             sink: Arc::new(sink),
             results,
             results_rx,
-            servers,
-            config_error,
+            screen: Screen::Query,
             running: None,
-            log: Vec::new(),
             status: "Ready.".to_string(),
-            last_test: None,
-            sql: "SELECT 1 AS valor".to_string(),
+            config_error,
+            servers: servers_screen::State::new(servers),
+            query,
         })
     }
 
-    /// Recarrega a lista de servidores do cadastro.
-    fn reload_servers(&mut self) {
-        let result = ConfigStore::with_default_path()
-            .map_err(mustel_core::error::CoreError::from)
-            .and_then(|store| db_servers::list(&store));
+    /// O cadastro atual (as duas telas leem dele).
+    fn servers_snapshot(&self) -> Vec<ServerConfigEntry> {
+        self.servers.servers().to_vec()
+    }
 
-        match result {
-            Ok(servers) => {
-                self.servers = servers;
-                self.config_error = None;
-                self.status = "Servers reloaded.".to_string();
+    /// Executa um pedido de tela.
+    fn dispatch(&mut self, request: Request, ctx: &egui::Context) {
+        match request {
+            Request::CancelJob => self.cancel(),
+            Request::ReloadServers => {
+                let results = self.results.clone();
+                self.spawn("reload servers", ctx, move |_token| async move {
+                    let outcome = load_servers();
+                    let _ = results.send(outcome);
+                });
             }
-            Err(error) => {
-                self.servers.clear();
-                self.config_error = Some(error.to_string());
+            Request::SaveServer(server) => {
+                let results = self.results.clone();
+                self.spawn("save server", ctx, move |_token| async move {
+                    let result = save_server(&server);
+                    let _ = results.send(result);
+                });
+            }
+            Request::RemoveServer(name) => {
+                let results = self.results.clone();
+                self.spawn("remove server", ctx, move |_token| async move {
+                    let result = match ConfigStore::with_default_path()
+                        .map_err(mustel_core::error::CoreError::from)
+                        .and_then(|store| db_servers::remove(&store, &name))
+                    {
+                        Ok(()) => JobResult::Removed(name),
+                        Err(error) => JobResult::Failed(error.to_string()),
+                    };
+                    let _ = results.send(result);
+                });
+            }
+            Request::SetPassword { name, password } => {
+                let results = self.results.clone();
+                self.spawn("set password", ctx, move |_token| async move {
+                    let result = match ConfigStore::with_default_path()
+                        .map_err(mustel_core::error::CoreError::from)
+                        .and_then(|store| db_servers::set_password(&store, &name, &password))
+                    {
+                        Ok(()) => JobResult::PasswordSaved(name),
+                        Err(error) => JobResult::Failed(error.to_string()),
+                    };
+                    let _ = results.send(result);
+                });
+            }
+            Request::TestConnection(server) => {
+                let name = server.name.clone();
+                let password = match query::stored_password(&name) {
+                    Ok(password) => password,
+                    Err(error) => {
+                        self.status = error.to_string();
+                        return;
+                    }
+                };
+                let results = self.results.clone();
+                self.status = format!("Testing connection to {name}...");
+                self.spawn("test connection", ctx, move |_token| async move {
+                    let result = match db_servers::test_connection(&server, &password).await {
+                        Ok(report) => JobResult::Tested {
+                            server: name,
+                            databases: report.databases,
+                        },
+                        Err(error) => JobResult::Failed(error.to_string()),
+                    };
+                    let _ = results.send(result);
+                });
+            }
+            Request::RunQuery {
+                servers,
+                sql,
+                output_directory,
+            } => {
+                // A entrada é montada fora do runtime: se faltar senha, a tela avisa na hora.
+                let mut runs = Vec::with_capacity(servers.len());
+                for server in &servers {
+                    let password = match query::stored_password(&server.name) {
+                        Ok(password) => password,
+                        Err(error) => {
+                            self.status = error.to_string();
+                            return;
+                        }
+                    };
+                    match query::server_run(server, &password) {
+                        Ok(run) => runs.push(run),
+                        Err(error) => {
+                            self.status = error.to_string();
+                            return;
+                        }
+                    }
+                }
+
+                let request = match query::request_for_runs(runs, &sql, output_directory) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        self.status = error.to_string();
+                        return;
+                    }
+                };
+
+                self.query.started();
+                self.status = "Running query...".to_string();
+                let sink = Arc::clone(&self.sink);
+                let results = self.results.clone();
+                self.spawn("query", ctx, move |token| async move {
+                    let result = match query::run(&request, sink.as_ref(), &token).await {
+                        Ok(query_run::QueryRunOutcome::NoAccessibleDatabases) => {
+                            JobResult::QueryWithoutDatabases
+                        }
+                        Ok(query_run::QueryRunOutcome::Executed(outcome)) => JobResult::QueryDone {
+                            consolidated: outcome.consolidated,
+                            log: outcome.log,
+                            servers: request.servers.len(),
+                            successes: outcome.successes,
+                            failures: outcome.failures,
+                            total_rows: outcome.total_rows,
+                        },
+                        Err(error) => JobResult::Failed(error.to_string()),
+                    };
+                    let _ = results.send(result);
+                });
             }
         }
     }
 
-    /// Testa a conexão de um servidor no runtime de background.
-    fn test_connection(&mut self, server: ServerConfigEntry, ctx: &egui::Context) {
+    /// Dispara um job, guardando o token para o `Cancel`.
+    fn spawn<F, Fut>(&mut self, label: &str, ctx: &egui::Context, job: F)
+    where
+        F: FnOnce(CancellationToken) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = ()> + Send,
+    {
         if let Some(running) = &self.running {
             self.status = format!("Already running: {}.", running.label);
             return;
         }
 
-        let password = match query::stored_password(&server.name) {
-            Ok(password) => password,
-            Err(error) => {
-                self.status = error.to_string();
-                return;
-            }
-        };
-
-        self.status = format!(
-            "Testing connection to {} ({}:{})...",
-            server.name, server.host, server.port
-        );
-        self.last_test = None;
-
-        let results = self.results.clone();
         let context = ctx.clone();
-        let label = server.name.clone();
-        let (token, _handle) = self.runtime.spawn(move |_token| async move {
-            let outcome = db_servers::test_connection(&server, &password).await;
-            let result = match outcome {
-                Ok(report) => TestResult::Databases(report.databases),
-                Err(error) => TestResult::Failed(error.to_string()),
-            };
-
-            // Thread de background não toca na UI: manda pelo canal e pede repaint.
-            let _ = results.send(result);
-            context.request_repaint();
-        });
-
-        self.running = Some(Running {
-            label: format!("test {label}"),
-            token,
-        });
-    }
-
-    /// Roda o `query run` do núcleo contra um servidor, com o SQL da tela.
-    fn run_query(&mut self, server: ServerConfigEntry, ctx: &egui::Context) {
-        if let Some(running) = &self.running {
-            self.status = format!("Already running: {}.", running.label);
-            return;
-        }
-
-        let password = match query::stored_password(&server.name) {
-            Ok(password) => password,
-            Err(error) => {
-                self.status = error.to_string();
-                return;
-            }
-        };
-
-        let request = match query::request_for(&server, &self.sql, &password) {
-            Ok(request) => request,
-            Err(error) => {
-                self.status = error.to_string();
-                return;
-            }
-        };
-
-        self.log.clear();
-        self.status = format!("Running query on {}...", server.name);
-        self.last_test = None;
-
-        let sink = Arc::clone(&self.sink);
-        let context = ctx.clone();
-        let results = self.results.clone();
-        let label = server.name.clone();
         let (token, _handle) = self.runtime.spawn(move |token| async move {
-            let outcome = query::run(&request, sink.as_ref(), &token).await;
-            let result = match outcome {
-                Ok(_) => TestResult::Databases(Vec::new()),
-                Err(error) => TestResult::Failed(error.to_string()),
-            };
-            let _ = results.send(result);
+            job(token).await;
+            // Thread de background não toca na UI: pede repaint para a janela ler o canal.
             context.request_repaint();
         });
 
         self.running = Some(Running {
-            label: format!("query on {label}"),
+            label: label.to_string(),
             token,
         });
     }
@@ -214,26 +270,9 @@ impl App {
         }
     }
 
-    /// Aplica o resultado de um job, quando chega.
-    fn drain_results(&mut self) {
-        while let Ok(result) = self.results_rx.try_recv() {
-            self.status = match &result {
-                TestResult::Databases(databases) => {
-                    if databases.is_empty() {
-                        "No accessible databases found".to_string()
-                    } else {
-                        format!("Connection successful: {} database(s)", databases.len())
-                    }
-                }
-                TestResult::Failed(error) => error.clone(),
-            };
-            self.last_test = Some(result);
-            self.running = None;
-        }
-    }
-
-    /// Consome os eventos que chegaram do núcleo desde o quadro anterior.
-    fn drain_events(&mut self) {
+    /// Aplica o que chegou dos canais.
+    fn drain(&mut self) {
+        // Eventos de núcleo: progresso da consulta.
         while let Ok(event) = self.events.try_recv() {
             match event {
                 GuiEvent::DatabaseFinished {
@@ -243,30 +282,16 @@ impl App {
                     rows,
                     duration,
                     error,
-                } => self.log.push(match status {
-                    Status::Success => format!(
-                        "✓ {server}/{database} — {rows} rows — {:.1}s",
-                        duration.as_secs_f64()
-                    ),
-                    Status::Error => format!("✗ {server}/{database} — {error}"),
+                } => self.query.push_progress(query_screen::ProgressRow {
+                    server,
+                    database,
+                    rows: if status == Status::Success { rows } else { 0 },
+                    seconds: duration.as_secs_f64(),
+                    error,
                 }),
-                GuiEvent::ServerWithoutDatabases { server } => {
-                    self.log.push(format!("— {server} — no databases"));
-                }
                 GuiEvent::DiscoveringDatabases { server } => {
                     self.status = format!("Discovering databases on {server}...");
                 }
-                GuiEvent::DiscoveryFailed { server, error } => self.log.push(format!(
-                    "Warning: Auto-discovery failed for '{server}': {error}"
-                )),
-                GuiEvent::FallingBackToConfiguredDatabases { .. } => {
-                    self.log
-                        .push("Falling back to configured databases.".to_string());
-                }
-                GuiEvent::NoAccessibleDatabases => self
-                    .log
-                    .push("No accessible databases found across selected servers.".to_string()),
-                GuiEvent::FilesWritten { .. } => self.log.push("Files written.".to_string()),
                 GuiEvent::Summary {
                     servers,
                     successes,
@@ -277,26 +302,67 @@ impl App {
                         "Servers: {servers} | Success: {successes} | Failed: {failures} | Total rows: {total_rows}"
                     );
                 }
-                GuiEvent::NoDatabasesFound => self.log.push("No databases found.".to_string()),
-                GuiEvent::NoDumpFilesFound => self
-                    .log
-                    .push("No .dump files found in the directory.".to_string()),
-                GuiEvent::SkippingDatabase { database } => self
-                    .log
-                    .push(format!("Skipping invalid database name: '{database}'")),
-                GuiEvent::DatabaseStepFailed {
-                    step,
-                    database,
-                    error,
-                } => {
-                    let command = match step {
-                        mustel_core::events::DatabaseStep::Backup => "backup",
-                        mustel_core::events::DatabaseStep::Restore => "restore",
-                    };
-                    self.log.push(format!(
-                        "Failed to {command} database '{database}': {error}"
-                    ));
+                GuiEvent::DiscoveryFailed { server, error } => {
+                    self.status = format!("Auto-discovery failed for '{server}': {error}");
                 }
+                GuiEvent::FallingBackToConfiguredDatabases { server } => {
+                    self.status =
+                        format!("Falling back to the configured databases of '{server}'.");
+                }
+                GuiEvent::NoAccessibleDatabases => {
+                    self.status = "No accessible databases found.".to_string();
+                }
+                // Os avisos de `backup`/`restore` não têm tela nesta entrega (backlog da GUI).
+                GuiEvent::FilesWritten { .. }
+                | GuiEvent::ServerWithoutDatabases { .. }
+                | GuiEvent::NoDatabasesFound
+                | GuiEvent::NoDumpFilesFound
+                | GuiEvent::SkippingDatabase { .. }
+                | GuiEvent::DatabaseStepFailed { .. } => {}
+            }
+        }
+
+        // Resultados dos jobs.
+        while let Ok(result) = self.results_rx.try_recv() {
+            self.running = None;
+            self.servers.apply(&result);
+            self.query.apply(&result);
+
+            self.status = match &result {
+                JobResult::Servers(servers) => {
+                    self.query.sync_servers(servers);
+                    format!("{} server(s) loaded.", servers.len())
+                }
+                JobResult::Saved(name) => format!("Server '{name}' saved."),
+                JobResult::Removed(name) => format!("Server '{name}' removed."),
+                JobResult::PasswordSaved(name) => format!("Password saved for '{name}'."),
+                JobResult::Tested { server, databases } => {
+                    format!("'{server}' connected: {} database(s)", databases.len())
+                }
+                JobResult::QueryDone { total_rows, .. } => {
+                    format!("Query finished: {total_rows} row(s).")
+                }
+                JobResult::QueryWithoutDatabases => {
+                    "No accessible databases found across selected servers.".to_string()
+                }
+                JobResult::Failed(error) => error.clone(),
+            };
+
+            // Um `Save` com senha encadeia o pedido de guardar no cofre, na mesma ordem do CLI.
+            if matches!(result, JobResult::Saved(_))
+                && let Some(password) = self.servers.take_pending_password()
+                && let JobResult::Saved(name) = &result
+            {
+                let name = name.clone();
+                self.dispatch(Request::SetPassword { name, password }, &self.ctx.clone());
+            }
+
+            // Cadastro mudou: recarrega a lista para refletir o disco.
+            if matches!(
+                result,
+                JobResult::Saved(_) | JobResult::Removed(_) | JobResult::PasswordSaved(_)
+            ) {
+                self.dispatch(Request::ReloadServers, &self.ctx.clone());
             }
         }
     }
@@ -305,101 +371,72 @@ impl App {
 impl eframe::App for App {
     /// Estado: consome os canais. Aqui **nada** é desenhado (é o contrato do `eframe`).
     fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.drain_events();
-        self.drain_results();
+        self.drain();
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.ctx = ctx.clone();
 
-        // O `Ui` do `eframe` vem sem margem nem fundo de painel: este `Frame` devolve o visual de
-        // painel central que o resto do app espera.
         egui::Frame::central_panel(ui.style()).show(ui, |ui| {
-            self.central(ui, &ctx);
+            ui.horizontal(|ui| {
+                ui.heading("Mustel");
+                ui.separator();
+                ui.selectable_value(&mut self.screen, Screen::Query, "Query");
+                ui.selectable_value(&mut self.screen, Screen::Servers, "Servers");
+                ui.separator();
+                ui.label(&self.status);
+                if let Some(running) = &self.running {
+                    ui.spinner();
+                    ui.label(format!("[{}]", running.label));
+                }
+            });
+            if let Some(error) = &self.config_error {
+                ui.colored_label(egui::Color32::RED, error);
+            }
+            ui.separator();
+
+            let servers = self.servers_snapshot();
+            let request = match self.screen {
+                Screen::Servers => self.servers.ui(ui),
+                Screen::Query => self.query.ui(ui, &servers),
+            };
+
+            if let Some(request) = request {
+                self.dispatch(request, &ctx);
+            }
         });
     }
 }
 
-impl App {
-    /// O conteúdo da janela.
-    fn central(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.horizontal(|ui| {
-            ui.heading("Mustel");
-            ui.separator();
-            ui.label(&self.status);
-            if self.running.is_some() {
-                ui.spinner();
-                if ui.button("Cancel").clicked() {
-                    self.cancel();
-                }
+/// Lê o cadastro do disco.
+fn load_servers() -> JobResult {
+    match ConfigStore::with_default_path()
+        .map_err(mustel_core::error::CoreError::from)
+        .and_then(|store| db_servers::list(&store))
+    {
+        Ok(servers) => JobResult::Servers(servers),
+        Err(error) => JobResult::Failed(error.to_string()),
+    }
+}
+
+/// Grava um servidor: `update` quando ele já existe, `add` quando é novo.
+fn save_server(server: &ServerConfigEntry) -> JobResult {
+    let outcome = ConfigStore::with_default_path()
+        .map_err(mustel_core::error::CoreError::from)
+        .and_then(|store| {
+            let exists = db_servers::list(&store)?
+                .iter()
+                .any(|current| current.name.eq_ignore_ascii_case(&server.name));
+            if exists {
+                db_servers::update(&store, server)
+            } else {
+                db_servers::add(&store, server)
             }
         });
-        if let Some(error) = &self.config_error {
-            ui.colored_label(egui::Color32::RED, error);
-        }
-        ui.separator();
 
-        ui.horizontal(|ui| {
-            ui.label(format!("{} server(s) configured", self.servers.len()));
-            if ui.button("Reload").clicked() {
-                self.reload_servers();
-            }
-        });
-
-        ui.label("SQL");
-        ui.add(
-            egui::TextEdit::multiline(&mut self.sql)
-                .desired_rows(4)
-                .desired_width(f32::INFINITY),
-        );
-        ui.separator();
-
-        let servers = self.servers.clone();
-        egui::ScrollArea::vertical()
-            .id_salt("servers")
-            .max_height(160.0)
-            .show(ui, |ui| {
-                for server in servers {
-                    ui.horizontal(|ui| {
-                        ui.monospace(format!(
-                            "{:<16} {}:{}",
-                            server.name, server.host, server.port
-                        ));
-                        if ui.button("Test connection").clicked() {
-                            self.test_connection(server.clone(), ctx);
-                        }
-                        if ui.button("Run query").clicked() {
-                            self.run_query(server.clone(), ctx);
-                        }
-                    });
-                }
-            });
-
-        if let Some(result) = &self.last_test {
-            ui.separator();
-            match result {
-                TestResult::Databases(databases) => {
-                    if databases.is_empty() {
-                        ui.label("No accessible databases found");
-                    } else {
-                        ui.label(format!("Databases found: {}", databases.join(", ")));
-                    }
-                }
-                TestResult::Failed(error) => {
-                    ui.colored_label(egui::Color32::RED, error);
-                }
-            }
-        }
-
-        ui.separator();
-        ui.label("Events");
-        egui::ScrollArea::vertical()
-            .id_salt("events")
-            .stick_to_bottom(true)
-            .show(ui, |ui| {
-                for line in &self.log {
-                    ui.monospace(line);
-                }
-            });
+    match outcome {
+        Ok(()) => JobResult::Saved(server.name.clone()),
+        Err(error) => JobResult::Failed(error.to_string()),
     }
 }

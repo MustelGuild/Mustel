@@ -56,7 +56,7 @@ pub fn request_for(
         query_run::defaults(&store).map_err(|error| InputError::Config(error.to_string()))?;
 
     Ok(QueryRunRequest {
-        servers: vec![server_run(server, password)],
+        servers: vec![server_run(server, password)?],
         sql: Arc::from(sql),
         output_directory: PathBuf::from(defaults.output_directory),
         max_parallelism: defaults.max_parallelism as usize,
@@ -66,9 +66,36 @@ pub fn request_for(
     })
 }
 
+/// Monta a requisição a partir dos servidores **já escolhidos** na tela (T42).
+///
+/// É o caminho da janela: cada servidor vem com a conexão resolvida ([`server_run`]), e o paralelismo
+/// e o timeout saem do cadastro, como no CLI.
+pub fn request_for_runs(
+    runs: Vec<ServerRun>,
+    sql: &str,
+    output_directory: String,
+) -> Result<QueryRunRequest, InputError> {
+    let store =
+        ConfigStore::with_default_path().map_err(|error| InputError::Config(error.to_string()))?;
+    let defaults =
+        query_run::defaults(&store).map_err(|error| InputError::Config(error.to_string()))?;
+
+    Ok(QueryRunRequest {
+        servers: runs,
+        sql: Arc::from(sql),
+        output_directory: PathBuf::from(output_directory),
+        max_parallelism: defaults.max_parallelism.max(1) as usize,
+        command_timeout: Duration::from_secs(DEFAULT_COMMAND_TIMEOUT_SECONDS),
+        // Com vários servidores escolhidos, cada um decide se descobre (`fetchAllDatabases`), como no
+        // CLI sem `--all`.
+        all: false,
+        exclude: HashSet::new(),
+    })
+}
+
 /// A conexão resolvida de um servidor do cadastro, sem banco (o núcleo troca por alvo).
-fn server_run(server: &ServerConfigEntry, password: &str) -> ServerRun {
-    ServerRun {
+pub fn server_run(server: &ServerConfigEntry, password: &str) -> Result<ServerRun, InputError> {
+    Ok(ServerRun {
         name: server.name.clone(),
         max_parallelism: server.max_parallelism as usize,
         databases: server.databases.clone(),
@@ -85,7 +112,7 @@ fn server_run(server: &ServerConfigEntry, password: &str) -> ServerRun {
             command_timeout: Duration::from_secs(DEFAULT_COMMAND_TIMEOUT_SECONDS),
             ..ConnectionSettings::default()
         },
-    }
+    })
 }
 
 /// Senha guardada do servidor no cofre do sistema.

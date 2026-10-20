@@ -175,6 +175,24 @@ impl EventSink for TerminalSink {
             CoreEvent::NoAccessibleDatabases => {
                 println!("No accessible databases found across selected servers.");
             }
+            // Avisos do `--all` de `database backup`/`restore`: nesses comandos não há região viva,
+            // então imprimir na hora é o comportamento do legado (`LogWarning`).
+            CoreEvent::NoDatabasesFound => println!("No databases found."),
+            CoreEvent::NoDumpFilesFound => println!("No .dump files found in the directory."),
+            CoreEvent::SkippingDatabase { database } => {
+                println!("Skipping invalid database name: '{database}'");
+            }
+            CoreEvent::DatabaseStepFailed {
+                step,
+                database,
+                error,
+            } => {
+                let command = match step {
+                    mustel_core::events::DatabaseStep::Backup => "backup",
+                    mustel_core::events::DatabaseStep::Restore => "restore",
+                };
+                println!("Failed to {command} database '{database}': {error}");
+            }
             CoreEvent::FilesWritten {
                 consolidated,
                 errors,

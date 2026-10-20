@@ -5,5 +5,8 @@
 //! imprime, não pergunta e não conhece terminal nem janela: é o que permite o CLI e a GUI (T41)
 //! rodarem o mesmo comando.
 
+pub mod database;
+pub mod database_backup;
+pub mod database_restore;
 pub mod db_servers;
 pub mod query_run;

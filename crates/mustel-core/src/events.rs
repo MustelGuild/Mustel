@@ -96,6 +96,33 @@ pub enum CoreEvent<'a> {
         /// Soma das linhas trazidas.
         total_rows: u64,
     },
+    /// O `--all` do `backup` não achou banco nenhum no servidor (o `No databases found.` do legado).
+    NoDatabasesFound,
+    /// O `--all` do `restore` não achou `*.dump` no diretório.
+    NoDumpFilesFound,
+    /// O `--all` do `restore` pulou um arquivo cujo nome não é identificador válido.
+    SkippingDatabase {
+        /// Nome tirado do arquivo.
+        database: &'a str,
+    },
+    /// Um banco do `--all` falhou; o comando **segue** e termina com sucesso.
+    DatabaseStepFailed {
+        /// Qual comando estava rodando (o legado nomeia o verbo na mensagem).
+        step: DatabaseStep,
+        /// Banco que falhou.
+        database: &'a str,
+        /// Mensagem **sem** o prefixo `Error: ` — o legado compõe `Failed to X database 'y': <isto>`.
+        error: &'a str,
+    },
+}
+
+/// Qual passo do grupo `database` falhou num banco do `--all`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatabaseStep {
+    /// `database backup`.
+    Backup,
+    /// `database restore`.
+    Restore,
 }
 
 /// Quem escuta os eventos do núcleo.

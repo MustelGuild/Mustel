@@ -17,6 +17,7 @@
 use std::path::PathBuf;
 
 use mustel_core::config::ServerConfigEntry;
+use mustel_core::query::analyzer::{self, QueryType};
 use mustel_core::query::csv_writer::parse_records;
 
 use crate::request::{JobResult, Request};
@@ -53,6 +54,22 @@ pub enum Phase {
     Done,
 }
 
+/// O que a confirmação de consulta destrutiva precisa mostrar.
+///
+/// Nasce quando a tela detecta SQL destrutivo e some quando o usuário confirma ou cancela.
+struct Confirmation {
+    /// Tipo detectado, para o título (`DELETE`, `UPDATE`, ...).
+    description: String,
+    /// Servidores que a consulta atinge.
+    servers: usize,
+    /// Bancos atingidos (só o número: descobrir os reais exigiria conectar).
+    databases: usize,
+    /// Trecho da consulta, para o usuário reconhecer o que ia rodar.
+    preview: String,
+    /// Pedido a executar se o usuário confirmar.
+    request: Request,
+}
+
 /// Estado da tela de consulta.
 pub struct State {
     /// SQL da caixa de texto.
@@ -77,6 +94,8 @@ pub struct State {
     summary: Option<String>,
     /// Erro do último pedido.
     error: Option<String>,
+    /// Consulta destrutiva esperando confirmação.
+    confirmation: Option<Confirmation>,
 }
 
 impl Default for State {
@@ -93,6 +112,7 @@ impl Default for State {
             files: Vec::new(),
             summary: None,
             error: None,
+            confirmation: None,
         }
     }
 }
@@ -241,37 +261,56 @@ impl State {
             });
 
         ui.separator();
-        ui.horizontal(|ui| {
-            let chosen: Vec<ServerConfigEntry> = servers
-                .iter()
-                .filter(|server| self.selected.contains(&server.name))
-                .cloned()
-                .collect();
+        // O `horizontal` devolve o pedido em vez de escrever no `request` de fora: um `Option<Request>`
+        // não é `Copy`, e atribuir dentro do closure o moveria para lá.
+        let run_request = ui
+            .horizontal(|ui| {
+                let chosen: Vec<ServerConfigEntry> = servers
+                    .iter()
+                    .filter(|server| self.selected.contains(&server.name))
+                    .cloned()
+                    .collect();
 
-            if ui
-                .add_enabled(
-                    !running && !chosen.is_empty(),
-                    egui::Button::new("Run query"),
-                )
-                .clicked()
-            {
-                request = Some(Request::RunQuery {
-                    servers: chosen,
-                    sql: self.sql.clone(),
-                    output_directory: self.output_directory.clone(),
-                });
-            }
-            if running && ui.button("Cancel").clicked() {
-                self.phase = Phase::Idle;
-                request = Some(Request::CancelJob);
-            }
-            if running {
-                ui.spinner();
-            }
-            if let Some(summary) = &self.summary {
-                ui.label(summary);
-            }
-        });
+                if ui
+                    .add_enabled(
+                        !running && !chosen.is_empty(),
+                        egui::Button::new("Run query"),
+                    )
+                    .clicked()
+                {
+                    // A decisão de pedir confirmação fica numa função só, usada pelo botão e
+                    // testável sem janela.
+                    self.request_run(chosen.clone())
+                } else {
+                    None
+                }
+            })
+            .inner;
+
+        if run_request.is_some() {
+            request = run_request;
+        }
+
+        let cancel_request = ui
+            .horizontal(|ui| {
+                let mut cancel = None;
+                if running && ui.button("Cancel").clicked() {
+                    self.phase = Phase::Idle;
+                    cancel = Some(Request::CancelJob);
+                }
+                if running {
+                    ui.spinner();
+                }
+                if let Some(summary) = &self.summary {
+                    ui.label(summary);
+                }
+                cancel
+            })
+            .inner;
+
+        if cancel_request.is_some() {
+            request = cancel_request;
+        }
 
         if let Some(error) = &self.error {
             ui.colored_label(egui::Color32::RED, error);
@@ -329,7 +368,132 @@ impl State {
             ui.allocate_space(ui.available_size());
         }
 
+        // O popup de confirmação destrutiva é desenhado por cima de tudo.
+        if self.confirmation.is_some() {
+            request = self.confirmation_modal(ui.ctx()).or(request);
+        }
+
         request
+    }
+
+    /// Decide o que o botão `Run query` faz: executa direto ou pede confirmação.
+    ///
+    /// Consulta destrutiva **sempre** pede confirmação aqui — a GUI não tem o `--no-confirm` do
+    /// CLI, e apagar dado por engano não tem desfazer. O que decide é o `analyzer` do núcleo, o
+    /// mesmo que o CLI usa, então a classificação é a mesma dos dois lados.
+    fn request_run(&mut self, chosen: Vec<ServerConfigEntry>) -> Option<Request> {
+        let run = Request::RunQuery {
+            servers: chosen.clone(),
+            sql: self.sql.clone(),
+            output_directory: self.output_directory.clone(),
+        };
+
+        if analyzer::analyze(&self.sql) != QueryType::Destructive {
+            return Some(run);
+        }
+
+        self.confirmation = Some(Confirmation {
+            description: analyzer::description(&self.sql).to_string(),
+            servers: chosen.len(),
+            databases: chosen
+                .iter()
+                .map(|server| {
+                    // O legado conta 1 por servidor quando vai descobrir os bancos.
+                    if server.fetch_all_databases {
+                        1
+                    } else {
+                        server.databases.len().max(1)
+                    }
+                })
+                .sum(),
+            preview: preview_of(&self.sql),
+            request: run,
+        });
+
+        None
+    }
+
+    /// O popup de confirmação de consulta destrutiva.
+    ///
+    /// Mesmo conteúdo que o CLI mostra (tipo, servidores, bancos e um trecho da consulta), com ícone
+    /// de alerta; a decisão é do usuário e o padrão seguro é **cancelar**.
+    fn confirmation_modal(&mut self, ctx: &egui::Context) -> Option<Request> {
+        let Some(confirmation) = &self.confirmation else {
+            return None;
+        };
+
+        let mut decision: Option<bool> = None;
+        let response =
+            egui::Modal::new(egui::Id::unique("destructive_query_dialog")).show(ctx, |ui| {
+                ui.set_max_width(460.0);
+
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("⚠")
+                            .size(28.0)
+                            .color(egui::Color32::from_rgb(200, 60, 40)),
+                    );
+                    ui.label(
+                        egui::RichText::new("WARNING: DESTRUCTIVE QUERY DETECTED")
+                            .strong()
+                            .color(egui::Color32::from_rgb(200, 60, 40)),
+                    );
+                });
+
+                ui.add_space(6.0);
+                egui::Grid::new("destructive_details")
+                    .num_columns(2)
+                    .show(ui, |ui| {
+                        ui.label("Query Type");
+                        ui.monospace(&confirmation.description);
+                        ui.end_row();
+                        ui.label("Servers Affected");
+                        ui.monospace(confirmation.servers.to_string());
+                        ui.end_row();
+                        ui.label("Databases Affected");
+                        ui.monospace(format!("~{}", confirmation.databases));
+                        ui.end_row();
+                        ui.label("Preview");
+                        ui.monospace(&confirmation.preview);
+                        ui.end_row();
+                    });
+
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    // `Cancel` primeiro: o padrão seguro é não executar.
+                    if ui.button("Cancel").clicked() {
+                        decision = Some(false);
+                    }
+                    ui.add_space(8.0);
+                    if ui
+                        .button(
+                            egui::RichText::new("Run anyway")
+                                .color(egui::Color32::from_rgb(200, 60, 40)),
+                        )
+                        .clicked()
+                    {
+                        decision = Some(true);
+                    }
+                });
+            });
+
+        // Clicar fora do popup equivale a cancelar.
+        if response.backdrop_response.clicked() {
+            decision = Some(false);
+        }
+
+        match decision {
+            Some(true) => {
+                let confirmation = self.confirmation.take()?;
+                Some(confirmation.request)
+            }
+            Some(false) => {
+                self.confirmation = None;
+                self.error = Some("Query execution cancelled by user.".to_string());
+                None
+            }
+            None => None,
+        }
     }
 
     /// A tabela **virtualizada**: só as linhas visíveis são desenhadas.
@@ -393,10 +557,20 @@ impl State {
     }
 }
 
+/// Trecho da consulta para o usuário reconhecer o que ia rodar (200 caracteres, como o CLI).
+fn preview_of(sql: &str) -> String {
+    let preview: String = sql.chars().take(200).collect();
+
+    if sql.chars().count() > 200 {
+        format!("{preview}...")
+    } else {
+        preview
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
     fn server(name: &str) -> ServerConfigEntry {
         ServerConfigEntry {
             name: name.to_string(),
@@ -503,5 +677,113 @@ mod tests {
             state.error.as_deref(),
             Some("No server responded successfully.")
         );
+    }
+
+    #[test]
+    fn the_destructive_check_uses_the_core_analyzer() {
+        // O que a tela consulta antes de abrir o popup: o mesmo `analyzer` do CLI.
+        assert_eq!(analyzer::analyze("SELECT 1"), QueryType::Safe);
+        assert_eq!(analyzer::analyze("DELETE FROM t"), QueryType::Destructive);
+        assert_eq!(
+            analyzer::analyze("UPDATE t SET a = 1"),
+            QueryType::Destructive
+        );
+        assert_eq!(
+            analyzer::analyze("DROP TABLE t"),
+            QueryType::Destructive,
+            "`DROP` é o caso que mais dói se passar"
+        );
+    }
+
+    #[test]
+    fn the_confirmation_preview_truncates_like_the_cli() {
+        assert_eq!(preview_of("DELETE FROM t"), "DELETE FROM t");
+
+        let long = "DELETE FROM t WHERE ".to_string() + &"x".repeat(400);
+        let preview = preview_of(&long);
+        assert_eq!(preview.chars().count(), 203, "200 + reticências");
+        assert!(preview.ends_with("..."), "{preview}");
+    }
+
+    #[test]
+    fn destructive_sql_opens_the_confirmation_instead_of_running() {
+        let mut state = State {
+            sql: "DELETE FROM t".to_string(),
+            ..State::default()
+        };
+
+        let request = state.request_run(vec![server("dev")]);
+
+        assert!(request.is_none(), "nada roda antes de confirmar");
+        let confirmation = state.confirmation.as_ref().expect("abriu a confirmação");
+        assert_eq!(confirmation.servers, 1);
+        assert_eq!(confirmation.databases, 1, "um banco no cadastro");
+        assert_eq!(confirmation.preview, "DELETE FROM t");
+        assert!(
+            matches!(confirmation.request, Request::RunQuery { .. }),
+            "a confirmação guarda o pedido pronto para executar"
+        );
+    }
+
+    #[test]
+    fn safe_sql_runs_without_asking() {
+        let mut state = State {
+            sql: "SELECT 1".to_string(),
+            ..State::default()
+        };
+
+        let request = state.request_run(vec![server("dev")]);
+
+        assert!(matches!(request, Some(Request::RunQuery { .. })));
+        assert!(state.confirmation.is_none());
+    }
+
+    #[test]
+    fn a_server_that_discovers_databases_counts_as_one() {
+        let mut state = State {
+            sql: "DROP TABLE t".to_string(),
+            ..State::default()
+        };
+        let auto = ServerConfigEntry {
+            fetch_all_databases: true,
+            databases: vec!["a".to_string(), "b".to_string()],
+            ..server("dev")
+        };
+
+        let _ = state.request_run(vec![auto]);
+
+        assert_eq!(
+            state.confirmation.expect("abriu").databases,
+            1,
+            "quem descobre os bancos conta 1, como no CLI"
+        );
+    }
+
+    #[test]
+    fn the_modal_renders_without_a_window() {
+        // O caminho de desenho do popup é exercitado num contexto do `egui` sem janela: é o que pega
+        // erro de layout/borrow antes de alguém abrir a GUI.
+        let ctx = egui::Context::default();
+        let mut state = State {
+            sql: "DELETE FROM t".to_string(),
+            ..State::default()
+        };
+        let _ = state.request_run(vec![server("dev")]);
+        assert!(state.confirmation.is_some());
+
+        let output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            // Clone do contexto: o `show` empresta `&Context` e o popup precisa dele ao mesmo
+            // tempo.
+            let inner = ctx.clone();
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let _ = state.confirmation_modal(&inner);
+                let _ = ui;
+            });
+        });
+
+        assert!(!output.shapes.is_empty(), "o popup desenhou alguma coisa");
+        // O `epaint` exige que as texturas do quadro sejam consumidas ou limpas antes do descarte.
+        let mut textures = output.textures_delta;
+        textures.clear();
     }
 }

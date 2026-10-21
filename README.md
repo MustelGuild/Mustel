@@ -12,11 +12,88 @@
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-yellow?logo=buymeacoffee&logoColor=white)](https://www.buymeacoffee.com/liphvf)
 
 > **Rust rewrite in progress** (branch `feat/rust-migration`). The `query`, `database` and `settings`
-> command groups are being rewritten in Rust as **Mustel** — binary `mustel`, installed via
-> `cargo install mustel` or winget (`Mustel.CLI`). The .NET implementation now lives in `legacy/`:
-> it is the **parity oracle** during the migration and remains the product for the other command
-> groups (`file`, `claude`, `opencode`, `winget`, `windowsfeatures`, `docker`) until the second wave.
-> Everything documented below still describes the .NET CLI.
+> command groups are being rewritten in Rust as **Mustel** — binary `mustel`, installed from the release
+> archive (see below). The .NET implementation now lives in `legacy/`: it is the **parity oracle**
+> during the migration and remains the product for the other command groups (`file`, `claude`,
+> `opencode`, `winget`, `windowsfeatures`, `docker`) until the second wave.
+> The migration plan is in [`MustelPlans/migracao-rust.md`](MustelPlans/migracao-rust.md).
+
+> **Status (2026-10-21)**: the three groups are migrated and the GUI is up — `mustel gui`.
+> The sections **Mustel (current)** below describe what ships today; **FurLab (.NET, frozen)**
+> documents the legacy CLI that still owns the remaining groups.
+
+---
+
+## Mustel (current)
+
+### Description
+
+Mustel is the Rust rewrite of the FurLab CLI: one native binary that runs SQL across several
+PostgreSQL servers, exports CSV, backs up and restores databases, and manages the server
+registry — from the terminal (`mustel ...`) or from a window (`mustel gui`), over the **same core**.
+
+### Installation
+
+Build the release package for the current platform:
+
+```bash
+# Windows
+./publish.ps1
+# Linux
+./publish.sh
+```
+
+Each produces `packaging/mustel-<version>-<target>/` (binary, `mustel.example.jsonc`, `LICENSE`,
+`README.txt`), an archive (`.zip` on Windows, `.tar.gz` on Unix) and the `.sha256` next to it.
+Copy the binary to a directory on your `PATH`.
+
+**Supported targets**: `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu`.
+macOS is **not** supported for now.
+
+**Runtime dependency (Linux)**: `libdbus-1.so.3` — `sudo apt install libdbus-1-3` on
+Debian/Ubuntu. Opening the window additionally needs X11 or Wayland with OpenGL; the CLI alone
+still loads libdbus at start-up.
+
+> `cargo install mustel` and the winget package (`Mustel.CLI`) are **not published yet** — see
+> [`MustelPlans/release-pendencias.md`](MustelPlans/release-pendencias.md). Until then, use the
+> release archive.
+
+### What is migrated
+
+| Group | Commands |
+|---|---|
+| `query` | `query run` (discovery, parallelism, CSV export, live progress) |
+| `database` | `database backup`, `database restore`, `database pgpass add/list/remove` |
+| `settings` | `settings db-servers ls/add/rm/test/set-password` |
+| `gui` | `mustel gui` — servers registry and `query run` in a window |
+
+The other groups (`file`, `claude`, `opencode`, `winget`, `windowsfeatures`, `docker`) are still
+the .NET CLI in `legacy/` — second wave.
+
+### Configuration
+
+`%APPDATA%\Mustel\mustel.jsonc` on Windows, `$XDG_CONFIG_HOME/Mustel/mustel.jsonc`
+(usually `~/.config/Mustel/mustel.jsonc`) on Linux. JSONC, with comments. Passwords are **not** in
+the file: they go to the OS keyring (Windows Credential Manager / Secret Service), keyed by the
+server name.
+
+Start from [`mustel.example.jsonc`](mustel.example.jsonc).
+
+### How to Run from Source
+
+```bash
+cargo run -p mustel -- --help
+cargo run -p mustel -- gui        # the window
+cargo run -p mustel --no-default-features -- --help   # CLI only, no egui in the build
+```
+
+---
+
+## FurLab (.NET, frozen — parity oracle)
+
+Everything from here down describes the .NET CLI as it was frozen. It still owns the groups that
+have not been migrated, and it is the reference the Rust port is compared against
+(`oracle/README.md`).
 
 
 ## Description
@@ -278,7 +355,8 @@ Please ensure all tests pass and code follows the project's coding standards.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
+This project is licensed under the **GNU General Public License v3.0** (`GPL-3.0-only`) — see the
+[LICENSE](./LICENSE) file for details. The Cargo manifests declare it as `license = "GPL-3.0-only"`.
 
 ---
 

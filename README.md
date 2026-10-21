@@ -83,9 +83,17 @@ Start from [`mustel.example.jsonc`](mustel.example.jsonc).
 
 ```bash
 cargo run -p mustel -- --help
-cargo run -p mustel -- gui        # the window
+cargo run -p mustel                  # no subcommand: opens the window
+cargo run -p mustel -- gui           # same, explicitly
 cargo run -p mustel --no-default-features -- --help   # CLI only, no egui in the build
 ```
+
+Running `mustel` with **no subcommand** opens the GUI when there is an interactive terminal (typing
+it, or double-clicking the binary). Without a terminal — a script, a pipe, CI — it prints the usage
+and exits 0, exactly like the .NET CLI, so nothing breaks for automation.
+
+The GUI lives in the same binary, so every command pays its start-up cost (~55 ms). If you only ever
+script it, build with `--no-default-features` to get the lean CLI (7.8 ms instead of 63 ms).
 
 ---
 

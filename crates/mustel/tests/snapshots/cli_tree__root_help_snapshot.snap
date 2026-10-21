@@ -4,7 +4,7 @@ expression: "stdout_of(&[\"--help\"])"
 ---
 Mustel — automation CLI for PostgreSQL queries, database backups and server settings
 
-Usage: mustel.exe <COMMAND>
+Usage: mustel.exe [COMMAND]
 
 Commands:
   query     Execute SQL queries and export results to CSV

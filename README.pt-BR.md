@@ -83,9 +83,17 @@ Comece pelo [`mustel.example.jsonc`](mustel.example.jsonc).
 
 ```bash
 cargo run -p mustel -- --help
-cargo run -p mustel -- gui        # a janela
+cargo run -p mustel                  # sem subcomando: abre a janela
+cargo run -p mustel -- gui           # o mesmo, explícito
 cargo run -p mustel --no-default-features -- --help   # só CLI, sem egui no build
 ```
+
+Rodar `mustel` **sem subcomando** abre a GUI quando há terminal interativo (digitando no terminal ou
+dando duplo-clique no binário). Sem terminal — script, pipe, CI — ele imprime a ajuda e sai 0, igual
+ao CLI .NET, então nada quebra para automação.
+
+A GUI vive no mesmo binário, então todo comando paga o custo de partida dela (~55 ms). Para quem só
+usa script, o build com `--no-default-features` entrega o CLI enxuto (7,8 ms em vez de 63 ms).
 
 ---
 

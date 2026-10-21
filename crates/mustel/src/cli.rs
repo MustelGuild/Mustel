@@ -8,20 +8,22 @@
 use clap::{Args, Parser, Subcommand};
 
 /// Mustel — automação de tarefas de desenvolvimento (query, database, settings).
+///
+/// **Sem subcomando** o Mustel abre a GUI quando há terminal interativo (o caso de quem digita
+/// `mustel` ou dá duplo-clique); fora dele continua imprimindo a ajuda com exit 0, que é o contrato
+/// do oráculo — scripts e o harness de paridade nunca abrem janela por acidente.
 #[derive(Debug, Parser)]
 #[command(
     name = "mustel",
     version,
     about = "Mustel — automation CLI for PostgreSQL queries, database backups and server settings",
     long_about = None,
-    propagate_version = true,
-    subcommand_required = true,
-    arg_required_else_help = true
+    propagate_version = true
 )]
 pub struct MustelCli {
-    /// Comando escolhido pelo usuário.
+    /// Comando escolhido pelo usuário (`None` = abrir a GUI, em terminal interativo).
     #[command(subcommand)]
-    pub command: TopCommand,
+    pub command: Option<TopCommand>,
 }
 
 /// Grupos de topo do Mustel.

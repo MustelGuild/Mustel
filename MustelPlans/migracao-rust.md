@@ -1,10 +1,11 @@
 # Plano — Migração do FurLab (.NET) para Mustel (Rust)
 
-> **Status:** em-andamento
+> **Status:** em-andamento (37 de 39 tarefas; abertas: T47 e T48)
 > **Criado em:** 2026-10-14
-> **Atualizado em:** 2026-10-14
+> **Atualizado em:** 2026-10-21
 > **Complexidade:** alta
-> **Depende de (outros planos):** nenhum
+> **Depende de (outros planos):** nenhum — este plano é a fonte de verdade. O que saiu dele vive em
+> [`release-pendencias.md`](release-pendencias.md) (winget, crates.io, primeiro release real).
 
 ---
 
@@ -216,7 +217,9 @@ raiz do repositório
 - `crates/mustel-core/src/credentials/{store.rs,keyring_store.rs}` — `trait CredentialStore { get/set/delete }`; impl `keyring`; fallback Linux sem Secret Service (documentado).
 - `crates/mustel-core/src/process/runner.rs` — `ProcessRunner` com `Vec<String>` de argumentos (nunca string interpolada), stdout/stderr capturados, kill tree no cancelamento.
 - `crates/mustel-core/src/postgres/{locator.rs,password.rs,client.rs,types.rs}` — localização de `pg_dump`/`pg_restore`, resolução de senha, cliente e **mapeamento tipo→texto** para CSV.
-- `crates/mustel-core/src/events.rs` — `enum CoreEvent`, `trait EventSink`.
+- `crates/mustel-core/src/events.rs` — `enum CoreEvent`, `trait EventSink` — com **`Send + Sync`** desde o T41: o sink atravessa threads (o CLI emite de tarefas do mesmo runtime, a GUI de um runtime atrás da janela). O `TerminalSink` do CLI usa `Mutex` por isso.
+- `crates/mustel-core/src/usecases/**` — a **orquestração** dos comandos (T40): `query_run`, `database_backup`, `database_restore`, `db_servers`, mais `database.rs` com as peças comuns (`Connection`, `CommandFailure` com `FailureKind`, `DatabaseFailure`). O CLI e a GUI são adaptadores sobre estes casos de uso.
+- `crates/mustel-gui/src/{lib.rs,app.rs,events.rs,runtime.rs,query.rs,screens/**}` — a GUI (T41/T42): `ChannelSink` com `ctx.request_repaint()`, runtime tokio de background, telas de servidores e de consulta (tabela virtualizada com `egui_extras::TableBuilder`, popup de confirmação destrutiva com `egui::Modal`). Atrás da feature `gui` (ligada por padrão).
 - `crates/mustel/src/ui/*.rs` — prompts (`inquire`), tabelas (`tabled`), progresso (`indicatif`), estilo (`console`/`owo-colors`), detecção de TTY.
 - `crates/mustel-testkit/src/{fixtures.rs,oracle.rs,normalize.rs}` + bins `oracle-capture`/`oracle-compare` (crate **não** publicada).
 
@@ -224,7 +227,7 @@ raiz do repositório
 
 - `AGENTS.md` / `CLAUDE.md` — reescritos para convenções Rust (workspace, crates, `cargo fmt`/`clippy`,
   regras de paridade, guard rails de git preservados).
-- `.github/` — **sem workflows nem scaffolding** desde `3c81ff1` (D24). O gate de paridade e os checks de qualidade rodam à mão; o release do T44 precisa de estratégia nova.
+- `.github/` — **sem gates de qualidade** desde `3c81ff1` (D24): fmt/clippy/test e o gate de paridade rodam à mão. Em D27 voltou **um** workflow, `release-build.yml`, só para **empacotar**, disparado por `workflow_dispatch` (T44).
 - `README.md` / `README.pt-BR.md` / `docs/**` — Mustel + Rust; docs de arquitetura e especificação reescritas no corte.
 - `openspec/specs/**` — **preservadas** como contrato comportamental (pt-BR); specs novas só quando o fluxo OpenSpec for reaberto.
 
@@ -540,7 +543,7 @@ não invalidar as referências entre tarefas.
 
 - [x] **T42** — Telas MVP da GUI
   - **Feito (2026-10-20)**: duas telas, sobre o mesmo núcleo do CLI.
-    - **Servidores** (`screens/servers.rs`): lista do cadastro, `Add`/`Edit`/`Remove` e `Test`. O remover pede **confirmação no mesmo botão** (dois toques), porque apaga também a senha do cofre. A edição usa `db_servers::update`, **novo no núcleo**: o caminho do CLI é `rm` + `add`, que apagaria a senha; esta é a primeira peça que nasce com a GUI e não com o legado.
+    - **Servidores** (`screens/servers.rs`): lista do cadastro, `Add`/`Edit`/`Remove` e `Test`. O remover pede **confirmação no mesmo botão** (dois toques), porque apaga também a senha do cofre. A edição usa `db_servers::save` — regra **nova no núcleo**, criada com a GUI (o CLI só tem `rm` + `add`, que apagaria a senha) e ampliada no T43 para **renomear** (era `update`, que não sabia trocar o nome e por isso duplicava o registro).
     - **Consulta** (`screens/query.rs`): SQL, escolha dos servidores por caixa (um servidor já vem marcado, como no CLI), diretório de saída, `Run`/`Cancel`, progresso por banco e a **tabela virtualizada** (`ScrollArea::show_rows` — só as linhas visíveis são desenhadas) lendo o **consolidado** com `parse_records`, o mesmo leitor que o núcleo usa para reler o que escreveu. A leitura da tela tem teto de `MAX_DISPLAY_ROWS` (20 000) e avisa quando corta; **o arquivo não é truncado**. O "export CSV" é o próprio `query run` (os arquivos saem no diretório escolhido); a tela mostra os caminhos com botão de copiar.
   - **Arquitetura**: as telas são **estado + desenho** e devolvem `Request`s (`request.rs`), recebendo `JobResult`s; quem tem runtime, `ChannelSink` e token é o `App`. É o que deixa o desenho testável sem janela e mantém a regra no núcleo.
   - **Verificação**: **317 testes** (0 falhas); um teste **gated** (`crates/mustel-gui/tests/query_flow.rs`, com `MUSTEL_PG_TEST_URL`) roda `request_for_runs` → Postgres real → consolidado → `parse_records` e confere `Server,Database,valor` / `integracao,mustel_test,1`, e sem a variável se declara pulado; as duas telas conferidas por **screenshot** (feature `__screenshot` ligada só durante a verificação e revertida); `cargo tree -p mustel --no-default-features` com **0** entradas de `egui`/`eframe` (7 com a feature); fmt/clippy limpos; `oracle-compare` 47 casos, 0 falhas, 2 pulados.
@@ -608,6 +611,13 @@ não invalidar as referências entre tarefas.
   - Arquivos: `oracle/perf/final.md`
 
 - [ ] **T47** — Gate final de paridade (escopo migrado)
+  - **Estado (2026-10-21): evidência coletada, falta só o aval do usuário nas divergências**. Verificado nesta rodada:
+    - `oracle-compare` **completo**: **47 casos, 0 falhas, 25 avisos N4, 2 pulados** (os 2 pulados são as divergências deliberadas do prompt de senha); filtro `--scope query`: 3 casos, 0 falhas
+    - o relatório da rodada só classifica **N4** — **nenhuma N1–N3**, e a seção 3 do `known-divergences.md` continua “Nenhuma”
+    - `cargo fmt --check` e `clippy -D warnings` limpos; **330 testes** com `MUSTEL_KEYRING_TESTS=1` (cofre real, sem órfãos)
+    - **suites gated** contra Postgres 16 de verdade: `postgres_integration` **8/8** e o fluxo da GUI (`query_flow`) verde
+    - smoke manual da GUI (telas, rename, popup destrutivo, `Ctrl+V`, barra de rolagem) feito e confirmado pelo dono no T43
+  - **O que falta**: o `known-divergences.md` está com **18 divergências**, todas justificadas e classificadas (N4 de desenho/redação e decisões de produto) e com a lista branca de resíduos do nome antigo. O critério pede **revisão e aprovação do usuário** — é o único item que eu não posso dar por cumprido sozinho
   - Depende de: T36, T43, T45
   - Paralelizável com: T46
   - Concluído quando: `oracle-compare` completo, filtrado pelos grupos migrados (`query`, `database`, `settings`), sem divergências N1–N3, com `known-divergences.md` revisado e aprovado pelo usuário; `cargo fmt/clippy/test` verdes; smoke manual dos fluxos interativos principais registrado
@@ -890,3 +900,4 @@ O Docker Desktop também foi iniciado nesta rodada (o daemon estava parado) para
 - `[2026-10-21]` **T45 feita — documentação final** — os dois READMEs (en/pt-BR) passaram a tratar o **Mustel** como o produto: instalação pelo pacote de release, alvos suportados (`windows-msvc`/`linux-gnu`; macOS fora), grupos migrados (`query`, `database`, `settings`, `gui`), configuração nova (JSONC em `%APPDATA%\Mustel`, senhas no cofre) e execução a partir do código. O conteúdo .NET ficou sob o divisor **“FurLab (.NET, frozen — parity oracle)”**. **Licença corrigida nos dois**: diziam MIT e o repositório é **GPL-3.0-only** (`LICENSE` e manifestos). **Ajuste de critério**: o critério pedia documentar `cargo install` e winget como instalação, mas os dois **ainda não estão publicados** (P1/P2 do plano de pendências) — documentá-los como disponíveis seria mentira, então o README explica o estado e aponta o plano. Conferi os comandos da tabela contra o `mustel --help` de verdade. `docs/**` antigos ficam para o T48
 - `[2026-10-21]` **T46 feita — relatório de performance final, com um achado que muda o critério** — `oracle/perf/final.md` consolida as cinco métricas com método e ressalvas: `--help` **7,8 ms sem GUI** e **63,4 ms com GUI** contra 160,9 ms do .NET; `settings db-servers ls` 63,1 ms × 200,5 ms; export 100k **1,07 s × 2,72 s** e RSS **11,6 MB × 318,8 MB** (de `query.md`); `database backup` de 50k linhas **188 ms × 375 ms** com o mesmo dump de 1 378 463 bytes; e tamanho contra o artefato que o usuário instala (`fur.exe` self-contained **81,0 MB**): **13,5 MB com GUI**, **5,6 MB sem**. **O achado**: a GUI no mesmo binário custa ~55 ms de partida (`--version` e `--help` empatam dentro de cada build — é inicialização estática do `egui`/`winit`), então o build padrão fica em **63,4 ms e NÃO cumpre** o teto de 53,6 ms (1/3 do baseline), enquanto o só-CLI cumpre com 20,6×. Registrei o número como medido, sem ajustar para caber. **Duas armadilhas do ambiente** que quase viraram número falso: o `pg_dump` local é 16.6 e o container `postgres-ptbr` é 18.3 (a primeira medição de backup media falhas), e o `backup` do oráculo **ignora `-o`**. Também descobri que o `oracle-perf` **regenera** o `baseline.md` e apaga conteúdo curado — restaurei e apontei para o `final.md`. **Decisão de produto em aberto**: manter binário único com GUI (aceitando 63 ms) ou publicar dois artefatos
 - `[2026-10-21]` **decisão do binário único (T46)**: o usuário escolheu *"manter um único binário e caso seja executado ele abre primeiro a gui"*. Implementado: `mustel` **sem subcomando** abre a GUI quando há terminal interativo (quem digita ou dá duplo-clique); **sem terminal** continua imprimindo a ajuda com exit 0, que é o contrato do oráculo — scripts, pipes e o harness nunca abrem janela por acidente. A árvore do clap passou a ter o subcomando opcional (`[COMMAND]`), o que mudou o snapshot da ajuda da raiz (atualizado) sem tocar em nenhum caso do harness (47/0/2). Registrada a **divergência 18** em `known-divergences.md`. Custo aceito e documentado: ~55 ms de partida em todo comando por causa do `egui` estático, com o build `--no-default-features` (7,8 ms) medido em `final.md` como prova da velocidade do núcleo; os dois READMEs explicam o comportamento e essa saída
+- `[2026-10-21]` **T47 — evidência do gate final coletada; falta o aval nas divergências** — `oracle-compare` completo **47 casos, 0 falhas, 25 avisos N4, 2 pulados** (filtro `--scope query`: 3 casos, 0 falhas), e o relatório só classifica **N4**: **nenhuma N1–N3**. Também: fmt/clippy limpos, **330 testes** com `MUSTEL_KEYRING_TESTS=1`, e as suites **gated** contra um Postgres 16 de verdade (`postgres_integration` **8/8** e `query_flow` verde). O `known-divergences.md` está com **18 divergências**, todas com justificativa e efeito na comparação; como o critério pede **revisão e aprovação do usuário**, a tarefa fica aberta até esse aval

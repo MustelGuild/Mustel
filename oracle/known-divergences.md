@@ -12,12 +12,12 @@ O critério da seção 6 do plano (`MustelPlans/migracao-rust.md`) exige que, fo
 | Caminho | Por que permanece |
 |---------|-------------------|
 | `Cargo.toml`, `crates/*/Cargo.toml` | `repository` aponta para `liphvf/FurLab` (D18: o repositório só é renomeado depois) |
-| `crates/mustel/src/main.rs`, `crates/mustel-gui/src/lib.rs`, `crates/mustel-testkit/src/lib.rs` | docs de módulo citam o FurLab como produto legado / oráculo |
+| `crates/**` (doc comments) | **58 linhas** citam o FurLab/FurLab.CLI para rastrear o porte: “contrato `Program.cs` do FurLab”, “Porte do grupo `legacy/FurLab.CLI/Commands/...`”, “o legado diz `fur settings ...`”. É a rastreabilidade da paridade, não resíduo de nome: apagar tornaria o código mais difícil de conferir contra o oráculo |
+| `oracle/baseline/*.json` | são **capturas do oráculo**: a saída do `fur` inclui o nome do binário e da config, e elas são o contrato — não podem ser reescritas |
 | `AGENTS.md`, `CLAUDE.md` | descrevem o legado congelado e as regras de paridade |
 | `README.md`, `README.pt-BR.md` | aviso de migração: o que permaneceu no .NET |
 | `winget-publish.ps1` | URL de release do repositório `liphvf/FurLab` (D18) |
-| `.github/workflows/build.yml`, `.github/workflows/publish.yml` | workflows do legado (substituídos/renomeados em T10 e T44) |
-| `.github/workflows/ci.yml` | job `legacy` que garante que o oráculo continua compilando em Release |
+| `.github/workflows/release-build.yml` | nomes do repositório e do pacote (`Mustel.CLI`) nos comentários e no artefato |
 | `oracle/perf/baseline.md`, `oracle/README.md`, `oracle/known-divergences.md` | documentam o oráculo por nome |
 | `.vscode/launch.json`, `.vscode/tasks.json` | configs de debug do legado (`Legacy .NET ...`) |
 | `.claude/skills/furlab-command-manager/**`, `.opencode/skills/furlab-command-manager/**` | skill de convenções C# do legado — `CLAUDE.md` declara que vale **somente** para `legacy/` |

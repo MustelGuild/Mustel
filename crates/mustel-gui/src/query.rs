@@ -58,7 +58,7 @@ pub fn request_for(
     Ok(QueryRunRequest {
         servers: vec![server_run(server, password)?],
         sql: Arc::from(sql),
-        output_directory: PathBuf::from(defaults.output_directory),
+        output_directory: absolute(&defaults.output_directory),
         max_parallelism: defaults.max_parallelism as usize,
         command_timeout: Duration::from_secs(DEFAULT_COMMAND_TIMEOUT_SECONDS),
         all: server.fetch_all_databases,
@@ -69,7 +69,9 @@ pub fn request_for(
 /// Monta a requisição a partir dos servidores **já escolhidos** na tela (T42).
 ///
 /// É o caminho da janela: cada servidor vem com a conexão resolvida ([`server_run`]), e o paralelismo
-/// e o timeout saem do cadastro, como no CLI.
+/// e o timeout saem do cadastro, como no CLI. O diretório de saída é **absolutizado** aqui: a tela
+/// mostra os caminhos que o núcleo devolve, e um caminho relativo (`./results/...`) não diz a ninguém
+/// onde o arquivo foi parar — o que já confundiu uma sessão de teste.
 pub fn request_for_runs(
     runs: Vec<ServerRun>,
     sql: &str,
@@ -83,7 +85,7 @@ pub fn request_for_runs(
     Ok(QueryRunRequest {
         servers: runs,
         sql: Arc::from(sql),
-        output_directory: PathBuf::from(output_directory),
+        output_directory: absolute(&output_directory),
         max_parallelism: defaults.max_parallelism.max(1) as usize,
         command_timeout: Duration::from_secs(DEFAULT_COMMAND_TIMEOUT_SECONDS),
         // Com vários servidores escolhidos, cada um decide se descobre (`fetchAllDatabases`), como no
@@ -91,6 +93,11 @@ pub fn request_for_runs(
         all: false,
         exclude: HashSet::new(),
     })
+}
+
+/// Caminho absoluto, como o `Path.GetFullPath` do legado (e o `-o` do CLI).
+pub fn absolute(path: &str) -> PathBuf {
+    std::path::absolute(path).unwrap_or_else(|_| PathBuf::from(path))
 }
 
 /// A conexão resolvida de um servidor do cadastro, sem banco (o núcleo troca por alvo).

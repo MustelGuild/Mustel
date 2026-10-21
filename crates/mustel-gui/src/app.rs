@@ -92,7 +92,11 @@ impl App {
             }
         };
 
-        let mut query = query_screen::State::with_output_directory(output_directory);
+        let mut query = query_screen::State::with_output_directory({
+            // O campo mostra o caminho **absoluto**: é o mesmo que a execução usa e o que aparece
+            // depois nos arquivos, então não há dúvida de onde o CSV foi parar.
+            query::absolute(&output_directory).display().to_string()
+        });
         query.sync_servers(&servers);
 
         Ok(Self {

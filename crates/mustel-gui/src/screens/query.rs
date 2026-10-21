@@ -24,8 +24,8 @@ use crate::request::{JobResult, Request};
 /// Teto de linhas carregadas para a tabela. O arquivo não é truncado — só a leitura da tela.
 pub const MAX_DISPLAY_ROWS: usize = 20_000;
 
-/// Altura de uma linha da tabela (a da fonte monoespaçada do `egui`).
-const ROW_HEIGHT: f32 = 18.0;
+/// Altura mínima reservada para a tabela quando a janela é pequena.
+const MIN_TABLE_HEIGHT: f32 = 120.0;
 
 /// Uma linha do progresso (um banco que terminou).
 #[derive(Debug, Clone, PartialEq)]
@@ -206,7 +206,7 @@ impl State {
         ui.label("SQL");
         ui.add(
             egui::TextEdit::multiline(&mut self.sql)
-                .desired_rows(4)
+                .desired_rows(3)
                 .desired_width(f32::INFINITY),
         );
 
@@ -217,22 +217,28 @@ impl State {
 
         ui.separator();
         ui.label("Servers");
-        for server in servers {
-            let mut checked = self.selected.contains(&server.name);
-            if ui
-                .checkbox(
-                    &mut checked,
-                    format!("{} ({}:{})", server.name, server.host, server.port),
-                )
-                .changed()
-            {
-                if checked {
-                    self.selected.push(server.name.clone());
-                } else {
-                    self.selected.retain(|name| name != &server.name);
+        // Lista curta e rolável: o espaço vertical é da **tabela**, que é a saída do comando.
+        egui::ScrollArea::vertical()
+            .id_salt("query_servers")
+            .max_height(96.0)
+            .show(ui, |ui| {
+                for server in servers {
+                    let mut checked = self.selected.contains(&server.name);
+                    if ui
+                        .checkbox(
+                            &mut checked,
+                            format!("{} ({}:{})", server.name, server.host, server.port),
+                        )
+                        .changed()
+                    {
+                        if checked {
+                            self.selected.push(server.name.clone());
+                        } else {
+                            self.selected.retain(|name| name != &server.name);
+                        }
+                    }
                 }
-            }
-        }
+            });
 
         ui.separator();
         ui.horizontal(|ui| {
@@ -317,65 +323,72 @@ impl State {
                 }
             ));
             self.results_table(ui);
+        } else {
+            // Sem linhas, o espaço restante é da tabela do mesmo jeito: a janela não precisa
+            // reorganizar o layout entre um quadro e outro.
+            ui.allocate_space(ui.available_size());
         }
 
         request
     }
 
     /// A tabela **virtualizada**: só as linhas visíveis são desenhadas.
+    ///
+    /// `TableBuilder` e não `ScrollArea::show_rows`: a rolagem vertical é da **tabela**, então a barra
+    /// fica na borda direita do painel (com o `ScrollArea` aninhado ela ficava na largura do
+    /// conteúdo, no meio da tela), o cabeçalho fica fixo e as colunas são redimensionáveis.
     fn results_table(&mut self, ui: &mut egui::Ui) {
-        // Largura fixa por coluna, calculada do cabeçalho e das primeiras linhas: é o que mantém a
-        // tabela legível sem medir cada célula de cada quadro.
-        let widths: Vec<f32> = self
-            .header
-            .iter()
-            .enumerate()
-            .map(|(index, name)| {
-                let widest = self
-                    .rows
-                    .iter()
-                    .take(200)
-                    .map(|row| row.get(index).map_or(0, |cell| cell.chars().count()))
-                    .chain(std::iter::once(name.chars().count()))
-                    .max()
-                    .unwrap_or(8);
-                (widest.clamp(4, 40) as f32) * 7.5
-            })
-            .collect();
+        use egui_extras::{Column, TableBuilder};
 
         let header = self.header.clone();
-        egui::ScrollArea::horizontal()
-            .id_salt("results_h")
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    for (index, name) in header.iter().enumerate() {
-                        let width = widths.get(index).copied().unwrap_or(80.0);
-                        ui.add_sized(
-                            [width, ROW_HEIGHT],
-                            egui::Label::new(egui::RichText::new(name).strong()).truncate(),
-                        );
+        let row_height = egui::TextStyle::Body.resolve(ui.style()).size + 6.0;
+        // Lido **antes** do `TableBuilder`: ele toma `&mut Ui` emprestado.
+        let height = ui.available_height().max(MIN_TABLE_HEIGHT);
+
+        let mut table = TableBuilder::new(ui)
+            .striped(true)
+            .resizable(true)
+            .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+            .min_scrolled_height(0.0)
+            // `auto_shrink([false, false])`: sem isso a tabela encolhe até o conteúdo e a barra de
+            // rolagem fica na largura das colunas, no meio da tela. Com isso ela ocupa a área toda e
+            // a barra encosta na borda direita.
+            .auto_shrink([false, false])
+            // Barra **sempre visível**: com 20 000 linhas ela é a indicação de que há mais conteúdo
+            // embaixo, e deixa claro onde termina a tabela. Com `VisibleWhenNeeded` ela só aparece
+            // depois do primeiro quadro de rolagem.
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+            // A tabela ocupa o que sobrou da janela.
+            .max_scroll_height(height);
+
+        for index in 0..header.len() {
+            // A última coluna fica com o resto da largura; as outras se ajustam ao conteúdo e podem
+            // ser arrastadas. `clip(false)` é o que evita o `19…` de antes.
+            table = if index + 1 == header.len() {
+                table.column(Column::remainder().at_least(60.0))
+            } else {
+                table.column(Column::auto().at_least(60.0).clip(false))
+            };
+        }
+
+        table
+            .header(row_height, |mut row| {
+                for name in &header {
+                    row.col(|ui| {
+                        ui.label(egui::RichText::new(name).strong());
+                    });
+                }
+            })
+            .body(|body| {
+                let rows = &self.rows;
+                body.rows(row_height, rows.len(), |mut row| {
+                    let index = row.index();
+                    for cell in &rows[index] {
+                        row.col(|ui| {
+                            ui.label(egui::RichText::new(cell).monospace());
+                        });
                     }
                 });
-
-                let rows = &self.rows;
-                egui::ScrollArea::vertical()
-                    .id_salt("results_v")
-                    .max_height(240.0)
-                    .show_rows(ui, ROW_HEIGHT, rows.len(), |ui, range| {
-                        for index in range {
-                            let row = &rows[index];
-                            ui.horizontal(|ui| {
-                                for (column, cell) in row.iter().enumerate() {
-                                    let width = widths.get(column).copied().unwrap_or(80.0);
-                                    ui.add_sized(
-                                        [width, ROW_HEIGHT],
-                                        egui::Label::new(egui::RichText::new(cell).monospace())
-                                            .truncate(),
-                                    );
-                                }
-                            });
-                        }
-                    });
             });
     }
 }

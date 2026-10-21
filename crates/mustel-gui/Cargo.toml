@@ -15,8 +15,22 @@ workspace = true
 mustel-core = { path = "../mustel-core", version = "1.0.0" }
 # `glow` (OpenGL) em vez do `wgpu` padrão: o app desenha uma janela só e o backend leve
 # compila em uma fração do tempo, o que importa porque a crate entra no build do `mustel`.
-eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts"] }
+#
+# `clipboard` **não** é opcional na prática: sem ele o `egui-winit` não liga a área de transferência
+# e Ctrl+V/Ctrl+C (e o `copy_text` do botão "Copy path") ficam inertes. `system_fonts` e os backends
+# `x11`/`wayland` vêm junto para o binário não ficar pior que o padrão do eframe no Linux.
+eframe = { version = "0.37", default-features = false, features = [
+    "glow",
+    "default_fonts",
+    "clipboard",
+    "system_fonts",
+    "x11",
+    "wayland",
+] }
 egui = "0.37"
+# `TableBuilder`: tabela com cabeçalho fixo, colunas redimensionáveis e linhas virtualizadas — o
+# `ScrollArea::show_rows` sozinho punha a barra de rolagem no meio da tela, na largura do conteúdo.
+egui_extras = "0.37"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 thiserror = "2"
 

@@ -1,2 +1,6 @@
 # Snapshots do insta comparam bytes: o Git não deve converter fim de linha
 *.snap -text
+
+# Scripts de shell são executados por `bash`/`sh`: com CRLF (o que o `autocrlf` faz numa cópia de
+# trabalho Windows) o interpretador quebra na primeira linha. Forçar LF no checkout e no commit.
+*.sh text eol=lf

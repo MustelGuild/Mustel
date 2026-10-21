@@ -48,6 +48,12 @@ Mustel $version ($triple)
    Windows:     %APPDATA%\\Mustel\\mustel.jsonc
 3. 'mustel --help' lista os comandos.
 
+Dependências de sistema (a GUI usa egui/winit): 'libdbus-1.so.3' é a única
+obrigatória para o binário iniciar — Debian/Ubuntu: 'sudo apt install libdbus-1-3'.
+Para abrir a janela, o ambiente precisa também de X11 ou Wayland com OpenGL.
+Quem usa só o CLI não precisa da janela, mas a libdbus continua necessária porque
+é carregada na inicialização.
+
 Licença: GPL-3.0-only (ver LICENSE).
 EOF
 

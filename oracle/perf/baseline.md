@@ -5,14 +5,14 @@ está disponível na máquina da migração). Cada linha é a mediana de 30 exec
 
 | métrica | mediana | mínimo | máximo | execuções | falhas | notas |
 |---|---|---|---|---|---|---|
-| startup: --help | 157.2 ms | 155.2 ms | 166.0 ms | 30 | 0 | inclui partida do runtime .NET |
-| settings db-servers ls | 201.7 ms | 198.2 ms | 208.7 ms | 30 | 0 | config semeada com 2 servidores |
-| erro de uso (comando desconhecido) | 118.2 ms | 116.4 ms | 119.7 ms | 30 | 30 | caminho de erro; exit code 1 |
+| startup: --help | 160.9 ms | 158.1 ms | 174.1 ms | 30 | 0 | inclui partida do runtime .NET |
+| settings db-servers ls | 200.5 ms | 198.4 ms | 213.2 ms | 30 | 0 | config semeada com 2 servidores |
+| erro de uso (comando desconhecido) | 117.8 ms | 115.4 ms | 126.7 ms | 30 | 30 | caminho de erro; exit code 1 |
 
 ## Tamanho dos binários
 
 - oráculo (`C:\Users\liphv\Documents\DEV\FurLab\.delta\worktrees\00z7a7nyr8qy\FurLab\oracle\bin\FurLab.CLI.exe`): **158 KB** (162304 bytes)
-- `mustel` release (`C:\Users\liphv\Documents\DEV\FurLab\.delta\worktrees\00z7a7nyr8qy\FurLab\target\release\mustel.exe`): **1.1 MB** (1183744 bytes)
+- `mustel` release (`C:\Users\liphv\Documents\DEV\FurLab\.delta\worktrees\00z7a7nyr8qy\FurLab\target\release\mustel.exe`): **12.9 MB** (13502464 bytes)
 
 > **Cuidado ao comparar tamanho.** O que está publicado em `oracle/bin` é a saída de
 > `dotnet publish` **framework-dependent**: o executável é pequeno porque **não** carrega o
@@ -22,17 +22,19 @@ está disponível na máquina da migração). Cada linha é a mediana de 30 exec
 
 ## Pendentes (dependem de Postgres)
 
-- export CSV de 100k linhas — **medido no T36**: ver `oracle/perf/query.md` (2,72 s × 1,07 s e
-  318,8 MB × 11,6 MB);
-- `database backup` de um dump de fixture — medir em T28.
+Tudo o que dependia de Postgres foi **medido**: o export de 100k linhas está em [`query.md`](query.md)
+(T36) e o `database backup` em [`final.md`](final.md) (T46). Este arquivo guarda só as métricas que
+não precisam de banco.
 
 ## Comparação com o Mustel (parcial, T11)
 
 | métrica | oráculo (.NET) | mustel | razão | observação |
 |---|---|---|---|---|
-| `--help` | 157.2 ms | 4.7 ms | 33.3× | comparação justa: os dois só parseiam e imprimem ajuda |
-| `settings db-servers ls` | 201.7 ms | 4.7 ms | 43.0× | comparação justa desde o T16: os dois leem a config e montam a lista |
+| `--help` | 160.9 ms | 63.6 ms | 2.5× | comparação justa: os dois só parseiam e imprimem ajuda |
+| `settings db-servers ls` | 200.5 ms | 63.4 ms | 3.2× | comparação justa desde o T16: os dois leem a config e montam a lista |
 
-O comparativo final (.NET × Rust) é o T46, com todas as métricas reais.
+O comparativo final (.NET × Rust) está em [`final.md`](final.md) — é lá que o T46 registra as cinco
+métricas e a decisão que saiu do startup com GUI.
 
-A meta do plano para startup é ≤ 1/3 do baseline.
+A meta do plano para startup é ≤ 1/3 do baseline. **Com a GUI no binário a meta não é cumprida**
+(63,4 ms × 53,6 ms); sem GUI é 7,8 ms (20,6×). Ver `final.md`.

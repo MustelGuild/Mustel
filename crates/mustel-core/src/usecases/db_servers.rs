@@ -56,12 +56,20 @@ pub fn add(store: &ConfigStore, server: &ServerConfigEntry) -> Result<(), CoreEr
     Ok(())
 }
 
-/// Atualiza um servidor existente (tela de edição da GUI, T42).
+/// Grava um servidor vindo da tela de edição: cadastra, atualiza **ou renomeia**.
 ///
-/// O CLI não tem comando de edição — lá, mudar um servidor é remover e cadastrar de novo —, então
-/// esta função nasce com a GUI, que precisa do contrário: manter a senha do cofre (o `remove` apaga)
-/// e recusar edição de servidor que não existe. As validações são as mesmas do [`add`].
-pub fn update(store: &ConfigStore, server: &ServerConfigEntry) -> Result<(), CoreError> {
+/// `original` é o nome que o servidor tinha quando a tela abriu o formulário (`None` = cadastro novo).
+/// A distinção importa porque renomear **não** é `add` de um nome novo: o registro antigo tem de sair,
+/// e a senha precisa **mudar de chave** no cofre — a chave é o nome do servidor (D6). Sem isso a
+/// edição do nome duplicaria o servidor e orfanaria a senha.
+///
+/// As validações são as do [`add`]. Renomear para um nome já ocupado é recusado (exit 40 no CLI) em
+/// vez de sobrescrever.
+pub fn save(
+    store: &ConfigStore,
+    original: Option<&str>,
+    server: &ServerConfigEntry,
+) -> Result<(), CoreError> {
     if !is_valid_host(&server.host) {
         return Err(CoreError::InvalidArgument(format!(
             "Invalid host: '{}'.",
@@ -75,16 +83,51 @@ pub fn update(store: &ConfigStore, server: &ServerConfigEntry) -> Result<(), Cor
         )));
     }
 
-    if store.get_server(&server.name)?.is_none() {
+    let Some(original) = original else {
+        // Cadastro novo: as regras do `add` (nome livre).
+        return add(store, server);
+    };
+
+    // A edição só vale sobre um servidor que existe.
+    if store.get_server(original)?.is_none() {
         return Err(CoreError::InvalidArgument(format!(
-            "Server '{}' not found.",
-            server.name
+            "Server '{original}' not found."
         )));
+    }
+
+    let renamed = !original.eq_ignore_ascii_case(&server.name);
+    if renamed {
+        if store.get_server(&server.name)?.is_some() {
+            return Err(CoreError::InvalidState(format!(
+                "Server '{}' already exists. Use a different name or remove the existing one first.",
+                server.name
+            )));
+        }
+
+        store.remove_server(original)?;
     }
 
     store.add_or_update_server(server)?;
 
+    if renamed {
+        // A senha guardada precisa acompanhar o nome novo, senão fica órfã no cofre.
+        move_password(original, &server.name);
+    }
+
     Ok(())
+}
+
+/// Leva a senha guardada de um nome para outro, quando existe.
+///
+/// Falha de cofre não impede a edição: o cadastro já está gravado, e o pior caso é a senha ficar sob o
+/// nome antigo (recuperável com `set-password`).
+fn move_password(from: &str, to: &str) {
+    let keyring = SystemKeyring::new();
+    if let Ok(Some(password)) = keyring.get(from)
+        && keyring.set(to, &password).is_ok()
+    {
+        let _ = keyring.delete(from);
+    }
 }
 
 /// Remove um servidor e esquece a senha dele.
@@ -264,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn updating_requires_the_server_to_exist_and_keeps_the_rest_of_the_file() {
+    fn editing_in_place_keeps_the_same_entry() {
         let (_directory, store) = store();
         add(&store, &server("dev")).expect("cadastra");
         add(&store, &server("outro")).expect("cadastra");
@@ -274,7 +317,7 @@ mod tests {
             host: "db.interno".to_string(),
             ..server("dev")
         };
-        update(&store, &edited).expect("atualiza");
+        save(&store, Some("dev"), &edited).expect("atualiza");
 
         let servers = list(&store).expect("lista");
         assert_eq!(servers.len(), 2, "os outros servidores ficam");
@@ -282,8 +325,105 @@ mod tests {
         assert_eq!(dev.port, 6543);
         assert_eq!(dev.host, "db.interno");
 
-        let error = update(&store, &server("fantasma")).expect_err("recusa");
+        let error = save(&store, Some("fantasma"), &server("fantasma")).expect_err("recusa");
         assert_eq!(error.to_string(), "Server 'fantasma' not found.");
+    }
+
+    #[test]
+    fn renaming_moves_the_entry_instead_of_creating_another() {
+        let (_directory, store) = store();
+        add(&store, &server("antes")).expect("cadastra");
+
+        let renamed = ServerConfigEntry {
+            name: "depois".to_string(),
+            ..server("antes")
+        };
+        save(&store, Some("antes"), &renamed).expect("renomeia");
+
+        let servers = list(&store).expect("lista");
+        assert_eq!(
+            servers.len(),
+            1,
+            "renomear substitui o registro, não cria outro: {servers:?}"
+        );
+        assert_eq!(servers[0].name, "depois");
+    }
+
+    #[test]
+    fn renaming_onto_an_existing_name_is_refused() {
+        let (_directory, store) = store();
+        add(&store, &server("um")).expect("cadastra");
+        add(&store, &server("dois")).expect("cadastra");
+
+        let colliding = ServerConfigEntry {
+            name: "dois".to_string(),
+            ..server("um")
+        };
+        let error = save(&store, Some("um"), &colliding).expect_err("recusa");
+
+        assert_eq!(
+            error.to_string(),
+            "Server 'dois' already exists. Use a different name or remove the existing one first."
+        );
+        assert_eq!(list(&store).expect("lista").len(), 2, "nada foi tocado");
+    }
+
+    #[test]
+    fn creating_with_a_taken_name_is_refused_like_the_add() {
+        let (_directory, store) = store();
+        add(&store, &server("novo")).expect("cadastra");
+
+        let error = save(&store, None, &server("novo")).expect_err("recusa");
+
+        assert_eq!(
+            error.exit_code(),
+            exit_code::INVALID_STATE,
+            "cadastro novo continua com a regra do `add` (exit 40)"
+        );
+    }
+
+    /// O rename mexe no cofre de verdade (a chave é o nome): só roda com `MUSTEL_KEYRING_TESTS=1`.
+    ///
+    /// É a parte que mais pode dar errado em silêncio — se o segredo não migrar, a edição do nome deixa
+    /// a senha órfã sob o nome antigo, e o `Test` volta a pedir senha.
+    #[test]
+    fn renaming_moves_the_stored_password_to_the_new_name() {
+        use crate::credentials::{CredentialStore, SystemKeyring};
+
+        if std::env::var("MUSTEL_KEYRING_TESTS").as_deref() != Ok("1") {
+            eprintln!("skipped: set MUSTEL_KEYRING_TESTS=1 to exercise the real keyring");
+            return;
+        }
+
+        let (_directory, store) = store();
+        let keyring = SystemKeyring::new();
+        let before = "mustel-test-rename-before";
+        let after = "mustel-test-rename-after";
+        let _ = keyring.delete(before);
+        let _ = keyring.delete(after);
+
+        add(&store, &server(before)).expect("cadastra");
+        keyring.set(before, "segredo-do-teste").expect("guarda");
+
+        let renamed = ServerConfigEntry {
+            name: after.to_string(),
+            ..server(before)
+        };
+        save(&store, Some(before), &renamed).expect("renomeia");
+
+        assert_eq!(
+            keyring.get(after).expect("get depois"),
+            Some("segredo-do-teste".to_string()),
+            "a senha acompanha o nome novo"
+        );
+        assert_eq!(
+            keyring.get(before).expect("get antes"),
+            None,
+            "e não fica órfã sob o nome antigo"
+        );
+
+        let _ = keyring.delete(before);
+        let _ = keyring.delete(after);
     }
 
     #[test]

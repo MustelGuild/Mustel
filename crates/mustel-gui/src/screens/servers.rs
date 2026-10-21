@@ -291,7 +291,10 @@ impl State {
 
             ui.horizontal(|ui| {
                 if ui.button("Save").clicked() {
-                    request = Some(Request::SaveServer(form.to_entry()));
+                    request = Some(Request::SaveServer {
+                        original: form.original.clone(),
+                        server: form.to_entry(),
+                    });
                     if !form.password.is_empty() {
                         // A senha vai junto: guardar depois de salvar exigiria saber que o save deu
                         // certo, e o `App` já encadeia os dois pedidos nessa ordem.

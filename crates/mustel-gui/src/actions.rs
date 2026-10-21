@@ -19,25 +19,16 @@ pub fn load_servers(store: &ConfigStore) -> JobResult {
     }
 }
 
-/// Grava um servidor: `update` quando ele já existe, `add` quando é novo.
+/// Grava um servidor: cadastro novo, atualização no lugar ou **renomeação**.
 ///
-/// A escolha entre os dois é do **frontend** por um motivo de contrato: o `add` recusa nome repetido
-/// (exit 40 no CLI, que é o comportamento do legado) e o `update` é a edição da GUI, que preserva a
-/// senha do cofre. Quem sabe qual dos dois o usuário pediu é a tela — ela manda o `Save` com o
-/// servidor completo.
-pub fn save_server(store: &ConfigStore, server: &ServerConfigEntry) -> JobResult {
-    let outcome = db_servers::list(store).and_then(|current| {
-        let exists = current
-            .iter()
-            .any(|entry| entry.name.eq_ignore_ascii_case(&server.name));
-        if exists {
-            db_servers::update(store, server)
-        } else {
-            db_servers::add(store, server)
-        }
-    });
-
-    match outcome {
+/// `original` é o nome de quando o formulário abriu. Sem ele, renomear cairia no `add` (o nome novo
+/// não existe no cadastro) e criaria um registro a mais, deixando o antigo para trás.
+pub fn save_server(
+    store: &ConfigStore,
+    original: Option<&str>,
+    server: &ServerConfigEntry,
+) -> JobResult {
+    match db_servers::save(store, original, server) {
         Ok(()) => JobResult::Saved(server.name.clone()),
         Err(error) => JobResult::Failed(error.to_string()),
     }
@@ -86,7 +77,7 @@ mod tests {
         let (_directory, store) = store();
 
         assert_eq!(
-            save_server(&store, &server("novo")),
+            save_server(&store, None, &server("novo")),
             JobResult::Saved("novo".to_string())
         );
 
@@ -96,7 +87,7 @@ mod tests {
             ..server("novo")
         };
         assert_eq!(
-            save_server(&store, &edited),
+            save_server(&store, Some("novo"), &edited),
             JobResult::Saved("novo".to_string()),
             "editar não pode cair no `add`, que recusaria o nome repetido"
         );
@@ -118,6 +109,35 @@ mod tests {
     }
 
     #[test]
+    fn renaming_from_the_form_replaces_the_server_instead_of_adding_one() {
+        let (_directory, store) = store();
+        assert_eq!(
+            save_server(&store, None, &server("antes")),
+            JobResult::Saved("antes".to_string())
+        );
+
+        // Exatamente o que o formulário manda ao trocar o campo Name e clicar `Save`.
+        let renamed = ServerConfigEntry {
+            name: "depois".to_string(),
+            ..server("antes")
+        };
+        assert_eq!(
+            save_server(&store, Some("antes"), &renamed),
+            JobResult::Saved("depois".to_string())
+        );
+
+        let JobResult::Servers(servers) = load_servers(&store) else {
+            panic!("esperava a lista");
+        };
+        assert_eq!(
+            servers.len(),
+            1,
+            "não pode sobrar o registro antigo: {servers:?}"
+        );
+        assert_eq!(servers[0].name, "depois");
+    }
+
+    #[test]
     fn a_save_with_an_invalid_host_reports_the_core_message() {
         let (_directory, store) = store();
         let invalid = ServerConfigEntry {
@@ -126,7 +146,7 @@ mod tests {
         };
 
         assert_eq!(
-            save_server(&store, &invalid),
+            save_server(&store, None, &invalid),
             JobResult::Failed("Invalid host: ''.".to_string())
         );
     }

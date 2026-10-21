@@ -12,8 +12,13 @@ use mustel_core::config::ServerConfigEntry;
 pub enum Request {
     /// Recarrega o cadastro do disco.
     ReloadServers,
-    /// Grava um servidor (cadastra ou atualiza).
-    SaveServer(ServerConfigEntry),
+    /// Grava um servidor (cadastra, atualiza ou renomeia).
+    SaveServer {
+        /// Nome que o servidor tinha quando o formulário abriu (`None` = cadastro novo).
+        original: Option<String>,
+        /// O servidor como ficou no formulário.
+        server: ServerConfigEntry,
+    },
     /// Remove um servidor pelo nome.
     RemoveServer(String),
     /// Guarda a senha de um servidor no cofre.

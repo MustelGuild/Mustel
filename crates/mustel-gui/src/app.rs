@@ -127,10 +127,12 @@ impl App {
                     let _ = results.send(result);
                 });
             }
-            Request::SaveServer(server) => {
+            Request::SaveServer { original, server } => {
                 let results = self.results.clone();
                 self.spawn("save server", ctx, move |_token| async move {
-                    let result = with_store(|store| actions::save_server(store, &server));
+                    let result = with_store(|store| {
+                        actions::save_server(store, original.as_deref(), &server)
+                    });
                     let _ = results.send(result);
                 });
             }

@@ -32,6 +32,17 @@ jobs:
       - name: cache do cargo
         uses: Swatinem/rust-cache@v2
 
+      # O binário carrega o `egui`/`eframe` (feature `gui`, ligada por padrão), então o build Unix
+      # precisa das bibliotecas de sistema da pilha gráfica: sem elas o link falha (dbus, X11/Wayland
+      # e GL). No Windows essas dependências já vêm no runner.
+      - name: dependências do GUI (Unix)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libdbus-1-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+            libgl1-mesa-dev libwayland-dev libxkbcommon-dev
+
       - name: empacotar (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

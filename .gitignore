@@ -514,6 +514,8 @@ oracle/bin/
 oracle/workdir/
 oracle/reports/
 
+# Saída das execuções de `query run` (o default do cadastro é `./results`, usado pelo CLI e pela GUI)
+results/
 
 # Deploy
 packaging/

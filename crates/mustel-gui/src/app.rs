@@ -368,7 +368,10 @@ impl eframe::App for App {
         let ctx = ui.ctx().clone();
         self.ctx = ctx.clone();
 
-        egui::Frame::central_panel(ui.style()).show(ui, |ui| {
+        // `CentralPanel` (e não `Frame::central_panel`): o painel **ocupa** toda a área restante e
+        // pinta o fundo dela. Com o `Frame` ele encolhia até o tamanho do conteúdo, e o resto da
+        // janela ficava com o fundo cru do `eframe` — a área escura abaixo do conteúdo.
+        egui::CentralPanel::default().show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("Mustel");
                 ui.separator();
@@ -395,6 +398,9 @@ impl eframe::App for App {
             if let Some(request) = request {
                 self.dispatch(request, &ctx);
             }
+
+            // O conteúdo fica no topo; o resto do painel é fundo, não área morta de outro widget.
+            ui.allocate_space(ui.available_size());
         });
     }
 }

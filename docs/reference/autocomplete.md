@@ -23,7 +23,7 @@ aparece — o filtro é o do próprio Postgres.
 
 ## A linha "Referência do autocomplete"
 
-Fica abaixo da lista de **Servers**, na tela de consulta, e tem quatro partes:
+Fica **antes do editor de SQL**, no topo da tela de consulta, e tem quatro partes:
 
 | Parte | O que faz |
 |---|---|

@@ -39,6 +39,9 @@ como conveniência, se doer).
 - Carregamento na GUI: `Request::LoadSchema`, cache em memória por `(servidor, banco)` e o botão
   `⟳` que **descobre os bancos e depois carrega** quando o servidor usa `fetchAllDatabases`.
 - Linha "Referência do autocomplete" abaixo da lista de Servers: servidor, banco e `⟳`.
+
+  > **Corrigido em 2026-10-23 (D20):** a linha passou a ficar **antes do editor de SQL**. A ordem
+  > “abaixo de Servers” olhava a tela pelo lado do cadastro; pelo lado do uso, o molde vem primeiro.
 - Ligação do `CompletionPopup` do egui no editor inline: abertura automática com **2+ letras** e
   `Ctrl+Space`, `Tab`/`Enter` aceitam, `↑`/`↓` navegam, `Esc` fecha.
 - Linhas no manifesto de contrato para as decisões de GUI que este plano fixa.
@@ -81,6 +84,7 @@ como conveniência, se doer).
 | D17 | CTEs | Os **nomes** das CTEs da consulta são sugeridos em `FROM`/`JOIN`; as colunas delas **não** | Decisão do dono (2026-10-23): meio-termo barato. Colunas exigiriam análise sintática; o nome já evita digitar |
 | D18 | Assinatura de função | Carregada **junto** com o esquema (`pg_get_function_arguments`), em memória; **um** candidato por nome, com as assinaturas na descrição | Decisão do dono (2026-10-23): carregar tudo de uma vez não deixa o autocomplete mais lento — o custo é no `⟳`, uma vez, e a cada tecla só se lê memória |
 | D19 | Disparo do popup (corrige D5) | Abre no **começo de um token** (logo após `FROM `, por exemplo) e a partir da **primeira** letra digitada; `Ctrl+Space` abre em qualquer posição | Correção do dono (2026-10-23) sobre D5: com o mínimo de 2 letras, a lista não abria exatamente onde ela é mais útil — escolher a tabela do `FROM` sem digitar o nome inteiro |
+| D20 | Posição da linha de referência (corrige P2) | A linha "Referência do autocomplete" fica **antes do editor de SQL**, no topo do formulário | Decisão do dono (2026-10-23): o esquema é o que alimenta as sugestões, então se escolhe o molde **antes** de escrever. P2 a havia proposto abaixo de Servers, olhando a tela pelo lado do cadastro, não pelo fluxo de uso |
 
 ---
 
@@ -569,3 +573,17 @@ Append-only.
   (`⟳` desabilitado sem senha no cofre). Documentação atualizada: o combo e o botão na referência, os
   passos e o "se nada aparecer" no how-to, e uma seção nova na explicação sobre de onde vem a lista.
   `cargo test --workspace` = **465 testes, 0 falhas**.
+- `[2026-10-23]` **Posição da linha de referência (D20), decisão do dono.** A linha "Referência do
+  autocomplete" saiu do meio do formulário (abaixo de Servers) para o **topo**, antes do editor: o
+  esquema é o que alimenta as sugestões, então escolher o molde antes de escrever é a ordem em que a
+  tela é usada. Substitui a proposta P2 deste plano.
+
+  A mudança **não** foi só mover código: a linha virou o método `reference_row`, chamado no começo do
+  `form_ui`. Isso deu à ordem um lugar explícito para morar e encurtou o formulário.
+
+  **Como a ordem passou a ser testável:** um teste desenha a tela sem janela e lê as posições dos
+  rótulos no que o egui emitiu (`Shape::Text` → `pos.y`), exigindo `Referência do autocomplete:`
+  **acima** de `SQL`. Conferi que ele pega a regressão de verdade: invertendo a chamada, falha com
+  `a referência (162.4) precisa vir antes do editor (8)`. Manifesto: **IF-214**.
+
+  Documentação corrigida nos dois lugares que citavam a posição antiga (referência e how-to).

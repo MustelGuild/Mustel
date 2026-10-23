@@ -16,7 +16,8 @@ mustel settings db-servers set-password dev
 ## Carregar o esquema
 
 1. Abra a janela: `mustel gui` (ou `mustel`, em terminal interativo).
-2. Na tela de consulta, ache a linha **Referência do autocomplete**, abaixo da lista de Servers.
+2. No topo da tela de consulta, ache a linha **Referência do autocomplete**, acima do editor de
+   SQL.
 3. Escolha o **servidor** que serve de molde. A janela descobre os bancos dele em background — espere
    a barra de status dizer `'<servidor>' has N database(s).`.
 4. Escolha o **banco**.

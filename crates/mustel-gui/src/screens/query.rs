@@ -314,6 +314,130 @@ impl State {
         self.reference_schema = schema;
     }
 
+    /// Linha "Referência do autocomplete": servidor, banco, `⟳` e o estado do carregamento.
+    ///
+    /// Fica **antes** do editor (decisão do dono, 2026-10-23): o esquema é o que alimenta as
+    /// sugestões, então escolher o molde primeiro é a ordem em que a tela é usada.
+    ///
+    /// Devolve o pedido de carregamento quando o `⟳` é clicado.
+    fn reference_row(
+        &mut self,
+        ui: &mut egui::Ui,
+        servers: &[ServerConfigEntry],
+        reference: &crate::reference::Reference,
+    ) -> Option<Request> {
+        let mut request = None;
+
+        // Referência do autocomplete: **um** banco serve de molde para as sugestões. Explícito de
+        // propósito — carregar no foco surpreenderia (e pode pedir senha que a janela não tem).
+        ui.horizontal(|ui| {
+            ui.label("Referência do autocomplete:");
+
+            // Servidor: o primeiro marcado é o padrão.
+            if self.reference_server.is_empty()
+                && let Some(first) = servers
+                    .iter()
+                    .find(|server| self.selected.contains(&server.name))
+            {
+                self.reference_server = first.name.clone();
+            }
+
+            egui::ComboBox::from_id_salt("reference_server")
+                .selected_text(if self.reference_server.is_empty() {
+                    "—".to_string()
+                } else {
+                    self.reference_server.clone()
+                })
+                .show_ui(ui, |ui| {
+                    for server in servers {
+                        if ui
+                            .selectable_value(
+                                &mut self.reference_server,
+                                server.name.clone(),
+                                &server.name,
+                            )
+                            .clicked()
+                        {
+                            // Trocar de servidor invalida o banco escolhido.
+                            self.reference_database.clear();
+                        }
+                    }
+                });
+
+            // Banco: os **descobertos no servidor**; sem descoberta, os do cadastro. O cadastro pode
+            // ter só parte dos bancos (ou nenhum, com `fetchAllDatabases`).
+            let configured: &[String] = servers
+                .iter()
+                .find(|server| server.name == self.reference_server)
+                .map(|server| server.databases.as_slice())
+                .unwrap_or(&[]);
+            let databases = reference.choices(&self.reference_server, configured);
+
+            // A escolha anterior pode não existir na lista nova (outro servidor, bancos mudados).
+            if !databases.contains(&self.reference_database) {
+                self.reference_database = databases.first().cloned().unwrap_or_default();
+            }
+
+            egui::ComboBox::from_id_salt("reference_database")
+                .selected_text(if self.reference_database.is_empty() {
+                    "—".to_string()
+                } else {
+                    self.reference_database.clone()
+                })
+                .show_ui(ui, |ui| {
+                    if databases.is_empty() {
+                        if reference.is_pending(&self.reference_server) {
+                            ui.weak("descobrindo bancos…");
+                        } else if reference.error(&self.reference_server).is_some() {
+                            ui.weak("não deu para listar; nenhum banco no cadastro");
+                        } else {
+                            ui.weak("nenhum banco no cadastro");
+                        }
+                    }
+                    for database in &databases {
+                        ui.selectable_value(
+                            &mut self.reference_database,
+                            database.clone(),
+                            database,
+                        );
+                    }
+                });
+
+            let can_load = reference.can_load(&self.reference_server, &self.reference_database);
+            let load = ui.add_enabled(can_load, egui::Button::new("⟳"));
+            let load = match reference
+                .blocked_reason(&self.reference_server, &self.reference_database)
+            {
+                Some(reason) => load.on_disabled_hover_text(reason),
+                None => load.on_hover_text("Carregar o esquema deste banco para o autocomplete"),
+            };
+
+            if load.clicked() {
+                request = Some(Request::LoadSchema {
+                    server: self.reference_server.clone(),
+                    database: self.reference_database.clone(),
+                });
+            }
+
+            // Rótulo do estado: o que está carregado, se algo.
+            match &self.reference_loaded {
+                Some((server, database))
+                    if server == &self.reference_server && database == &self.reference_database =>
+                {
+                    ui.weak(format!("carregado ({database})"));
+                }
+                Some(_) => {
+                    ui.weak("carregado outro banco");
+                }
+                None => {
+                    ui.weak("não carregado");
+                }
+            }
+        });
+
+        request
+    }
+
     fn form_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -323,6 +447,11 @@ impl State {
         let mut loaded_request: Option<Request> = None;
         let mut request = None;
         let running = self.is_running();
+
+        // A referência vem **antes** do editor: é o molde que alimenta as sugestões.
+        if let Some(load) = self.reference_row(ui, servers, reference) {
+            loaded_request = Some(load);
+        }
 
         ui.label("SQL");
         // A altura é calculada **antes** do widget: `TextEdit::multiline` toma `&mut self.sql`, e
@@ -440,114 +569,6 @@ impl State {
                     }
                 }
             });
-
-        ui.separator();
-        // Referência do autocomplete: **um** banco serve de molde para as sugestões. Explícito de
-        // propósito — carregar no foco surpreenderia (e pode pedir senha que a janela não tem).
-        ui.horizontal(|ui| {
-            ui.label("Referência do autocomplete:");
-
-            // Servidor: o primeiro marcado é o padrão.
-            if self.reference_server.is_empty()
-                && let Some(first) = servers
-                    .iter()
-                    .find(|server| self.selected.contains(&server.name))
-            {
-                self.reference_server = first.name.clone();
-            }
-
-            egui::ComboBox::from_id_salt("reference_server")
-                .selected_text(if self.reference_server.is_empty() {
-                    "—".to_string()
-                } else {
-                    self.reference_server.clone()
-                })
-                .show_ui(ui, |ui| {
-                    for server in servers {
-                        if ui
-                            .selectable_value(
-                                &mut self.reference_server,
-                                server.name.clone(),
-                                &server.name,
-                            )
-                            .clicked()
-                        {
-                            // Trocar de servidor invalida o banco escolhido.
-                            self.reference_database.clear();
-                        }
-                    }
-                });
-
-            // Banco: os **descobertos no servidor**; sem descoberta, os do cadastro. O cadastro pode
-            // ter só parte dos bancos (ou nenhum, com `fetchAllDatabases`).
-            let configured: &[String] = servers
-                .iter()
-                .find(|server| server.name == self.reference_server)
-                .map(|server| server.databases.as_slice())
-                .unwrap_or(&[]);
-            let databases = reference.choices(&self.reference_server, configured);
-
-            // A escolha anterior pode não existir na lista nova (outro servidor, bancos mudados).
-            if !databases.contains(&self.reference_database) {
-                self.reference_database = databases.first().cloned().unwrap_or_default();
-            }
-
-            egui::ComboBox::from_id_salt("reference_database")
-                .selected_text(if self.reference_database.is_empty() {
-                    "—".to_string()
-                } else {
-                    self.reference_database.clone()
-                })
-                .show_ui(ui, |ui| {
-                    if databases.is_empty() {
-                        if reference.is_pending(&self.reference_server) {
-                            ui.weak("descobrindo bancos…");
-                        } else if reference.error(&self.reference_server).is_some() {
-                            ui.weak("não deu para listar; nenhum banco no cadastro");
-                        } else {
-                            ui.weak("nenhum banco no cadastro");
-                        }
-                    }
-                    for database in &databases {
-                        ui.selectable_value(
-                            &mut self.reference_database,
-                            database.clone(),
-                            database,
-                        );
-                    }
-                });
-
-            let can_load = reference.can_load(&self.reference_server, &self.reference_database);
-            let load = ui.add_enabled(can_load, egui::Button::new("⟳"));
-            let load = match reference
-                .blocked_reason(&self.reference_server, &self.reference_database)
-            {
-                Some(reason) => load.on_disabled_hover_text(reason),
-                None => load.on_hover_text("Carregar o esquema deste banco para o autocomplete"),
-            };
-
-            if load.clicked() {
-                loaded_request = Some(Request::LoadSchema {
-                    server: self.reference_server.clone(),
-                    database: self.reference_database.clone(),
-                });
-            }
-
-            // Rótulo do estado: o que está carregado, se algo.
-            match &self.reference_loaded {
-                Some((server, database))
-                    if server == &self.reference_server && database == &self.reference_database =>
-                {
-                    ui.weak(format!("carregado ({database})"));
-                }
-                Some(_) => {
-                    ui.weak("carregado outro banco");
-                }
-                None => {
-                    ui.weak("não carregado");
-                }
-            }
-        });
 
         ui.separator();
         // O `horizontal` devolve o pedido em vez de escrever no `request` de fora: um `Option<Request>`
@@ -1274,6 +1295,71 @@ mod tests {
         });
         output.textures_delta.clear();
         assert_eq!(request, None, "descoberta conhecida não vira pedido");
+    }
+
+    /// A linha de referência vem **antes** do editor de SQL.
+    ///
+    /// A ordem é a decisão (o molde alimenta as sugestões, então se escolhe antes de escrever), e
+    /// ela não cabe num teste de regra pura: aqui o quadro é desenhado sem janela e as posições
+    /// dos rótulos são conferidas no que o egui realmente emitiu.
+    /// CONTRACT: IF-214
+    #[test]
+    fn the_reference_row_comes_before_the_sql_editor() {
+        let ctx = egui::Context::default();
+        let mut state = State::default();
+        state.sync_servers(&[server("dev")]);
+        let reference = crate::reference::Reference::default();
+
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let _ = state.ui(ui, &[server("dev")], None, &reference);
+            });
+        });
+
+        // Onde cada rótulo foi pintado (eixo Y da tela).
+        let mut heights: Vec<(String, f32)> = Vec::new();
+        collect_text(&output.shapes, &mut heights);
+        output.textures_delta.clear();
+
+        let position = |label: &str| {
+            heights
+                .iter()
+                .find(|(text, _)| text == label)
+                .map(|(_, y)| *y)
+                .unwrap_or_else(|| panic!("o rótulo {label:?} não foi desenhado: {heights:?}"))
+        };
+
+        let reference_y = position("Referência do autocomplete:");
+        let sql_y = position("SQL");
+
+        assert!(
+            reference_y < sql_y,
+            "a referência ({reference_y}) precisa vir antes do editor ({sql_y})"
+        );
+    }
+
+    /// Junta `(texto, y)` de todo `Shape::Text`, descendo nos grupos.
+    fn collect_text(shapes: &[egui::epaint::ClippedShape], out: &mut Vec<(String, f32)>) {
+        fn walk(shape: &egui::Shape, out: &mut Vec<(String, f32)>) {
+            match shape {
+                egui::Shape::Text(text) => {
+                    let content = text.galley.text().trim().to_string();
+                    if !content.is_empty() {
+                        out.push((content, text.pos.y));
+                    }
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for clipped in shapes {
+            walk(&clipped.shape, out);
+        }
     }
 
     #[test]

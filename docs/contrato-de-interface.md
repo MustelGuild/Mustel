@@ -215,11 +215,12 @@
 | IF-211 | AUTOCOMPLETE | B | o combo de banco da linha de referência lista os bancos **do servidor** (descobertos em `pg_database`), e cai para os do cadastro quando a descoberta não dá | linha "Referência do autocomplete" com servidor `fetchAllDatabases` | crates/mustel-gui/src/reference.rs::tests::the_combo_lists_the_databases_found_on_the_server; crates/mustel-gui/src/reference.rs::tests::without_discovery_the_configured_databases_are_used; crates/mustel-gui/src/screens/query.rs::tests::the_reference_row_asks_for_the_databases_of_an_unknown_server | coberta |
 | IF-212 | AUTOCOMPLETE | B | o `⟳` fica desabilitado quando o cofre não tem senha para o servidor | `⟳` num servidor sem senha guardada | crates/mustel-gui/src/reference.rs::tests::the_button_is_disabled_without_a_stored_password; crates/mustel-gui/src/reference.rs::tests::the_blocked_reason_matches_the_button_state | coberta |
 | IF-213 | GUI | B | a janela abre **maximizada** e com o ícone do Mustel (derivado de `assets/Mustel_icon.png`, embutido na crate) | abrir `mustel gui` | crates/mustel-gui/src/lib.rs::tests::the_window_starts_maximized_with_the_mustel_icon | coberta |
+| IF-214 | GUI | B | a linha "Referência do autocomplete" vem **antes** do editor de SQL | topo da tela de consulta | crates/mustel-gui/src/screens/query.rs::tests::the_reference_row_comes_before_the_sql_editor | coberta |
 
 ## Resumo
 
-- **Total de linhas:** 140
-- **`coberta`:** 137
+- **Total de linhas:** 141
+- **`coberta`:** 138
 - **`pendente`:** 0
 - **`nao-coberta`:** 3 (IF-025 pool até o T34; IF-141 prompt por servidor; IF-163 superfície nova do Mustel)
 

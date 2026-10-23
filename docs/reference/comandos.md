@@ -23,6 +23,9 @@ Sem subcomando: com terminal interativo abre a GUI; **sem** terminal imprime a a
 
 Opções globais: `-h, --help` e `-V, --version`.
 
+A janela tem página própria: a [referência do autocomplete](autocomplete.md) descreve a linha
+"Referência do autocomplete", o que é sugerido em cada contexto e os limites.
+
 ## `query run`
 
 Detalhe completo em [query run](query-run.md).

@@ -61,6 +61,8 @@ pub struct App {
     query: query_screen::State,
     /// Esquemas carregados para o autocomplete, por `(servidor, banco)`.
     schemas: crate::schema_cache::SchemaCache,
+    /// Bancos descobertos e senha presente, por servidor (linha "Referência do autocomplete").
+    reference: crate::reference::Reference,
 }
 
 impl App {
@@ -113,6 +115,7 @@ impl App {
             status: "Ready.".to_string(),
             config_error,
             schemas: crate::schema_cache::SchemaCache::default(),
+            reference: crate::reference::Reference::default(),
             servers: servers_screen::State::new(servers),
             query,
         })
@@ -179,6 +182,42 @@ impl App {
                     };
                     let _ = results.send(result);
                 });
+            }
+            Request::DiscoverDatabases { server } => {
+                let Some(entry) = self
+                    .servers_snapshot()
+                    .into_iter()
+                    .find(|candidate| candidate.name == server)
+                else {
+                    self.status = format!("Server '{server}' not found.");
+                    return;
+                };
+
+                // Fora do `spawn`: o `spawn` tem fila única ("Already running") e a descoberta não
+                // pode esperar uma consulta longa terminar para o combo sair do "nenhum banco".
+                self.reference.mark_pending(&server);
+                self.status = format!("Discovering databases on '{server}'...");
+                let results = self.results.clone();
+                let context = ctx.clone();
+                let (token, _handle) = self.runtime.spawn(move |_token| async move {
+                    let (databases, has_password) = match query::stored_password(&entry.name) {
+                        Ok(password) => (
+                            query::databases(&entry, &password)
+                                .await
+                                .map_err(|error| error.to_string()),
+                            true,
+                        ),
+                        Err(error) => (Err(error.to_string()), false),
+                    };
+
+                    let _ = results.send(JobResult::Databases {
+                        server: entry.name,
+                        databases,
+                        has_password,
+                    });
+                    context.request_repaint();
+                });
+                let _ = token;
             }
             Request::LoadSchema { server, database } => {
                 let Some(entry) = self
@@ -362,7 +401,11 @@ impl App {
 
         // Resultados dos jobs.
         while let Ok(result) = self.results_rx.try_recv() {
-            self.running = None;
+            // A descoberta de bancos roda fora da fila única do app: ela não pode desligar o
+            // "Running" de uma consulta que continua em andamento.
+            if !matches!(result, JobResult::Databases { .. }) {
+                self.running = None;
+            }
             self.servers.apply(&result);
             self.query.apply(&result);
 
@@ -398,6 +441,26 @@ impl App {
                     }
                     Err(error) => format!("Could not load the schema: {error}"),
                 },
+                JobResult::Databases {
+                    server,
+                    databases,
+                    has_password,
+                } => {
+                    self.reference.finish(
+                        server,
+                        crate::reference::Known {
+                            databases: databases.clone(),
+                            has_password: *has_password,
+                        },
+                    );
+
+                    match databases {
+                        Ok(names) => format!("'{server}' has {} database(s).", names.len()),
+                        Err(error) => {
+                            format!("Could not list the databases of '{server}': {error}")
+                        }
+                    }
+                }
                 JobResult::Failed(error) => error.clone(),
             };
 
@@ -408,6 +471,14 @@ impl App {
             {
                 let name = name.clone();
                 self.dispatch(Request::SetPassword { name, password }, &self.ctx.clone());
+            }
+
+            // Senha nova (ou servidor removido): a descoberta daquele servidor está velha.
+            match &result {
+                JobResult::PasswordSaved(name) | JobResult::Removed(name) => {
+                    self.reference.forget(name);
+                }
+                _ => {}
             }
 
             // Cadastro mudou: recarrega a lista para refletir o disco.
@@ -465,7 +536,7 @@ impl eframe::App for App {
                             self.query.reference_database(),
                         )
                         .map(|schema| std::sync::Arc::new(schema.clone()));
-                    self.query.ui(ui, &servers, schema)
+                    self.query.ui(ui, &servers, schema, &self.reference)
                 }
             };
 

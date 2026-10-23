@@ -524,3 +524,48 @@ Append-only.
   *palavra* (`dismissed_word`), então quem fecha com `Esc` numa palavra vazia (logo depois de um
   espaço) não vê a lista reaparecer em **nenhuma** palavra vazia até digitar uma letra. Fica
   registrado; corrigir exigiria mexer no estado interno do `CompletionPopup`.
+- `[2026-10-23]` **Consolidação na documentação (Diátaxis) e auditoria do que foi dado como concluído.**
+  Três páginas novas: `docs/reference/autocomplete.md` (o que existe, tecla por tecla, limites e
+  limitações), `docs/how-to/autocomplete-no-editor.md` (carregar e usar) e
+  `docs/explanation/autocomplete.md` (por que assim). Nenhuma página de tutorial: não há lição a
+  executar — o autocomplete é ferramenta de uso, não habilidade a adquirir (e exigiria banco e cofre
+  para uma aula que o how-to já cobre).
+
+  Ao escrever a referência **contra o código** (e não contra este plano), dois itens marcados `[x]`
+  não batiam com o que a janela faz. Ficam registrados como pendência, não como concluídos:
+  - **D4/T5 — descoberta de bancos não existe.** O combo lista só `databases` do cadastro; não há
+    chamada de descoberta no caminho do `⟳`. Consequência: servidor com `fetchAllDatabases` fica com
+    o combo vazio (`nenhum banco no cadastro`) e **não consegue** usar o autocomplete. T5 dizia
+    "descobrir + carregar (§D4)" e está `[x]`.
+  - **D10 — o botão não é desabilitado por falta de senha.** `can_load` só olha servidor e banco; sem
+    senha no cofre o clique acontece e a barra de status mostra `No password stored for '<servidor>'`.
+    A parte "a janela nunca pede senha" está de pé; a parte "botão desabilitado com aviso" não.
+
+  Nenhum dos dois quebra o contrato já publicado (IF-202..IF-210 não descrevem esses estados), mas
+  ambos eram afirmações do plano que a documentação não podia repetir. As páginas agora descrevem o
+  comportamento real e listam as duas como limitação/lacuna.
+- `[2026-10-23]` **As duas lacunas foram fechadas (decisão do dono: o combo deve mostrar os bancos do
+  servidor).** O código agora bate com o que o plano prometia:
+  - **Descoberta de bancos (D4/T5).** Escolher um servidor dispara `Request::DiscoverDatabases`, que roda
+    em **background** e chama `usecases::db_servers::test_connection` (a mesma consulta `pg_database` do
+    `settings db-servers test`). O resultado vira `JobResult::Databases` e alimenta o combo. Bancos
+    descobertos ganham do cadastro; sem descoberta (ou com descoberta vazia), vale o cadastro — a janela
+    nunca fica pior do que era. Servidor com `fetchAllDatabases` passou a funcionar.
+  - **Botão por senha (D10).** O mesmo job responde se o cofre tem senha (`has_password`), então o `⟳`
+    fica desabilitado quando **sabemos** que não há, com tooltip dizendo como guardar. Enquanto não se
+    sabe, deixa tentar: o erro do cofre é claro e é melhor do que um botão que parece quebrado.
+
+  A descoberta **não** passa pelo `spawn` do app (fila única, `Already running`): é rápida e não pode
+  esperar uma consulta longa, nem desligar o `Running` dela. Daí o resultado dela não zerar `running` no
+  `drain`.
+
+  Achado no caminho, registrado como lição: a primeira verificação na janela parecia mostrar o estado
+  velho depois de trocar de servidor, e eu quase "consertei" o que estava certo — o status desenhado era
+  `'local2' has 3 database(s).` e eu lia `'local'` na captura reduzida. Instrumentar o estado no ponto
+  do desenho resolveu a dúvida em uma linha; antes disso, gastei tempo suspeitando do `drain`, do
+  repaint e do canal.
+
+  Manifesto: **IF-211** (combo lista os bancos do servidor, com fallback para o cadastro) e **IF-212**
+  (`⟳` desabilitado sem senha no cofre). Documentação atualizada: o combo e o botão na referência, os
+  passos e o "se nada aparecer" no how-to, e uma seção nova na explicação sobre de onde vem a lista.
+  `cargo test --workspace` = **465 testes, 0 falhas**.

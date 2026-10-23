@@ -141,6 +141,21 @@ pub async fn run(
     query_run::run(request, events, token).await
 }
 
+/// Bancos que o servidor tem, para a linha "Referência do autocomplete".
+///
+/// Usa o mesmo caso de uso do `settings db-servers test` (`pg_database`, ordenado por nome), então a
+/// lista é a que o servidor realmente tem — inclusive quando o cadastro usa `fetchAllDatabases` e não
+/// guarda nome nenhum.
+pub async fn databases(
+    server: &ServerConfigEntry,
+    password: &str,
+) -> Result<Vec<String>, InputError> {
+    mustel_core::usecases::db_servers::test_connection(server, password)
+        .await
+        .map(|report| report.databases)
+        .map_err(|error| InputError::Core(error.to_string()))
+}
+
 /// Carrega o esquema de um banco do servidor, com a senha já resolvida.
 ///
 /// A conexão é a mesma que o `query run` usaria, só que apontada para o banco de **referência** do

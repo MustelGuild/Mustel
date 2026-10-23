@@ -32,6 +32,14 @@ pub enum Request {
     TestConnection(ServerConfigEntry),
     /// Cancela o job em andamento.
     CancelJob,
+    /// Descobre os bancos do servidor e se o cofre tem a senha dele.
+    ///
+    /// É o que alimenta o combo de banco da linha "Referência do autocomplete": o cadastro pode não
+    /// listar todos os bancos (ou nenhum, quando o servidor usa `fetchAllDatabases`).
+    DiscoverDatabases {
+        /// Servidor do cadastro.
+        server: String,
+    },
     /// Carrega o esquema de um banco, para o autocomplete.
     LoadSchema {
         /// Servidor do cadastro.
@@ -93,6 +101,15 @@ pub enum JobResult {
         database: String,
         /// O esquema, ou a mensagem de erro pronta.
         schema: Result<mustel_core::usecases::schema::Schema, String>,
+    },
+    /// A descoberta de bancos de um servidor terminou.
+    Databases {
+        /// Servidor descoberto.
+        server: String,
+        /// Bancos do servidor, ou o motivo de não ter dado para listar.
+        databases: Result<Vec<String>, String>,
+        /// O cofre tinha senha para o servidor?
+        has_password: bool,
     },
     /// O job falhou, com a mensagem pronta do núcleo.
     Failed(String),

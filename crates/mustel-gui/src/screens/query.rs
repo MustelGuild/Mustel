@@ -314,7 +314,12 @@ impl State {
         self.reference_schema = schema;
     }
 
-    fn form_ui(&mut self, ui: &mut egui::Ui, servers: &[ServerConfigEntry]) -> Option<Request> {
+    fn form_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        servers: &[ServerConfigEntry],
+        reference: &crate::reference::Reference,
+    ) -> Option<Request> {
         let mut loaded_request: Option<Request> = None;
         let mut request = None;
         let running = self.is_running();
@@ -473,17 +478,18 @@ impl State {
                     }
                 });
 
-            // Banco: os do cadastro do servidor escolhido.
-            let databases: Vec<String> = servers
+            // Banco: os **descobertos no servidor**; sem descoberta, os do cadastro. O cadastro pode
+            // ter só parte dos bancos (ou nenhum, com `fetchAllDatabases`).
+            let configured: &[String] = servers
                 .iter()
                 .find(|server| server.name == self.reference_server)
-                .map(|server| server.databases.clone())
-                .unwrap_or_default();
+                .map(|server| server.databases.as_slice())
+                .unwrap_or(&[]);
+            let databases = reference.choices(&self.reference_server, configured);
 
-            if self.reference_database.is_empty()
-                && let Some(first) = databases.first()
-            {
-                self.reference_database = first.clone();
+            // A escolha anterior pode não existir na lista nova (outro servidor, bancos mudados).
+            if !databases.contains(&self.reference_database) {
+                self.reference_database = databases.first().cloned().unwrap_or_default();
             }
 
             egui::ComboBox::from_id_salt("reference_database")
@@ -494,7 +500,13 @@ impl State {
                 })
                 .show_ui(ui, |ui| {
                     if databases.is_empty() {
-                        ui.weak("nenhum banco no cadastro");
+                        if reference.is_pending(&self.reference_server) {
+                            ui.weak("descobrindo bancos…");
+                        } else if reference.error(&self.reference_server).is_some() {
+                            ui.weak("não deu para listar; nenhum banco no cadastro");
+                        } else {
+                            ui.weak("nenhum banco no cadastro");
+                        }
                     }
                     for database in &databases {
                         ui.selectable_value(
@@ -505,14 +517,13 @@ impl State {
                     }
                 });
 
-            let can_load = !self.reference_server.is_empty() && !self.reference_database.is_empty();
+            let can_load = reference.can_load(&self.reference_server, &self.reference_database);
             let load = ui.add_enabled(can_load, egui::Button::new("⟳"));
-            let load = if can_load {
-                load.on_hover_text("Carregar o esquema deste banco para o autocomplete")
-            } else {
-                load.on_disabled_hover_text(
-                    "Escolha servidor e banco (e tenha a senha no cofre) para carregar",
-                )
+            let load = match reference
+                .blocked_reason(&self.reference_server, &self.reference_database)
+            {
+                Some(reason) => load.on_disabled_hover_text(reason),
+                None => load.on_hover_text("Carregar o esquema deste banco para o autocomplete"),
             };
 
             if load.clicked() {
@@ -649,6 +660,7 @@ impl State {
         ui: &mut egui::Ui,
         servers: &[ServerConfigEntry],
         schema: Option<std::sync::Arc<mustel_core::usecases::schema::Schema>>,
+        reference: &crate::reference::Reference,
     ) -> Option<Request> {
         self.set_reference_schema(schema);
         let total = ui.available_height();
@@ -677,10 +689,18 @@ impl State {
                     scroll = scroll.vertical_scroll_offset(offset);
                 }
 
-                scroll.show(ui, |ui| self.form_ui(ui, servers))
+                scroll.show(ui, |ui| self.form_ui(ui, servers, reference))
             })
             .inner;
         let mut request = area.inner;
+
+        // A linha de referência precisa dos bancos do servidor escolhido: pede a descoberta uma vez
+        // por servidor (o app guarda a resposta e a tela não repete o pedido a cada quadro).
+        if request.is_none() && reference.unknown(self.reference_server()) {
+            request = Some(Request::DiscoverDatabases {
+                server: self.reference_server().to_string(),
+            });
+        }
 
         if animated_offset.is_some() {
             // Sem isto a animação pararia no primeiro quadro: ninguém pediria o próximo.
@@ -1209,6 +1229,51 @@ mod tests {
             1,
             "quem descobre os bancos conta 1, como no CLI"
         );
+    }
+
+    /// A linha de referência pede a descoberta do servidor que ainda não foi descoberto.
+    ///
+    /// CONTRACT: IF-211
+    #[test]
+    fn the_reference_row_asks_for_the_databases_of_an_unknown_server() {
+        let ctx = egui::Context::default();
+        let mut state = State::default();
+        state.sync_servers(&[server("local")]);
+        let reference = crate::reference::Reference::default();
+
+        let mut request = None;
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                request = state.ui(ui, &[server("local")], None, &reference);
+            });
+        });
+        output.textures_delta.clear();
+
+        assert_eq!(
+            request,
+            Some(Request::DiscoverDatabases {
+                server: "local".to_string()
+            }),
+            "sem descoberta, a linha pede os bancos do servidor"
+        );
+
+        // Já descoberto: não pede de novo.
+        let mut known = crate::reference::Reference::default();
+        known.finish(
+            "local",
+            crate::reference::Known {
+                databases: Ok(vec!["dev".to_string(), "test2".to_string()]),
+                has_password: true,
+            },
+        );
+        let mut request = None;
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                request = state.ui(ui, &[server("local")], None, &known);
+            });
+        });
+        output.textures_delta.clear();
+        assert_eq!(request, None, "descoberta conhecida não vira pedido");
     }
 
     #[test]

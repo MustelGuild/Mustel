@@ -25,6 +25,7 @@ pub mod desktop;
 pub mod events;
 pub mod picker;
 pub mod query;
+pub mod reference;
 pub mod request;
 pub mod runtime;
 pub mod schema_cache;

@@ -212,11 +212,13 @@
 | IF-208 | AUTOCOMPLETE | A | a lista respeita o teto de 50 e o ranking põe prefixo antes de substring | esquema grande | crates/mustel-core/src/completion.rs::tests::the_candidate_list_is_capped; crates/mustel-core/src/completion.rs::tests::ranking_puts_prefix_before_substring | coberta |
 | IF-209 | AUTOCOMPLETE | A | a palavra sob o cursor é o **identificador**, não o separador anterior; o trecho que o popup substitui é o mesmo que o motor leu, então aceitar não come o espaço nem gruda no texto anterior | `FROM ` e aceitar a sugestão | crates/mustel-core/src/completion.rs::tests::the_popup_word_boundary_is_the_complement_of_the_engine_one; crates/mustel-gui/tests/popup_probe.rs::the_word_is_the_identifier_under_the_cursor; crates/mustel-gui/tests/popup_probe.rs::the_table_list_opens_right_after_from | coberta |
 | IF-210 | AUTOCOMPLETE | A | o popup abre no começo de um token e a partir da **primeira** letra; `Ctrl+Space` abre em qualquer posição, lendo os modificadores do próprio evento de tecla | `FROM `, primeira letra, `Ctrl+Space` | crates/mustel-gui/src/sql_completion.rs::tests::it_opens_at_the_start_of_a_token_and_on_the_first_letter; crates/mustel-gui/src/sql_completion.rs::tests::it_only_opens_at_the_start_of_the_text_on_demand; crates/mustel-gui/tests/popup_probe.rs::ctrl_space_opens_the_list_without_any_typing | coberta |
+| IF-211 | AUTOCOMPLETE | B | o combo de banco da linha de referência lista os bancos **do servidor** (descobertos em `pg_database`), e cai para os do cadastro quando a descoberta não dá | linha "Referência do autocomplete" com servidor `fetchAllDatabases` | crates/mustel-gui/src/reference.rs::tests::the_combo_lists_the_databases_found_on_the_server; crates/mustel-gui/src/reference.rs::tests::without_discovery_the_configured_databases_are_used; crates/mustel-gui/src/screens/query.rs::tests::the_reference_row_asks_for_the_databases_of_an_unknown_server | coberta |
+| IF-212 | AUTOCOMPLETE | B | o `⟳` fica desabilitado quando o cofre não tem senha para o servidor | `⟳` num servidor sem senha guardada | crates/mustel-gui/src/reference.rs::tests::the_button_is_disabled_without_a_stored_password; crates/mustel-gui/src/reference.rs::tests::the_blocked_reason_matches_the_button_state | coberta |
 
 ## Resumo
 
-- **Total de linhas:** 137
-- **`coberta`:** 134
+- **Total de linhas:** 139
+- **`coberta`:** 136
 - **`pendente`:** 0
 - **`nao-coberta`:** 3 (IF-025 pool até o T34; IF-141 prompt por servidor; IF-163 superfície nova do Mustel)
 

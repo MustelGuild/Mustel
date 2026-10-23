@@ -1,0 +1,5 @@
+---
+source: crates/mustel/tests/contract_text.rs
+expression: stdout
+---
+No servers configured. Use 'mustel settings db-servers add' to add one.

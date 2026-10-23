@@ -1,0 +1,6 @@
+---
+source: crates/mustel/tests/contract_text.rs
+expression: stdout
+---
+Server 's1' added successfully.
+Use 'mustel settings db-servers set-password s1' to set the password.

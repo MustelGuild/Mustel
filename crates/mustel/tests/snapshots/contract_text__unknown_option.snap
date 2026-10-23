@@ -1,0 +1,9 @@
+---
+source: crates/mustel/tests/contract_text.rs
+expression: stdout
+---
+Error: error: unexpected argument '--nope' found
+
+Usage: mustel query run [OPTIONS]
+
+For more information, try '--help'.

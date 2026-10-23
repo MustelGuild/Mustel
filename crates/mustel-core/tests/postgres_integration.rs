@@ -115,6 +115,9 @@ async fn an_unreachable_server_fails_instead_of_hanging() {
 }
 
 #[tokio::test]
+/// CONTRACT: IF-071
+/// CONTRACT: IF-072
+/// CONTRACT: IF-165
 async fn create_database_if_missing_creates_it_once() {
     let Some(settings) = settings() else {
         eprintln!("skipped: set MUSTEL_PG_TEST_URL");
@@ -198,6 +201,7 @@ async fn reads_the_types_the_csv_export_cares_about() {
 }
 
 #[tokio::test]
+/// CONTRACT: IF-039
 async fn the_query_stream_hands_the_rows_one_by_one() {
     let Some(settings) = settings() else {
         eprintln!("skipped: set MUSTEL_PG_TEST_URL");

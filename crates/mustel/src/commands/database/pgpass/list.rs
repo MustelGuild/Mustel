@@ -60,6 +60,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// CONTRACT: IF-100
     fn the_mask_never_reveals_the_password() {
         let entry = mustel_core::pgpass::PgPassEntry::with_password("segredo");
         let row = vec![

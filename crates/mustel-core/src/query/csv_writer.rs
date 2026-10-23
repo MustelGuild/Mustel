@@ -539,6 +539,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-033
     fn a_csv_starts_with_the_bom_and_uses_crlf() {
         let csv = render_csv(
             &header_of(&["id"]),
@@ -593,6 +594,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-035
     fn server_names_are_sanitized_like_the_legacy() {
         assert_eq!(sanitize_filename("meu/servidor:5432"), "meu_servidor_5432");
         assert_eq!(sanitize_filename("dev.local"), "dev.local");
@@ -612,6 +614,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-036
     fn the_log_timestamp_uses_the_dotnet_round_trip_format() {
         let now = std::time::UNIX_EPOCH + std::time::Duration::from_micros(1_792_333_948_228_411);
         // `ExecutedAt` do oráculo: `2026-10-18T14:32:28.2284119Z` (7 casas de fração).
@@ -619,6 +622,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-034
     fn an_appender_writes_the_header_once_and_appends_the_rest() {
         let directory = tempfile::tempdir().expect("tempdir");
         let path = directory.path().join("dev_ts.csv");

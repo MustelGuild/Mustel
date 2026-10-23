@@ -1,8 +1,8 @@
 # Plano — Contrato de interface testável (só CLI) e remoção do legado
 
-> **Status:** rascunho
+> **Status:** concluído
 > **Criado em:** 2026-10-21
-> **Atualizado em:** 2026-10-21
+> **Atualizado em:** 2026-10-22
 > **Complexidade:** média-alta (o mecanismo é pequeno; o volume está no inventário e na remoção)
 > **Depende de (outros planos):** `migracao-rust.md` (concluído — 39/39 tarefas)
 
@@ -273,7 +273,7 @@ atualiza a seção 9 (Log).
 
 ### Fase 0 — Guia único e manifesto
 
-- [ ] **T1** — Absorver o `CLAUDE.md` no `AGENTS.md` e remover o `CLAUDE.md` (CD15). O `AGENTS.md`
+- [x] **T1** — Absorver o `CLAUDE.md` no `AGENTS.md` e remover o `CLAUDE.md` (CD15). O `AGENTS.md`
   atual está truncado (6 linhas, termina no meio da palavra "pro") — o conteúdo dele será substituído
   pelo do `CLAUDE.md`, adaptado: seções do legado marcadas como "transitórias até o T18", convenções e
   exit codes preservados, e uma seção nova sobre o contrato testável apontando este plano.
@@ -284,7 +284,7 @@ atualiza a seção 9 (Log).
     `grep -rn "CLAUDE\.md" --exclude-dir={.git,legacy,openspec,MustelPlans,target}` retorna vazio.
   - Arquivos: `AGENTS.md`, `CLAUDE.md` (remoção), `oracle/known-divergences.md` (lista branca)
 
-- [ ] **T2** — Criar `docs/contrato-de-interface.md` com as convenções (CD2, CD3, CD13) e uma linha por
+- [x] **T2** — Criar `docs/contrato-de-interface.md` com as convenções (CD2, CD3, CD13) e uma linha por
   decisão de **superfície de CLI**: árvore dos 11 comandos, flags/defaults/exclusividade, validação,
   exit codes, mensagens, artefatos (config, `pgpass.conf`, CSV consolidado, `_log.csv`, `_erros.csv`) e
   prompts. Rows de D1–D27 e DIV só entram quando o observável for uma invocação de CLI.
@@ -295,7 +295,7 @@ atualiza a seção 9 (Log).
     preenchido com uma invocação de CLI ou artefato.
   - Arquivos: `docs/contrato-de-interface.md`
 
-- [ ] **T3** — Triagem obrigatória: classificar cada linha em A/B/C e preencher `Status` — `coberta`
+- [x] **T3** — Triagem obrigatória: classificar cada linha em A/B/C e preencher `Status` — `coberta`
   citando `<arquivo>::<fn>`, `pendente` quando falta, e `nao-coberta: <razão>` **somente** para classe C
   com verificação alternativa descrita.
   - Depende de: T2
@@ -306,7 +306,7 @@ atualiza a seção 9 (Log).
 
 ### Fase 1 — Mecanismo (o que torna a cobertura verificável)
 
-- [ ] **T4** — Ligar `mustel-testkit` ao `mustel` como dev-dependency e escrever
+- [x] **T4** — Ligar `mustel-testkit` ao `mustel` como dev-dependency e escrever
   `crates/mustel/tests/support/mod.rs`: sandbox em `tempfile` por caso, apontando `MUSTEL_CONFIG_DIR`
   e `MUSTEL_PGPASS_FILE` para dentro dele; aplicação de `ConfigSeed`/`PgPassSeed`; execução de
   `env!("CARGO_BIN_EXE_mustel")` devolvendo `RunOutput`; carga de `oracle/baseline/<slug>.json`.
@@ -318,7 +318,7 @@ atualiza a seção 9 (Log).
   - Arquivos: `crates/mustel/Cargo.toml`, `crates/mustel/tests/support/mod.rs`,
     `crates/mustel/tests/contract_replay.rs` (só o teste de sanidade; o replay entra no T5)
 
-- [ ] **T5** — Camada 1: `crates/mustel/tests/contract_replay.rs` com **um `#[test]` por captura**
+- [x] **T5** — Camada 1: `crates/mustel/tests/contract_replay.rs` com **um `#[test]` por captura**
   (45 casos) gerado por macro a partir de uma lista estática de slugs. Cada teste monta o sandbox,
   semeia o estado registrado, roda o `mustel` com `argv` da captura e chama `compare_case`; falha se
   `worst()` for `Fail` ou `Skipped`. A mensagem de falha imprime todos os `Check` (nome, nível, detalhe).
@@ -328,7 +328,7 @@ atualiza a seção 9 (Log).
     `replay_*`; a suíte passa; nenhum teste escreve fora do tempdir.
   - Arquivos: `crates/mustel/tests/contract_replay.rs`
 
-- [ ] **T6** — Camada 1b: os dois casos pulados hoje (`error-database-restore-file-missing`,
+- [x] **T6** — Camada 1b: os dois casos pulados hoje (`error-database-restore-file-missing`,
   `error-db-servers-test-offline`) viram teste **explícito** do comportamento Mustel (CD8): exit code
   esperado e mensagem, citando no doc-comment a divergência que autoriza a diferença (itens 11 e 13 de
   `known-divergences.md`).
@@ -338,7 +338,7 @@ atualiza a seção 9 (Log).
     divergência que justifica não comparar com o oráculo.
   - Arquivos: `crates/mustel/tests/contract_replay.rs`
 
-- [ ] **T7** — `crates/mustel/tests/contract_manifest.rs`: parser estrito do manifesto (7 colunas, IDs
+- [x] **T7** — `crates/mustel/tests/contract_manifest.rs`: parser estrito do manifesto (7 colunas, IDs
   únicos) + as duas direções do §4.5 (linha → `fn` existe no arquivo citado; marcador → linha existe).
   Falha com mensagem que nomeia o ID e o problema.
   - Depende de: T2, T4
@@ -350,7 +350,7 @@ atualiza a seção 9 (Log).
 
 ### Fase 2 — Texto onde o texto é o contrato
 
-- [ ] **T8** — Camada 2: `crates/mustel/tests/contract_text.rs` com snapshots `insta` dos textos que
+- [x] **T8** — Camada 2: `crates/mustel/tests/contract_text.rs` com snapshots `insta` dos textos que
   **são** entregáveis: erro de uso em `stdout` com exit 1, `Server '<n>' added successfully.` +
   orientação de `set-password`, orientação de config vazia do `ls`, `Entry added: host:port:db:user`,
   mensagem de binário ausente do `backup`/`restore`, e os avisos do `--all`. Normalizar quebras de
@@ -367,7 +367,7 @@ atualiza a seção 9 (Log).
 
 > Todas independentes entre si. Cada uma preenche linhas do manifesto e acrescenta o marcador.
 
-- [ ] **T9** — Exit codes: teste de tabela sobre o mapeamento completo (0, 1, 2, 10, 11, 20, 21, 22,
+- [x] **T9** — Exit codes: teste de tabela sobre o mapeamento completo (0, 1, 2, 10, 11, 20, 21, 22,
   30, 40, 41, 50, 130) e sobre a regra "falha com SQLSTATE → 10; sem SQLSTATE → 11". Cobrir também o
   quirk do legado: binário ausente é **3** no `backup` e **1** no `restore`.
   - Depende de: —
@@ -376,7 +376,7 @@ atualiza a seção 9 (Log).
     correspondência 1:1 com os casos testados.
   - Arquivos: `crates/mustel-core/tests/contract_decisions.rs`, `crates/mustel-core/src/error.rs`
 
-- [ ] **T10** — Cofre (D6), pelo que o CLI deixa ver: `settings db-servers set-password` grava **só** no
+- [x] **T10** — Cofre (D6), pelo que o CLI deixa ver: `settings db-servers set-password` grava **só** no
   cofre (o `mustel.jsonc` resultante não tem campo de senha) e a senha recuperada é usada na conexão
   sem aparecer em mensagem ou arquivo. O teste contra o cofre real continua atrás de
   `MUSTEL_KEYRING_TESTS=1` e **limpa** o que criou.
@@ -386,7 +386,7 @@ atualiza a seção 9 (Log).
     real se declara pulado); o cofre do Windows fica limpo depois da execução.
   - Arquivos: `crates/mustel-core/tests/contract_decisions.rs`, `crates/mustel/tests/settings_db_servers_set_password.rs`
 
-- [ ] **T11** — Binário único, lado CLI (D9 + divergência 18): `mustel` **sem subcomando e sem TTY**
+- [x] **T11** — Binário único, lado CLI (D9 + divergência 18): `mustel` **sem subcomando e sem TTY**
   imprime a ajuda e sai **0** (paridade); com TTY abre a GUI — essa metade fica `nao-coberta` (abrir
   janela não é verificável em teste). O predicado de decisão vira função testável.
   - Depende de: —
@@ -395,7 +395,7 @@ atualiza a seção 9 (Log).
     ajuda em `stdout`; a metade da GUI está no manifesto como `nao-coberta:` com razão.
   - Arquivos: `crates/mustel/src/commands/mod.rs`, `crates/mustel/tests/cli_tree.rs`
 
-- [ ] **T12** — `database restore --create-if-not-exists` (D25): superfície (a flag aparece na ajuda) e
+- [x] **T12** — `database restore --create-if-not-exists` (D25): superfície (a flag aparece na ajuda) e
   comportamento — sem a flag, banco inexistente falha (paridade); com a flag, o banco é criado pelo
   driver. O caso real vai para a suíte gated de Postgres.
   - Depende de: —
@@ -404,7 +404,7 @@ atualiza a seção 9 (Log).
     `MUSTEL_PG_TEST_URL` (sem a variável, declara-se pulado).
   - Arquivos: `crates/mustel-core/tests/postgres_integration.rs`, `crates/mustel/tests/cli_tree.rs`
 
-- [ ] **T13** — Divergências com observável de CLI: percorrer as **17** linhas (rotuladas de 1 a 18,
+- [x] **T13** — Divergências com observável de CLI: percorrer as **17** linhas (rotuladas de 1 a 18,
   sem o item 10) e, para cada uma, apontar no manifesto o teste que a prende (muitas já têm: `DIV3`
   JSONC com `//` em string, `DIV12` formatos en-US, `DIV14` mensagem do driver, `DIV1` config sem
   `encryptedPassword`, `DIV5` forma posicional do `pgpass add`). Criar teste onde não houver — pelo menos
@@ -418,7 +418,7 @@ atualiza a seção 9 (Log).
 
 ### Fase 4 — Prompts (N3)
 
-- [ ] **T14** — `pty_prompts.rs` passa a cobrir o contrato dos fluxos interativos: texto do prompt de
+- [x] **T14** — `pty_prompts.rs` passa a cobrir o contrato dos fluxos interativos: texto do prompt de
   senha (o mesmo do legado), `--no-confirm` dispensa a confirmação destrutiva, a confirmação destrutiva
   tem **sim** como default, e a multi-seleção de servidores entra com todos pré-selecionados.
   - Depende de: —
@@ -429,7 +429,7 @@ atualiza a seção 9 (Log).
 
 ### Fase 5 — Prova de cobertura (o portão da remoção)
 
-- [ ] **T15** — `crates/mustel/tests/contract_surface.rs` (§4.6): para cada um dos 11 comandos do escopo,
+- [x] **T15** — `crates/mustel/tests/contract_surface.rs` (§4.6): para cada um dos 11 comandos do escopo,
   existe caso no baseline; para cada flag longa do `--help`, ela aparece em algum `argv` do baseline ou
   está em `EXCEPTIONS` com motivo escrito.
   - Depende de: T5, T12
@@ -438,7 +438,7 @@ atualiza a seção 9 (Log).
     caso do baseline (numa cópia temporária) faz o teste falhar.
   - Arquivos: `crates/mustel/tests/contract_surface.rs`
 
-- [ ] **T16** — Registrar em `oracle/known-divergences.md` que **não existe item 10** na numeração (foi
+- [x] **T16** — Registrar em `oracle/known-divergences.md` que **não existe item 10** na numeração (foi
   omitido, não removido) e reescrever a **lista branca de resíduos** para o mundo sem `legacy/`.
   **Não renumerar** (quebraria as referências já escritas).
   - Depende de: T1
@@ -449,7 +449,7 @@ atualiza a seção 9 (Log).
 
 ### Fase 6 — Remover o legado
 
-- [ ] **T17** — Checagem de ponto de não-retorno, **sem tag** (CD14 + CD18): confirmar que a árvore
+- [x] **T17** — Checagem de ponto de não-retorno, **sem tag** (CD14 + CD18): confirmar que a árvore
   está limpa (só os arquivos deste plano como mudança), que a cobertura do T15 passou, e registrar no
   log que a remoção deve virar um **commit isolado do dono** — é o pai desse commit que guarda o
   `legacy/` no histórico, já que não haverá tag.
@@ -460,7 +460,7 @@ atualiza a seção 9 (Log).
     isolado; `git log --oneline -1` igual ao do início da execução (nenhum commit do agente).
   - Arquivos: nenhum (verificação)
 
-- [ ] **T18** — Remover o diretório legado **sem stagiar** (CD18): `rm -rf legacy/` e apagar as saídas
+- [x] **T18** — Remover o diretório legado **sem stagiar** (CD18): `rm -rf legacy/` e apagar as saídas
   de build não rastreadas (`legacy/**/bin`, `legacy/**/obj`, ~275 MB em disco), mais `oracle/bin/`,
   `oracle/workdir/` e `oracle/reports/`. Atualizar `.gitignore`.
   - Depende de: T17
@@ -471,7 +471,7 @@ atualiza a seção 9 (Log).
     --exclude-dir={.git,target,MustelPlans,openspec}` não aponta para caminho inexistente.
   - Arquivos: `legacy/**` (remoção), `.gitignore`
 
-- [ ] **T19** — Aposentar o que só existia para falar com o .NET: `oracle-capture` e `oracle-perf`
+- [x] **T19** — Aposentar o que só existia para falar com o .NET: `oracle-capture` e `oracle-perf`
   (e `cases.rs`, `config_sandbox.rs`, as funções de caminho do legado em `paths.rs`). `oracle-compare`
   fica como diagnóstico. **Consequência aceita e registrada**: o baseline não pode mais ser re-gravado;
   ele é o contrato congelado.
@@ -482,7 +482,7 @@ atualiza a seção 9 (Log).
     (`grep -rn "dotnet\|FurLab.CLI.exe" crates --include=*.rs` só encontra doc-comment de rastreabilidade).
   - Arquivos: `crates/mustel-testkit/src/**`, `crates/mustel-testkit/Cargo.toml`
 
-- [ ] **T20** — Atualizar a documentação viva para o mundo sem legado: `AGENTS.md` (tirar as seções
+- [x] **T20** — Atualizar a documentação viva para o mundo sem legado: `AGENTS.md` (tirar as seções
   transitórias, registrar que o baseline é congelado), `README.md`/`README.pt-BR.md` (o aviso de
   "FurLab congelado" sai), `oracle/README.md` (o baseline vira contrato congelado; sem captura).
   - Depende de: T19
@@ -491,7 +491,7 @@ atualiza a seção 9 (Log).
     explica como rodar a suíte de contrato.
   - Arquivos: `AGENTS.md`, `README.md`, `README.pt-BR.md`, `oracle/README.md`
 
-- [ ] **T21** — Limpar os resíduos do nome antigo, **já autorizado** (CD17), **sem staging** (CD18):
+- [x] **T21** — Limpar os resíduos do nome antigo, **já autorizado** (CD17), **sem staging** (CD18):
   `rm -rf .claude/skills/furlab-command-manager .opencode/skills/furlab-command-manager`,
   `rm .vscode/launch.json .vscode/tasks.json` (eram debug do .NET; `.vscode/settings.json` fica) e
   `mv assets/FurLab_icon.png assets/Mustel_icon.png`; atualizar as duas referências nos READMEs,
@@ -511,7 +511,7 @@ atualiza a seção 9 (Log).
 > depois **apagar** os antigos. Apagar antes de ler é a única forma de perder uma decisão que o plano
 > não registrou.
 
-- [ ] **T22** — Mineração e inventário: ler os **11** documentos rastreados em `docs/` (`MULTI_SERVER.md`,
+- [x] **T22** — Mineração e inventário: ler os **11** documentos rastreados em `docs/` (`MULTI_SERVER.md`,
   `QUERY_COMMAND.md`, `rust-postgres-spike.md`, `en/{ARCHITECTURE,FEATURE_SPECIFICATION,GUI_REFACTORING_PLAN}.md`,
   `pt-BR/{ARCHITECTURE,FEATURE_SPECIFICATION,GUI_REFACTORING_PLAN,SESSION_SUMMARY_2025-03-17,credenciais}.md`)
   e produzir uma **tabela de salvamento**: cada arquivo → o que é aproveitável → em qual quadrante e
@@ -522,7 +522,7 @@ atualiza a seção 9 (Log).
     razão; nenhum quadrante fica sem pelo menos um arquivo de destino.
   - Arquivos: `docs/README.md`
 
-- [ ] **T23** — Escrever os quatro quadrantes em `docs/`, em pt-BR, com o material do T22 e a verdade
+- [x] **T23** — Escrever os quatro quadrantes em `docs/`, em pt-BR, com o material do T22 e a verdade
   **verdade** do código (não a do `openspec/`, que descreve o .NET):
   `tutorials/primeiros-passos.md` (lição em **duas metades**: a primeira roda sem servidor — instalar,
   `--help`, `settings db-servers add`, `ls`, `pgpass add`; a segunda sobe o container pinado
@@ -541,7 +541,7 @@ atualiza a seção 9 (Log).
     de `explanation/` cita o ID de decisão (`D`/`DIV`/`IF`) que a originou.
   - Arquivos: `docs/tutorials/**`, `docs/how-to/**`, `docs/reference/**`, `docs/explanation/**`
 
-- [ ] **T24** — Fechar o índice e apagar os antigos: `docs/README.md` como porta de entrada (a bússola
+- [x] **T24** — Fechar o índice e apagar os antigos: `docs/README.md` como porta de entrada (a bússola
   do Diátaxis: o que o usuário faz × o que ele sabe), links a partir dos dois READMEs da raiz, e
   `rm` dos 11 arquivos antigos (sem staging — CD18).
   - Depende de: T23
@@ -553,7 +553,7 @@ atualiza a seção 9 (Log).
 
 ### Fase 8 — Verificação e fechamento
 
-- [ ] **T25** — Prova de falsificação (CD12) em **4 decisões de comportamento** — exit code de uso (1
+- [x] **T25** — Prova de falsificação (CD12) em **4 decisões de comportamento** — exit code de uso (1
   em `stdout`), CSV com BOM+CRLF, modo `0600` do `pgpass.conf`, `--create-if-not-exists`: inverter o
   comportamento **temporariamente**, rodar o teste correspondente, confirmar que **falha**, reverter e
   confirmar verde.
@@ -563,7 +563,7 @@ atualiza a seção 9 (Log).
     árvore volta limpa (`git --no-optional-locks status --short` só mostra os arquivos do plano).
   - Arquivos: nenhum permanente (mutações revertidas)
 
-- [ ] **T26** — Fechamento: rodar a Estratégia de Verificação inteira, publicar as contagens (testes de
+- [x] **T26** — Fechamento: rodar a Estratégia de Verificação inteira, publicar as contagens (testes de
   contrato, linhas do manifesto por status, arquivos legados removidos, páginas de doc escritas) e
   marcar o plano como `concluído`. **Inclui a limpeza dos containers de teste** (Q7):
   `docker rm -f mustel-tutorial mustel-t19-pg`.
@@ -597,7 +597,9 @@ atualiza a seção 9 (Log).
   exceções impressa
 - **Replay completo:** `cargo test -p mustel --test contract_replay -- --list | grep -c '^replay_'` =
   **45** mais os 2 testes de divergência
-- **Legado ausente:** `git ls-files legacy | wc -l` = 0 e `test ! -d legacy`
+- **Legado ausente:** `test ! -d legacy` e `git ls-files --deleted legacy | wc -l` = **130** (as
+  remoções ficam não-staged até o dono commitar — CD18). `git tag -l legacy-final` vazio (nenhuma tag
+  criada).
 - **Sem referência ao .NET no código:** `grep -rn "dotnet\|FurLab.CLI.exe\|oracle/bin" crates
   --include=*.rs` só pode retornar doc-comments de rastreabilidade
 - **Resíduo do nome:** `grep -ri "furlab" --exclude-dir={.git,target,MustelPlans,openspec,docs}` só
@@ -732,3 +734,124 @@ falhas). Mantém o "Atualizado em" sincronizado.
   critério global na seção 6 (`git log` inalterado + nada staged) e risco novo ("commitar ou stagiar
   sem permissão"). Durante a edição, a linha de risco "apagar os docs antes de minerar" foi
   sobrescrita por acidente e **restaurada** na mesma rodada — conferida com `sed`.
+- `[2026-10-22 00:50]` Execução iniciada pelo mustel-apply.
+- `[2026-10-22 01:05]` **T1 concluída** — `AGENTS.md` reescrito absorvendo todo o `CLAUDE.md` (Idioma,
+  Estado, Stack, Estrutura, Comandos, Convenções, Paridade/contrato, Exit codes, Legado, Guard Rails,
+  OpenSpec) e atualizado para o mundo novo (gate = `cargo test`, `oracle-compare` é diagnóstico,
+  guard rail de "sem commit/staging/tag"). `CLAUDE.md` removido com `rm` (não-staged, 0 staged).
+  Lista branca de `known-divergences.md` passou a citar só `AGENTS.md`. Verificado: nenhum arquivo
+  rastreado fora de `legacy/openspec/MustelPlans` menciona o nome antigo.
+- `[2026-10-22 01:20]` **T2 concluída** — `docs/contrato-de-interface.md` criado com **117 linhas**
+  `IF-NNN` cobrindo a superfície real dos 11 comandos (lida do `--help` de cada um, não de memória),
+  exit codes e as divergências observáveis. `Onde se observa` é sempre invocação de CLI ou artefato.
+- `[2026-10-22 01:22]` **T3 concluída** — triagem A/B/C e status: **105 coberta, 9 pendente,
+  3 nao-coberta** (pool até T34, prompt por servidor, superfície nova). Sem IDs duplicados e sem
+  coluna malformada. Conferência automática: todos os 105 caminhos de teste citados resolvem para um
+  `fn` existente no arquivo citado (3 mapeamentos errados foram corrigidos nesta verificação).
+- `[2026-10-22 01:40]` **T4 concluída** — `mustel-testkit` virou dev-dependency de `mustel` (sem ciclo)
+  e `crates/mustel/tests/support/mod.rs` centraliza sandbox (`tempfile`), seeds de config/pgpass,
+  execução do binário e carga do baseline. Teste `support_isolates_the_environment` verde.
+- `[2026-10-22 01:45]` **T5 concluída** — `contract_replay.rs` com **45** testes `replay_*` gerados por
+  macro, mais `every_baseline_capture_has_a_replay_test` (falha se surgir caso no baseline sem teste).
+  **45/45 verdes** rodando só `cargo test`, sem .NET.
+- `[2026-10-22 01:50]` **T6 concluída** — os 2 casos de divergência deliberada viraram asserção
+  explícita. **Duas expectativas minhas estavam inventadas** e foram corrigidas contra o binário real:
+  (a) `restore` com arquivo ausente **e senha presente** sai 2 com `File not found` + caminho absoluto
+  (sem senha ele para no prompt — que é a divergência do item 11); (b) `db-servers test` sem senha no
+  cofre sai 40 com a explicação de que falta terminal, **sem travar** — o teste prende exatamente o
+  "não trava", então reintroduzir um prompt bloqueante faz o processo do teste nunca retornar.
+  Regra operacional adotada: comando que pode pedir senha roda com `-W` ou stdin fechado; num PTY
+  interativo ele bloqueia (aconteceu nesta execução).
+- `[2026-10-22 02:10]` **T7 concluída** — `contract_manifest.rs` com o parser estrito (7 colunas, IDs
+  únicos) e as duas direções. Para o vínculo reverso, **126 marcadores `CONTRACT: IF-NNN` inseridos em
+  39 arquivos** (só comentário acima do `fn`, nenhuma mudança de lógica). **As três provas de mutação
+  foram executadas e reverteram**: (a) remover um marcador → `IF-002: linha coberta sem marcador`;
+  (b) inventar um `Teste` → `error.rs não tem fn nao_existe`; (c) duplicar um ID → `IF-002: id
+  duplicado` + `IF-003: marcador sem linha`. Ajuste de desenho registrado: linha `pendente` pode
+  apontar para teste ainda não escrito (é o estado intermediário legítimo); a exigência dura vale
+  para `coberta`, e o plano só fecha com zero `pendente`.
+- `[2026-10-22 02:35]` **T8 concluída** — `contract_text.rs` com **9 snapshots** `insta` dos textos que
+  são entregáveis (erro de uso em stdout, sucesso do `add` + orientação de `set-password`, orientação
+  de config vazia, `Entry added`, binário ausente, `restore --all` vazio, `backup` sem banco). Antes de
+  aceitar, cada snapshot foi **conferido contra a captura manual** do binário — nenhum foi aceito no
+  automático. Normalização obrigatória aplicada (`CRLF`→`LF`, `mustel.exe`→`mustel`), senão o snapshot
+  só passaria no Windows. Manifesto: +4 linhas de texto (IF-170..IF-173) → **121 linhas, 112 coberta,
+  6 pendente, 3 nao-coberta**.
+- `[2026-10-22 03:20]` **T9/T10/T13 concluídas** — `crates/mustel-core/tests/contract_decisions.rs` com
+  a tabela de exit codes (12 constantes conferidas contra o `AGENTS.md`, + 21/22 de caminho), a regra
+  **SQLSTATE ⇒ 10 / sem ⇒ 11**, o quirk **3 no backup × 1 no restore**, a ausência estrutural de campo
+  de senha no cadastro (10 chaves conferidas, nenhuma "pass"), porta fora de faixa como erro de parse
+  (DIV4) e modo `0600` do `pgpass.conf` sob `#[cfg(unix)]` (DIV8).
+- `[2026-10-22 03:30]` **T11 concluída** — o predicado do binário único saiu de dentro do `dispatch`
+  para `commands::root_action(bool)`, com teste das duas pontas (`OpenGui`/`PrintUsage`). Só "abrir a
+  janela" segue `nao-coberta`.
+- `[2026-10-22 03:35]` **T12 concluída** — `--create-if-not-exists` validado na suíte gated contra
+  **PostgreSQL 18.6** (container `mustel-tutorial`, 55432): `postgres_integration` **8/8**, incluindo
+  `create_database_if_missing_creates_it_once` (cria uma vez; sem a flag, banco ausente falha).
+- `[2026-10-22 03:40]` **T14 concluída** — a decisão de confirmação virou predicado puro
+  `needs_confirmation(sql, no_confirm, require_confirmation)` com tabela dos três casos (destrutiva
+  pede; `--no-confirm` dispensa; cadastro com `requireConfirmation=false` dispensa; leitura nunca pede),
+  e o default "sim" do prompt fica no teste de PTY (`confirm_accepts_default_on_enter`).
+- `[2026-10-22 03:50]` **T15 concluída** — `contract_surface.rs`: **11/11 comandos** têm caso no
+  baseline e **toda flag longa** está classificada. O teste achou **17 flags** exercitadas por testes
+  de unidade/CLI que **não** aparecem no baseline; em vez de declará-las exceção (mentira), criei a
+  tabela `UNIT_COVERED`, que liga cada flag a um teste **verificado** (entrada inválida falha). 19
+  flags ficam em `EXCEPTIONS` com motivo escrito (pool até o T34, flags que exigem servidor/dump vivo,
+  `--interactive` no PTY).
+- `[2026-10-22 03:55]` **Estado do contrato:** `cargo test --workspace` = **399 testes** (eram 330), tudo
+  verde; suíte gated de Postgres **8/8** contra 18.6; cofrinho real sem falhas. Manifesto: **125
+  linhas, 122 coberta, 0 pendente, 3 nao-coberta**. fmt/clippy limpos.
+- `[2026-10-22 04:10]` **T17 + T18 concluídas — `legacy/` removido.** Checkpoint antes: HEAD `decc678`
+  (o commit seu, não mexi), nenhuma tag, nada staged, e todas as mudanças eram deste plano. Depois:
+  `rm -rf legacy/` → **130 arquivos rastreados deletados como não-staged**, **275 MB** liberados,
+  `git diff --cached` vazio. `oracle/` ficou com `README.md`, `baseline/`, `known-divergences.md`,
+  `perf/`. Verificação de risco antes de apagar: `oracle/workdir/legacy-pgpass.backup` era **idêntico**
+  ao `pgpass.conf` real do usuário (31 bytes, mesma entrada), então o arquivo real está intacto.
+- `[2026-10-22 04:25]` **T19 concluída — harness aposentado.** Removidos `oracle-capture`, `oracle-perf`,
+  `cases.rs`, `perf.rs`, o `LegacyConfigSandbox`, o `LegacyPgPassSandbox` e os caminhos do legado em
+  `paths.rs`. `oracle-compare` **fica** como diagnóstico e continua verde: **47 casos, 0 falhas, 25
+  avisos N4, 2 pulados** — idêntico ao número da migração. O baseline agora é contrato congelado.
+- `[2026-10-22 04:35]` **T16 concluída** — `known-divergences.md` ganhou a nota de que **o item 10 nunca
+  existiu** (lacuna preservada, sem renumerar) e a lista branca foi reescrita para o mundo sem
+  `legacy/` (saíram `.vscode`, as skills C# e o `winget-publish.ps1`; entrou `publish.sh`).
+- `[2026-10-22 04:45]` **T20 concluída** — docs vivos atualizados: os dois READMEs viraram documentos do
+  Mustel (146 linhas cada; a metade .NET de 366 linhas saiu), `oracle/README.md` explica o baseline
+  congelado e o gate, e o `AGENTS.md` perdeu o "em remoção".
+- `[2026-10-22 04:50]` **T21 concluída** — `rm -rf` das skills `furlab-command-manager` (10 arquivos),
+  `rm` de `.vscode/launch.json` e `tasks.json`, e `mv assets/FurLab_icon.png → assets/Mustel_icon.png`
+  com o `alt` dos dois READMEs corrigido. **Nada staged, nenhum commit.** Verificado: nenhuma referência
+  a `FurLab_icon`/`FurLab Logo` sobrou fora de `MustelPlans/`.
+- `[2026-10-22 05:00]` **T22 concluída — mineração dos docs antigos.** Os 11 documentos foram lidos e
+  classificados antes de qualquer remoção: **4 salvos** (`QUERY_COMMAND`, `MULTI_SERVER`,
+  `pt-BR/credenciais`, `rust-postgres-spike`) e **7 descartados com razão escrita** (arquitetura .NET,
+  specs de grupos não migrados, plano de GUI em Electron, diário de sessão). A tabela de destino está em
+  `docs/README.md`, para que a decisão de descartar seja auditável.
+- `[2026-10-22 05:20]` **T23 concluída — os quatro quadrantes.** Escritos 11 arquivos em pt-BR:
+  `tutorials/primeiros-passos.md` (lição em duas metades), 4 how-tos (vários bancos, automação, backup e
+  restore, senhas no cofre), 3 referências (árvore de comandos, `query run`, exit codes e ambiente) e
+  4 explicações (credenciais, `tokio-postgres`, CSV como o Npgsql, escada N1–N4). **O tutorial foi
+  executado de ponta a ponta** contra o container `postgres:18.6`: e isso **corrigiu o texto duas
+  vezes** — o layout real é `results/<timestamp>/consolidated_<ts>.csv` (não arquivos soltos) e o
+  `_erros.csv` só existe quando há falha. Duas expectativas minhas estavam inventadas; agora são
+  medidas.
+- `[2026-10-22 05:30]` **T24 concluída — índice e remoção.** `docs/README.md` é a porta de entrada com a
+  bússola do Diátaxis e a tabela de mineração; os **11 arquivos antigos** saíram com `rm` (não-staged, 0
+  staged) e `docs/en`/`docs/pt-BR` deixaram de existir. Novo teste `documentation_links_resolve`
+  (IF-192) confere todo link relativo de `docs/**` e dos READMEs — verde.
+- `[2026-10-22 05:45]` **T25 concluída — as 4 falsificações mordem.** Cada mutação foi aplicada,
+  testada e revertida: (1) exit code de uso `1`→`11` → `contract_text` falha; (2) `UTF8_BOM` vazio →
+  `a_csv_starts_with_the_bom_and_uses_crlf` falha; (3) `--no-confirm` removido do predicado →
+  `only_a_destructive_query_without_no_confirm_asks_for_confirmation` falha; (4) checagem de nome
+  duplicado removida → `a_repeated_name_is_refused_with_exit_40` falha. Todos voltaram verdes na
+  reversão. **Prova de que os testes não são decorativos.**
+- `[2026-10-22 05:55]` **T26 concluída — plano concluído.** Estratégia de verificação inteira:
+  `cargo fmt --check` limpo; `clippy --workspace --all-targets --all-features -D warnings` limpo;
+  **`cargo test --workspace` = 392 testes, 0 falhas** (eram 330); cofre real (`MUSTEL_KEYRING_TESTS=1`)
+  392/0; `postgres_integration` **8/8** contra PostgreSQL 18.6; `contract_replay` **45** casos +
+  2 divergentes; `contract_text` 9 snapshots; `contract_manifest` 2; `contract_surface` 2.
+  Manifesto final: **126 linhas, 123 `coberta`, 0 `pendente`, 3 `nao-coberta`** com razão escrita.
+  `oracle-compare` (diagnóstico) segue **47 casos, 0 falhas, 25 N4, 2 pulados**.
+  **Nada commitado e nada staged**: HEAD continua `decc678` (o commit do dono), 0 arquivos no índice,
+  nenhuma tag `legacy-final`. Deleções e edições ficaram na árvore para revisão: **130 arquivos do
+  `legacy/`**, 11 docs antigos, skills C# e `.vscode` do legado.
+  Containers de teste removidos (`mustel-tutorial`, `mustel-t19-pg`); `postgres-ptbr` do dono intacto.

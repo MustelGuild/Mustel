@@ -1,0 +1,213 @@
+# Contrato de interface do CLI
+
+> **O que é este arquivo.** Uma linha por decisão de **superfície de CLI** do Mustel. Cada linha tem um
+> ID estável, a origem da decisão e o teste que a prova. É o que permite responder "esta decisão está
+> garantida?" com um `grep`, e o que faz um comportamento novo sem teste quebrar a suíte.
+>
+> **Como é verificado.** `crates/mustel/tests/contract_manifest.rs` lê esta tabela e exige, nas duas
+> direções: (a) o `fn` citado em `Teste` existe no arquivo citado; (b) todo marcador `CONTRACT: IF-NNN`
+> no código tem uma linha aqui. `crates/mustel/tests/contract_replay.rs` roda as 47 capturas de
+> `oracle/baseline/`. O gate é `cargo test --workspace`.
+
+## Convenções
+
+- **ID**: `IF-NNN`, único e nunca reutilizado. A origem (`D9`, `DIV18`, `N1`, `T9`) vai em `Origem`.
+- **Classe**:
+  - `A` — observável por uma invocação de CLI (flag, exit code, mensagem, artefato).
+  - `B` — observável por unidade/integração, mas com efeito visível no CLI (cofre, driver, formatos).
+  - `C` — não observável por teste; exige `nao-coberta:` com a razão escrita.
+- **Teste**: `<arquivo>::<fn>`, separado por `;` quando há mais de um.
+- **Status**: `coberta`, `pendente` (durante a execução) ou `nao-coberta: <razão>`.
+- `Onde se observa` é sempre uma invocação de CLI ou um artefato que ela produz. Decisão de GUI,
+  licença ou distribuição não pertence a este manifesto (CD13).
+
+## Raiz e superfície global
+
+| ID | Origem | Classe | Decisão | Onde se observa | Teste | Status |
+|----|--------|--------|---------|-----------------|-------|--------|
+| IF-001 | D9/DIV18 | A | `mustel` sem subcomando e sem TTY imprime a ajuda e sai 0 | stdout e exit de `mustel` sem argumentos | crates/mustel/tests/contract_text.rs::root_without_a_tty_prints_help_and_exits_zero | coberta |
+| IF-002 | D10 | A | a ajuda da raiz lista `query`, `database`, `settings` e `gui` | stdout de `mustel --help` | crates/mustel/tests/cli_tree.rs::root_help_lists_the_migrated_groups_and_the_gui | coberta |
+| IF-003 | D15 | A | `--version` imprime `mustel 1.0.0` | stdout de `mustel --version` | crates/mustel/tests/cli_tree.rs::version_uses_the_workspace_version | coberta |
+| IF-004 | N1 | A | comando desconhecido sai 1 com a mensagem em stdout | `mustel nope` | crates/mustel/tests/contract_text.rs::unknown_command_is_a_usage_error_on_stdout | coberta |
+| IF-005 | N1 | A | opção desconhecida sai 1 com a mensagem em stdout | `mustel query run --nope` | crates/mustel/tests/contract_text.rs::unknown_option_is_a_usage_error_on_stdout | coberta |
+| IF-006 | T9 | A | argumento obrigatório ausente sai 1 e escreve em stdout, não em stderr | `mustel database pgpass remove` | crates/mustel/tests/cli_tree.rs::missing_required_argument_follows_the_oracle | coberta |
+| IF-007 | N1 | A | todo comando migrado renderiza a própria ajuda com Usage | `mustel <grupo> <comando> --help` | crates/mustel/tests/cli_tree.rs::every_migrated_command_renders_its_own_help | coberta |
+
+## `query run`
+
+| ID | Origem | Classe | Decisão | Onde se observa | Teste | Status |
+|----|--------|--------|---------|-----------------|-------|--------|
+| IF-010 | N1 | A | `query run --help` expõe todas as flags do legado | stdout de `query run --help` | crates/mustel/tests/cli_tree.rs::flags_follow_the_legacy_contract | coberta |
+| IF-011 | N1 | A | `-i/--input` e `-c/--command` são mutuamente exclusivos | `query run -i a.sql -c 'select 1'` | crates/mustel/src/commands/query/run.rs::tests::command_and_input_are_mutually_exclusive | coberta |
+| IF-012 | N1 | A | sem `-i` nem `-c` o comando falha antes de tocar o banco | `query run` | crates/mustel/src/commands/query/run.rs::tests::neither_command_nor_input_is_refused | coberta |
+| IF-013 | N2 | A | arquivo `-i` inexistente sai 1 e a mensagem traz o caminho absoluto | `query run -i nao-existe.sql` | crates/mustel/src/commands/query/run.rs::tests::a_missing_input_file_is_refused_with_the_absolute_path | coberta |
+| IF-014 | N2 | A | caminho com traversal é recusado | `query run -i ../../etc/passwd` | crates/mustel/src/commands/query/run.rs::tests::a_traversal_input_path_is_refused | coberta |
+| IF-015 | N2 | A | SQL inline é desescapado como no legado | `query run -c 'select \\'x\\''` | crates/mustel/src/commands/query/run.rs::tests::the_inline_query_is_unescaped_like_the_legacy | coberta |
+| IF-016 | N1 | A | `--npgsql-connection-string` é parseado com a gramática do Npgsql | `query run --npgsql-connection-string 'Host=h;Port=5432;Database=d;Username=u'` | crates/mustel/src/commands/query/settings.rs::the_connection_string_is_parsed_like_npgsql | coberta |
+| IF-017 | D6 | A | o cadastro ad-hoc descarta a senha e usa o nome do host | `query run --npgsql-connection-string 'Host=h;Password=p'` | crates/mustel/src/commands/query/settings.rs::the_ad_hoc_server_takes_the_name_from_the_host_and_drops_the_password | coberta |
+| IF-018 | D6 | B | a senha segue a precedência `-W` → cofre → prompt | `query run -W x` com e sem senha no cofre | crates/mustel-core/src/postgres/password.rs::tests::the_flag_wins; crates/mustel-core/src/postgres/password.rs::tests::the_stored_password_is_used_when_there_is_no_flag; crates/mustel-core/src/postgres/password.rs::tests::the_prompt_is_the_last_resort_and_its_value_is_used_verbatim | coberta |
+| IF-019 | N1 | A | flags de conexão ganham do cadastro | `query run -H h -p 1 -U u` com servidor configurado | crates/mustel/src/commands/query/settings.rs::command_line_overrides_win_over_the_configured_server | coberta |
+| IF-020 | N1 | A | flags de conexão ganham da connection string | `query run --npgsql-connection-string ... -H outro` | crates/mustel/src/commands/query/settings.rs::command_line_overrides_win_over_the_connection_string | coberta |
+| IF-021 | N1 | A | `--ssl-mode` aceita os seis nomes do legado, ignorando maiúsculas | `query run --ssl-mode verifyfull` | crates/mustel-core/src/postgres/tls.rs::tests::parses_every_legacy_name_ignoring_case | coberta |
+| IF-022 | N1 | A | `--ssl-mode` desconhecido cai em `Prefer` | `query run --ssl-mode zzz` | crates/mustel/src/commands/query/settings.rs::an_unknown_ssl_mode_falls_back_to_prefer | coberta |
+| IF-023 | N2 | A | `--port` inválido no override mantém a porta configurada | `query run -p 99999` | crates/mustel/src/commands/query/settings.rs::an_invalid_port_override_keeps_the_configured_port | coberta |
+| IF-024 | N1 | A | `--timeout` e `--command-timeout` têm default 30 e 300 | stdout de `query run --help` | crates/mustel-core/src/postgres/settings.rs::tests::defaults_match_the_legacy | coberta |
+| IF-025 | T34 | C | `--pooling`, `--min-pool-size`, `--max-pool-size`, `--keepalive`, `--connection-lifetime` são aceitos | stdout de `query run --help` | — | nao-coberta: aceitos por paridade de superfície; o efeito só existe quando o pool for implementado (pendência de release) |
+| IF-026 | T33 | A | `-a/--all` liga a descoberta de bancos | `query run -a` | crates/mustel-core/src/query/plan.rs::tests::a_failed_discovery_warns_and_falls_back_to_the_configuration | coberta |
+| IF-027 | T33 | A | `--exclude` compara nomes exatos ignorando maiúsculas e espaços | `query run -a --exclude ' Db1, DB2 '` | crates/mustel-core/src/query/discovery.rs::tests::exclude_names_are_trimmed_case_insensitive_and_ignore_blanks | coberta |
+| IF-028 | T33 | A | a descoberta aplica os `excludePatterns` do cadastro com curinga `*` | `settings db-servers add -n s -H h --exclude-patterns 'template*,postgres'` e `query run -a` | crates/mustel-core/src/query/discovery.rs::tests::patterns_follow_the_legacy_regex | coberta |
+| IF-029 | DIV12 | B | datas e horas saem fixas na convenção en-US | CSV de `query run` com `timestamptz`, `date`, `time` | crates/mustel-core/src/postgres/value.rs::tests::timestamps_use_the_en_us_general_format; crates/mustel-core/src/postgres/value.rs::tests::dates_and_times_use_the_short_patterns | coberta |
+| IF-030 | DIV12 | B | números seguem o formato do .NET e `float4` é formatado como f32 | CSV com `numeric`, `float8`, `float4` | crates/mustel-core/src/postgres/value.rs::tests::floats_follow_the_dotnet_format; crates/mustel-core/src/postgres/value.rs::tests::float4_is_formatted_as_f32 | coberta |
+| IF-031 | DIV12 | B | `bool` sai `True`/`False`, `bytea` e arrays saem com o nome do tipo .NET | CSV com `bool`, `bytea`, `text[]` | crates/mustel-core/src/postgres/value.rs::tests::bytea_and_arrays_show_the_dotnet_type_name | coberta |
+| IF-032 | DIV12 | B | `uuid` sai minúsculo com hífens e `NULL` vira campo vazio | CSV com `uuid` e NULL | crates/mustel-core/src/postgres/value.rs::tests::uuid_is_lowercase_with_hyphens; crates/mustel-core/src/postgres/value.rs::tests::null_becomes_an_empty_field | coberta |
+| IF-033 | T9 | B | o CSV consolidado começa com BOM UTF-8 e usa CRLF, com header `Server,Database,<cols>` | arquivo `<ts>.csv` do `query run` | crates/mustel-core/src/query/csv_writer.rs::tests::a_csv_starts_with_the_bom_and_uses_crlf | coberta |
+| IF-034 | T9 | B | o arquivo por servidor é escrito uma vez e mantém as colunas de cada resultado | arquivo `<servidor>.csv` | crates/mustel-core/src/query/csv_writer.rs::tests::an_appender_writes_the_header_once_and_appends_the_rest | coberta |
+| IF-035 | T32 | B | o nome do arquivo por servidor é sanitizado como no legado | `query run` com servidor de nome com caracteres inválidos | crates/mustel-core/src/query/csv_writer.rs::tests::server_names_are_sanitized_like_the_legacy | coberta |
+| IF-036 | T20 | B | o `_log.csv` usa o timestamp round-trip do .NET e `DurationMs` no formato double | arquivos `_log.csv` | crates/mustel-core/src/query/csv_writer.rs::tests::the_log_timestamp_uses_the_dotnet_round_trip_format; crates/mustel-core/src/query/executor.rs::tests::the_duration_of_the_log_reads_like_the_dotnet_double | coberta |
+| IF-037 | T20 | B | erro de um banco entra no `_erros.csv` e na coluna `Error` do log | arquivos `_erros.csv` e `_log.csv` | crates/mustel-core/src/query/executor.rs::tests::the_writer_logs_the_error_and_writes_it_to_the_errors_file | coberta |
+| IF-038 | DIV14 | B | a mensagem de erro do Postgres segue o formato do Npgsql, com DETAIL redigido e POSITION | `_erros.csv` de um erro do servidor | crates/mustel-core/src/postgres/client.rs::tests::a_plain_postgres_error_is_the_sqlstate_and_the_text; crates/mustel-core/src/postgres/client.rs::tests::the_detail_is_the_redacted_sentence_npgsql_shows_by_default; crates/mustel-core/src/postgres/client.rs::tests::the_position_comes_after_a_blank_line_like_npgsql_writes_it | coberta |
+| IF-039 | T34 | B | o resultado é entregue linha a linha, sem materializar tudo | teste do executor com stream | crates/mustel-core/tests/postgres_integration.rs::the_query_stream_hands_the_rows_one_by_one | coberta |
+| IF-040 | T33 | A | sem nenhum banco acessível o comando para antes de escrever arquivos | `query run` contra servidor inalcançável | crates/mustel-core/src/usecases/query_run.rs::tests::without_any_accessible_database_the_command_stops_before_writing_files | coberta |
+| IF-041 | T40 | A | o resumo e os caminhos dos arquivos são emitidos depois da execução | stdout de `query run` | crates/mustel-core/src/usecases/query_run.rs::tests::the_summary_and_the_file_paths_are_emitted_after_the_run | coberta |
+| IF-042 | T33 | A | falha de descoberta gera aviso e cai no cadastro, sem abortar | `query run -a` com descoberta falhando | crates/mustel-core/src/query/plan.rs::tests::a_failed_discovery_warns_and_falls_back_to_the_configuration | coberta |
+
+## `database backup`
+
+| ID | Origem | Classe | Decisão | Onde se observa | Teste | Status |
+|----|--------|--------|---------|-----------------|-------|--------|
+| IF-050 | N1 | A | `backup --help` expõe `--exclude-table-data`, `-F/--format`, `-v/--verbose`, `-o/--output`, `-a/--all` | stdout de `database backup --help` | crates/mustel/tests/cli_tree.rs::flags_follow_the_legacy_contract | coberta |
+| IF-051 | N1 | A | o banco é obrigatório, exceto com `--all` | `database backup` | crates/mustel-core/src/usecases/database_backup.rs::tests::the_database_is_required_unless_all_is_used; crates/mustel/tests/contract_text.rs::backup_without_database_explains_the_requirement | coberta |
+| IF-052 | N1 | A | os defaults são `localhost` e `5432` | `database backup db` sem flags | crates/mustel-core/src/usecases/database_backup.rs::tests::defaults_are_localhost_and_5432 | coberta |
+| IF-053 | N2 | A | o argv do `pg_dump` segue a ordem do legado | argv montado para `database backup` | crates/mustel-core/src/usecases/database_backup.rs::tests::argv_follows_the_legacy_order | coberta |
+| IF-054 | N2 | A | o formato e o usuário vazio entram no argv como no legado | `database backup -F c -U ''` | crates/mustel-core/src/usecases/database_backup.rs::tests::argv_glues_the_format_and_keeps_an_empty_username | coberta |
+| IF-055 | N2 | A | `--verbose` vem antes dos padrões de exclusão no argv | `database backup -v --exclude a --exclude-table-data b` | crates/mustel-core/src/usecases/database_backup.rs::tests::argv_puts_verbose_before_the_exclusion_patterns | coberta |
+| IF-056 | N2 | A | padrões de exclusão em branco são ignorados | `database backup --exclude ' '` | crates/mustel-core/src/usecases/database_backup.rs::tests::argv_skips_blank_exclusion_patterns | coberta |
+| IF-057 | N1 | A | host, porta ou usuário inválidos saem 2 com a mensagem do legado | `database backup db -H 'a b'` | crates/mustel-core/src/usecases/database_backup.rs::tests::an_invalid_host_is_refused_with_the_legacy_message; crates/mustel-core/src/usecases/database_backup.rs::tests::an_invalid_port_is_refused_with_the_legacy_message; crates/mustel-core/src/usecases/database_backup.rs::tests::an_invalid_username_is_refused_but_an_absent_one_is_fine | coberta |
+| IF-058 | N2 | A | `pg_dump` ausente é falha de binário e sai 3 no `backup` | `database backup db` sem `pg_dump` no PATH | crates/mustel/src/commands/database/backup.rs::tests::a_missing_pg_dump_exits_with_3 | coberta |
+| IF-059 | N2 | A | o nome e a extensão do arquivo de dump seguem o legado | `database backup db` | crates/mustel-core/src/usecases/database.rs::tests::the_dump_file_name_matches_the_legacy; crates/mustel-core/src/usecases/database_backup.rs::tests::the_dump_extension_is_the_legacy_one | coberta |
+| IF-060 | T40 | A | `--all` com falha em um banco avisa, continua e sai 0 | `database backup -a` com um banco inválido | crates/mustel-core/src/usecases/database_backup.rs::tests::a_failed_run_emits_one_step_event_per_database_and_continues | coberta |
+| IF-061 | T40 | A | `--ssl-mode`, `--timeout` e `--command-timeout` são aceitos mas não entram no `pg_dump` | `database backup db --ssl-mode Disable` | crates/mustel/src/commands/database/backup.rs::tests::the_flags_are_translated_verbatim | coberta |
+| IF-062 | N1 | A | as três flags de validação do `backup` saem 2 | `database backup db -p 0` | crates/mustel/src/commands/database/backup.rs::tests::validation_failures_exit_with_2 | coberta |
+
+## `database restore`
+
+| ID | Origem | Classe | Decisão | Onde se observa | Teste | Status |
+|----|--------|--------|---------|-----------------|-------|--------|
+| IF-070 | N1 | A | `restore --help` expõe `--no-clean`, `--no-owner`, `--no-acl`, `--single-transaction`, `-j/--jobs`, `-d/--directory` | stdout de `database restore --help` | crates/mustel/tests/cli_tree.rs::flags_follow_the_legacy_contract | coberta |
+| IF-071 | D25 | A | `--create-if-not-exists` existe e cria o banco pelo driver | stdout de `database restore --help` e `database restore novo arquivo.dump --create-if-not-exists` | crates/mustel-core/tests/postgres_integration.rs::create_database_if_missing_creates_it_once | coberta |
+| IF-072 | D25 | A | sem `--create-if-not-exists`, banco inexistente falha (paridade) | `database restore novo arquivo.dump` | crates/mustel-core/tests/postgres_integration.rs::create_database_if_missing_creates_it_once | coberta |
+| IF-073 | N2 | A | o argv do `pg_restore` segue a ordem do legado, com o arquivo por último | argv montado para `database restore` | crates/mustel-core/src/usecases/database_restore.rs::tests::argv_follows_the_legacy_order_with_the_file_last | coberta |
+| IF-074 | N2 | A | `--no-clean` e `-j` não positivo ficam fora do argv | `database restore db f --no-clean -j 0` | crates/mustel-core/src/usecases/database_restore.rs::tests::argv_omits_clean_and_non_positive_jobs | coberta |
+| IF-075 | N2 | A | arquivo ausente sai 2 com o caminho absoluto na mensagem | `database restore db nao-existe.dump` | crates/mustel-core/src/usecases/database_restore.rs::tests::a_missing_file_is_usage_with_the_absolute_path_in_the_message | coberta |
+| IF-076 | N2 | A | `pg_restore` ausente é falha de binário e o CLI mapeia para 1 | `database restore db f` sem `pg_restore` | crates/mustel-core/src/usecases/database_restore.rs::tests::a_missing_pg_restore_is_a_missing_binary_failure_and_the_cli_maps_it_to_1 | coberta |
+| IF-077 | N1 | A | as validações do `restore` saem 2 | `database restore db f --ssl-mode zzz` | crates/mustel/src/commands/database/restore.rs::tests::validation_failures_exit_with_2; crates/mustel/src/commands/database/restore.rs::tests::an_invalid_ssl_mode_is_refused_with_2 | coberta |
+| IF-078 | T40 | A | `--all` com diretório vazio avisa e tem sucesso | `database restore -a -d vazio` | crates/mustel-core/src/usecases/database_restore.rs::tests::an_empty_all_directory_emits_the_warning_event_and_succeeds | coberta |
+| IF-079 | T40 | A | dump com nome de banco inválido é pulado com aviso, sem abortar | `database restore -a -d dir` com nome inválido | crates/mustel-core/src/usecases/database_restore.rs::tests::an_invalid_database_name_in_the_directory_is_skipped_with_an_event | coberta |
+| IF-080 | N2 | A | diretório inexistente no `--all` é falha de operação | `database restore -a -d nao-existe` | crates/mustel-core/src/usecases/database_restore.rs::tests::an_missing_directory_is_an_operation_failure_with_exit_1_in_the_cli | coberta |
+| IF-081 | N1 | A | os exit codes do `restore` são 2, 1 e o do corpo do comando | `database restore` (sem args) | crates/mustel/src/commands/database/restore.rs::tests::the_exit_codes_are_the_restore_ones | coberta |
+| IF-082 | N2 | A | as flags do `restore` são traduzidas verbatim para o argv | `database restore db f --no-owner --no-acl --single-transaction` | crates/mustel/src/commands/database/restore.rs::tests::the_flags_are_translated_verbatim | coberta |
+
+## `database pgpass`
+
+| ID | Origem | Classe | Decisão | Onde se observa | Teste | Status |
+|----|--------|--------|---------|-----------------|-------|--------|
+| IF-090 | DIV5 | A | o banco vem como posicional `add <banco>` ou como `--database`, exclusivos | `database pgpass add mydb` e `add --database mydb` | crates/mustel/tests/cli_tree.rs::pgpass_add_accepts_the_database_as_a_positional_argument; crates/mustel/src/commands/database/pgpass/add.rs::tests::the_database_can_come_from_the_positional_or_the_legacy_option | coberta |
+| IF-091 | N1 | A | banco em branco é recusado | `database pgpass add ''` | crates/mustel/src/commands/database/pgpass/add.rs::tests::a_blank_database_is_refused | coberta |
+| IF-092 | N1 | A | host e porta inválidos são recusados e `*` é aceito | `database pgpass add db --host 'a b'` | crates/mustel/src/commands/database/pgpass/add.rs::tests::an_invalid_host_is_refused_and_the_wildcard_is_accepted; crates/mustel/src/commands/database/pgpass/add.rs::tests::an_invalid_port_is_refused_and_the_wildcard_is_accepted | coberta |
+| IF-093 | N2 | A | os defaults do `add` são localhost, 5432 e postgres | `database pgpass add mydb` | crates/mustel/src/commands/database/pgpass/add.rs::tests::defaults_match_the_legacy_entry_record; crates/mustel-core/src/pgpass/entry.rs::tests::defaults_match_the_legacy_record | coberta |
+| IF-094 | N2 | A | a senha informada é gravada verbatim e a vazia é tratada como ausência | `database pgpass add db --password p` | crates/mustel/src/commands/database/pgpass/add.rs::tests::a_provided_password_is_used_verbatim; crates/mustel/src/commands/database/pgpass/add.rs::tests::an_empty_password_flag_means_absence_and_prompts | coberta |
+| IF-095 | N2 | B | `:` e `\` são escapados ao escrever e desescapados ao ler | arquivo `pgpass.conf` | crates/mustel-core/src/pgpass/entry.rs::tests::serialize_escapes_backslash_before_colon; crates/mustel-core/src/pgpass/entry.rs::tests::escape_and_unescape_are_inverse | coberta |
+| IF-096 | N2 | B | o `add` preserva o conteúdo existente e completa a última linha sem quebra | arquivo `pgpass.conf` | crates/mustel-core/src/pgpass/store.rs::tests::add_preserves_existing_entries_and_appends_colada_when_there_is_no_final_newline | coberta |
+| IF-097 | N2 | B | entrada duplicada não toca o arquivo | `database pgpass add` duas vezes com a mesma identidade | crates/mustel-core/src/pgpass/store.rs::tests::duplicate_identity_does_not_touch_the_file | coberta |
+| IF-098 | N2 | B | o `list` ignora comentários e linhas inválidas | `database pgpass list` | crates/mustel-core/src/pgpass/store.rs::tests::list_ignores_comments_and_reads_every_valid_line; crates/mustel-core/src/pgpass/store.rs::tests::list_is_empty_when_the_file_does_not_exist_or_has_no_valid_line | coberta |
+| IF-099 | N2 | B | o `list` lê arquivo com BOM e bytes inválidos | `database pgpass list` | crates/mustel-core/src/pgpass/store.rs::tests::list_reads_a_file_with_utf8_bom_and_invalid_bytes | coberta |
+| IF-100 | N2 | A | o `list` nunca mostra a senha | `database pgpass list` | crates/mustel/src/commands/database/pgpass/list.rs::tests::the_mask_never_reveals_the_password | coberta |
+| IF-101 | N2 | A | o `remove` usa os mesmos defaults do `add` e trata `*` literalmente | `database pgpass remove db` | crates/mustel/src/commands/database/pgpass/remove.rs::tests::the_key_uses_the_same_defaults_as_add; crates/mustel/src/commands/database/pgpass/remove.rs::tests::the_wildcard_is_a_literal_part_of_the_key | coberta |
+| IF-102 | N2 | B | o `remove` apaga só a entrada que casa e, se não houver, não toca o arquivo | `database pgpass remove db` | crates/mustel-core/src/pgpass/store.rs::tests::remove_deletes_only_the_matching_entry; crates/mustel-core/src/pgpass/store.rs::tests::remove_leaves_the_file_untouched_when_the_entry_is_not_there | coberta |
+| IF-103 | DIV9 | A | o caminho é `%APPDATA%\postgresql\pgpass.conf` no Windows e XDG no Unix, com override por `MUSTEL_PGPASS_FILE` | caminho do arquivo escrito | crates/mustel-core/src/pgpass/paths.rs::tests::default_path_lives_under_postgresql_in_the_application_data_dir; crates/mustel-core/src/pgpass/paths.rs::tests::override_path_wins_over_the_platform_directory | coberta |
+| IF-104 | DIV8 | B | no Unix o arquivo fica com modo 0600 (teste `cfg(unix)`) | permissões de `pgpass.conf` | crates/mustel-core/tests/contract_decisions.rs::the_pgpass_file_is_owner_only_on_unix | coberta |
+| IF-105 | N2 | A | falha ao escrever o arquivo vira erro geral, como no legado | `database pgpass add` em diretório somente leitura | crates/mustel/src/commands/database/pgpass/mod.rs::tests::write_failures_become_general_errors_like_the_legacy | coberta |
+
+## `settings db-servers`
+
+| ID | Origem | Classe | Decisão | Onde se observa | Teste | Status |
+|----|--------|--------|---------|-----------------|-------|--------|
+| IF-110 | N1 | A | cada subcomando expõe as flags do legado | stdout de `settings db-servers <cmd> --help` | crates/mustel/tests/cli_tree.rs::flags_follow_the_legacy_contract | coberta |
+| IF-111 | N1 | A | config ausente é criada vazia no primeiro uso, com CRLF no Windows | arquivo `mustel.jsonc` após `ls` | crates/mustel/tests/settings_db_servers_ls.rs::listing_creates_the_config_file_on_first_use; crates/mustel-core/src/config/mod.rs::tests::native_newlines_follow_the_platform | coberta |
+| IF-112 | N2 | A | o `ls` usa as colunas do legado e a célula `Databases` nos três casos | stdout de `settings db-servers ls` | crates/mustel/tests/settings_db_servers_ls.rs::lists_configured_servers_with_the_legacy_columns; crates/mustel/src/commands/settings/db_servers/list.rs::tests::databases_cell_follows_the_three_legacy_cases; crates/mustel/src/commands/settings/db_servers/list.rs::tests::row_matches_the_legacy_columns | coberta |
+| IF-113 | N2 | A | config vazia orienta o `add` e tem sucesso | stdout de `settings db-servers ls` sem servidores | crates/mustel/tests/settings_db_servers_ls.rs::listing_an_empty_config_is_success_with_guidance | coberta |
+| IF-114 | N2 | A | o `add` grava o servidor no JSONC com as chaves camelCase na ordem do legado | arquivo `mustel.jsonc` | crates/mustel/tests/settings_db_servers_add.rs::adds_a_server_with_flags_and_writes_the_config; crates/mustel-core/src/config/model.rs::tests::serializes_with_camel_case_keys_in_legacy_order | coberta |
+| IF-115 | D6 | A | o `add` grava a senha no cofre e nunca no arquivo | `settings db-servers add -W p` e o `mustel.jsonc` resultante | crates/mustel/tests/settings_db_servers_add.rs::storing_a_password_with_w_cleans_up_after_itself; crates/mustel/tests/settings_db_servers_set_password.rs::stores_the_password_in_the_keyring_when_enabled | coberta |
+| IF-116 | N2 | A | nome repetido é recusado com exit 40 | `settings db-servers add -n mesmo` duas vezes | crates/mustel/tests/settings_db_servers_add.rs::duplicate_name_is_refused_with_exit_40; crates/mustel-core/src/usecases/db_servers.rs::tests::a_repeated_name_is_refused_with_exit_40 | coberta |
+| IF-117 | N2 | A | host e porta inválidos são erro de argumento | `settings db-servers add -n x -H 'a b'` | crates/mustel/tests/settings_db_servers_add.rs::invalid_host_and_port_are_argument_errors | coberta |
+| IF-118 | N2 | A | `-U ''` é aceito, como no legado | `settings db-servers add -n x -U ''` | crates/mustel-core/src/usecases/db_servers.rs::tests::a_server_without_username_is_accepted_like_in_the_legacy | coberta |
+| IF-119 | N2 | A | `--exclude-patterns` cai no default `template*,postgres` | `settings db-servers add -n x` e o arquivo | crates/mustel/src/commands/settings/db_servers/add.rs::tests::exclude_patterns_fall_back_to_the_defaults | coberta |
+| IF-120 | N1 | A | `-d/--databases` divide por vírgula, apara e descarta vazios | `settings db-servers add -d ' a, ,b '` | crates/mustel/src/commands/settings/db_servers/add.rs::tests::split_list_trims_and_drops_empties | coberta |
+| IF-121 | N1 | A | faltando flags obrigatórias, a mensagem é a do legado | `settings db-servers add` | crates/mustel/src/commands/settings/db_servers/add.rs::tests::missing_required_flags_report_the_legacy_text | coberta |
+| IF-122 | N1 | A | o `rm` remove pelo nome e persiste | `settings db-servers rm -n dev` | crates/mustel/tests/settings_db_servers_rm.rs::removes_a_server_by_name_and_updates_the_config | coberta |
+| IF-123 | N2 | A | remover servidor inexistente é erro de argumento (41) | `settings db-servers rm -n nao-existe` | crates/mustel/tests/settings_db_servers_rm.rs::removing_an_unknown_server_is_an_argument_error | coberta |
+| IF-124 | N2 | A | `rm` com config vazia tem sucesso com mensagem | `settings db-servers rm` sem servidores | crates/mustel/tests/settings_db_servers_rm.rs::removing_from_an_empty_config_is_success_with_a_message | coberta |
+| IF-125 | N2 | A | `test -n` de servidor inexistente é erro de argumento | `settings db-servers test -n nao-existe` | crates/mustel/tests/settings_db_servers_set_password.rs::unknown_server_is_an_argument_error | coberta |
+| IF-126 | D6 | A | `set-password` grava no cofre e aceita `-W` ou prompt | `settings db-servers set-password dev -W p` | crates/mustel/tests/settings_db_servers_set_password.rs::stores_the_password_in_the_keyring_when_enabled | coberta |
+| IF-127 | N2 | A | `set-password` sem nome e sem servidores explica e tem sucesso | `settings db-servers set-password` | crates/mustel/tests/settings_db_servers_set_password.rs::without_a_name_and_without_servers_it_explains_and_succeeds | coberta |
+| IF-128 | N2 | A | `set-password` sem TTY e sem `-W` pede a flag em vez de travar | `settings db-servers set-password dev` sem terminal | crates/mustel/tests/settings_db_servers_set_password.rs::without_a_terminal_and_without_the_flag_it_asks_for_a_flag | coberta |
+| IF-129 | N2 | B | o JSONC tolera campos desconhecidos de arquivos editados à mão | `mustel.jsonc` com campo extra | crates/mustel-core/src/config/model.rs::tests::tolerates_unknown_fields_from_hand_edited_files | coberta |
+| IF-130 | DIV3 | B | a leitura de JSONC respeita `//` dentro de strings | `mustel.jsonc` com `http://db` | crates/mustel-core/src/config/jsonc.rs::tests::keeps_double_slash_inside_strings | coberta |
+| IF-131 | D10 | A | o arquivo de config é `mustel.jsonc` dentro do diretório de config do SO | caminho do arquivo | crates/mustel-core/src/config/paths.rs::tests::config_file_lives_inside_the_config_directory; crates/mustel-core/src/config/paths.rs::tests::without_override_uses_a_directory_named_mustel | coberta |
+
+## Texto que é entregável (N4 pinado)
+
+| ID | Origem | Classe | Decisão | Onde se observa | Teste | Status |
+|----|--------|--------|---------|-----------------|-------|--------|
+| IF-170 | T9 | A | o sucesso do `add` orienta o próximo passo com `set-password <nome>` | stdout de `settings db-servers add` | crates/mustel/tests/contract_text.rs::adding_a_server_explains_the_password_step | coberta |
+| IF-171 | T40 | A | a mensagem de binário ausente cita a ferramenta e o PATH | stdout de `database backup` sem o binário | crates/mustel/tests/contract_text.rs::missing_binary_message_is_the_legacy_one | coberta |
+| IF-172 | T40 | A | `restore --all` sem nenhum dump avisa e tem sucesso | stdout de `database restore -a -d <vazio>` | crates/mustel/tests/contract_text.rs::restore_all_with_an_empty_directory_warns_and_succeeds | coberta |
+| IF-173 | T20 | A | o `pgpass add` confirma a identidade `host:porta:banco:usuario` | stdout de `database pgpass add mydb --password s` | crates/mustel/tests/contract_text.rs::pgpass_add_confirms_the_entry_identity | coberta |
+| IF-180 | D9/DIV18 | B | sem subcomando, terminal interativo ⇒ GUI; sem terminal ⇒ ajuda com exit 0 | `mustel` (com e sem TTY) | crates/mustel/src/commands/mod.rs::tests::without_a_subcommand_the_terminal_decides_between_gui_and_usage; crates/mustel/tests/contract_text.rs::root_without_a_tty_prints_help_and_exits_zero | coberta |
+
+## Prompt e fluxos interativos (N3)
+
+| ID | Origem | Classe | Decisão | Onde se observa | Teste | Status |
+|----|--------|--------|---------|-----------------|-------|--------|
+| IF-140 | DIV16 | A | a confirmação de consulta destrutiva tem **sim** como default (PTY, `cfg(unix)`) | PTY de `mustel` chamando o `confirm` do núcleo | crates/mustel/tests/pty_prompts.rs::confirm_accepts_default_on_enter | coberta |
+| IF-181 | T14 | A | `--no-confirm` dispensa a confirmação, e `requireConfirmation=false` também | `query run -c 'drop table x' --no-confirm` | crates/mustel/src/commands/query/run.rs::tests::only_a_destructive_query_without_no_confirm_asks_for_confirmation | coberta |
+| IF-141 | DIV17 | A | o prompt de senha aparece no máximo uma vez por servidor | PTY de `query run` sem senha | — | nao-coberta: exige console interativo e não é observável no harness (DIV17) |
+| IF-142 | N3 | A | sem terminal, todo prompt falha com mensagem clara em vez de travar | qualquer comando com prompt, sem TTY | crates/mustel/tests/ui_primitives.rs::environment_without_terminal_is_detected; crates/mustel/tests/ui_primitives.rs::every_prompt_refuses_to_block_without_a_terminal | coberta |
+
+## Exit codes e erros
+
+| ID | Origem | Classe | Decisão | Onde se observa | Teste | Status |
+|----|--------|--------|---------|-----------------|-------|--------|
+| IF-150 | N2 | B | cada variante de erro mapeia para o exit code observado no oráculo | exit code de cada caminho de erro | crates/mustel-core/src/error.rs::tests::maps_every_variant_to_the_observed_exit_code | coberta |
+| IF-151 | ORACLE | B | há SQLSTATE ⇒ 10; sem SQLSTATE ⇒ 11 | `query run` contra senha errada e contra servidor fora do ar | crates/mustel-core/tests/contract_decisions.rs::postgres_failures_are_ten_with_sqlstate_and_eleven_without | coberta |
+| IF-152 | T40 | A | binário ausente é 3 no `backup` e 1 no `restore` | `database backup` e `database restore` sem os binários | crates/mustel-core/tests/contract_decisions.rs::missing_binary_exit_codes_differ_between_backup_and_restore | coberta |
+| IF-153 | N2 | A | cancelamento sai 130 | Ctrl+C durante `query run` | crates/mustel-core/src/error.rs::tests::cancellation_is_identifiable | coberta |
+
+## Divergências aceitas (observáveis no CLI)
+
+| ID | Origem | Classe | Decisão | Onde se observa | Teste | Status |
+|----|--------|--------|---------|-----------------|-------|--------|
+| IF-160 | DIV1 | A | o `mustel.jsonc` não tem campo de senha | arquivo após `set-password` | crates/mustel-core/tests/contract_decisions.rs::the_config_never_holds_a_password_field | coberta |
+| IF-161 | DIV2 | A | a config vive em `%APPDATA%\Mustel` (e o caminho é isolável por `MUSTEL_CONFIG_DIR`) | caminho do arquivo | crates/mustel-core/src/config/paths.rs::tests::override_directory_wins | coberta |
+| IF-162 | DIV4 | B | porta fora de 0–65535 no arquivo é erro de parse | `mustel.jsonc` com porta inválida | crates/mustel-core/tests/contract_decisions.rs::a_port_out_of_range_is_a_parse_error | coberta |
+| IF-163 | DIV6 | C | `mustel gui` e `mustel --version` não existem no legado | stdout de `--help` | — | nao-coberta: superfície nova do Mustel, sem contraparte no oráculo |
+| IF-164 | DIV7 | A | a mensagem de config vazia cita `mustel`, não `fur` | stdout de `settings db-servers ls` | crates/mustel/tests/settings_db_servers_ls.rs::listing_an_empty_config_is_success_with_guidance; crates/mustel/tests/contract_text.rs::empty_config_guidance_names_the_mustel_binary | coberta |
+| IF-165 | DIV11 | A | `restore --create-if-not-exists` é adição do Mustel | `database restore --help` | crates/mustel-core/tests/postgres_integration.rs::create_database_if_missing_creates_it_once | coberta |
+
+## Cobertura de superfície (o portão da remoção do legado)
+
+| ID | Origem | Classe | Decisão | Onde se observa | Teste | Status |
+|----|--------|--------|---------|-----------------|-------|--------|
+| IF-190 | CD14 | A | todo comando migrado tem pelo menos um caso no baseline congelado | `oracle/baseline/*` | crates/mustel/tests/contract_surface.rs::every_migrated_command_has_a_baseline_case | coberta |
+| IF-191 | CD14 | A | toda flag longa do `--help` é exercitada por um caso do baseline ou tem a cobertura declarada | `mustel <cmd> --help` cruzado com `oracle/baseline/*` | crates/mustel/tests/contract_surface.rs::every_long_flag_is_exercised_or_declared | coberta |
+| IF-192 | CD16 | A | todo link relativo da documentação (`docs/**`, READMEs) resolve para um arquivo existente | links em `docs/**/*.md` e `README*.md` | crates/mustel-core/tests/contract_decisions.rs::documentation_links_resolve | coberta |
+
+## Resumo
+
+- **Total de linhas:** 126
+- **`coberta`:** 123
+- **`pendente`:** 0
+- **`nao-coberta`:** 3 (IF-025 pool até o T34; IF-141 prompt por servidor; IF-163 superfície nova do Mustel)
+> As linhas `pendente` são as que o restante do plano fecha: T5/T6 (replay), T8 (texto), T9 (exit
+> codes), T10 (cofre), T11 (binário único), T13 (divergências), T14 (prompts). O plano só fecha com
+> zero `pendente`.

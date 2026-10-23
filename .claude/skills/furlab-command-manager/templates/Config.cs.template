@@ -1,9 +1,0 @@
-namespace FurLab.CLI.Commands.{{GROUP}}.{{SUBCOMMAND}};
-
-/// <summary>
-/// Configuration for the {{GROUP}} {{SUBCOMMAND}} operation.
-/// </summary>
-internal record {{PREFIX}}Config
-{
-    // TODO: Add configuration properties
-}

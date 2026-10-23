@@ -73,12 +73,14 @@ mod tests {
     use super::*;
 
     #[test]
+    /// CONTRACT: IF-103
     fn override_path_wins_over_the_platform_directory() {
         let path = pgpass_file_path_with(Some(Path::new("/tmp/pgpass-fixture.conf")));
         assert_eq!(path, Some(PathBuf::from("/tmp/pgpass-fixture.conf")));
     }
 
     #[test]
+    /// CONTRACT: IF-103
     fn default_path_lives_under_postgresql_in_the_application_data_dir() {
         let path = pgpass_file_path_with(None).expect("platform application data dir");
         assert_eq!(

@@ -633,6 +633,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-075
     fn a_missing_file_is_usage_with_the_absolute_path_in_the_message() {
         let error = resolve_input_file("nao-existe.dump").expect_err("recusa");
 
@@ -645,6 +646,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// CONTRACT: IF-076
     async fn a_missing_pg_restore_is_a_missing_binary_failure_and_the_cli_maps_it_to_1() {
         let directory = tempfile::tempdir().expect("tempdir");
         let dump = directory.path().join("mydb.dump");
@@ -676,6 +678,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// CONTRACT: IF-080
     async fn an_missing_directory_is_an_operation_failure_with_exit_1_in_the_cli() {
         let mut command = options(None);
         command.all = true;
@@ -706,6 +709,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// CONTRACT: IF-078
     async fn an_empty_all_directory_emits_the_warning_event_and_succeeds() {
         let directory = tempfile::tempdir().expect("tempdir");
         let mut command = options(None);
@@ -734,6 +738,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// CONTRACT: IF-079
     async fn an_invalid_database_name_in_the_directory_is_skipped_with_an_event() {
         let directory = tempfile::tempdir().expect("tempdir");
         std::fs::write(directory.path().join("nome com espaço.dump"), b"").expect("escreve");
@@ -761,6 +766,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-073
     fn argv_follows_the_legacy_order_with_the_file_last() {
         let mut command = options(Some("mydb"));
         command.verbose = true;
@@ -795,6 +801,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-074
     fn argv_omits_clean_and_non_positive_jobs() {
         let mut command = options(Some("mydb"));
         command.no_clean = true;

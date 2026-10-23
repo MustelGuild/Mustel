@@ -1,0 +1,5 @@
+---
+source: crates/mustel/tests/contract_text.rs
+expression: normalize(&output.stdout)
+---
+No .dump files found in the directory.

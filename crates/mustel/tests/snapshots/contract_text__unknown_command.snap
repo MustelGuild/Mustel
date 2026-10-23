@@ -1,0 +1,9 @@
+---
+source: crates/mustel/tests/contract_text.rs
+expression: stdout
+---
+Error: error: unrecognized subcommand 'nope'
+
+Usage: mustel [COMMAND]
+
+For more information, try '--help'.

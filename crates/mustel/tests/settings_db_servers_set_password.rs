@@ -37,6 +37,7 @@ fn keyring_tests_enabled() -> bool {
 }
 
 #[test]
+/// CONTRACT: IF-127
 fn without_a_name_and_without_servers_it_explains_and_succeeds() {
     let dir = TempDir::new().expect("tempdir");
 
@@ -69,6 +70,7 @@ fn a_name_with_an_empty_config_is_not_found() {
 }
 
 #[test]
+/// CONTRACT: IF-125
 fn unknown_server_is_an_argument_error() {
     let dir = TempDir::new().expect("tempdir");
     std::fs::write(dir.path().join("mustel.jsonc"), ONE_SERVER).expect("seed");
@@ -93,6 +95,7 @@ fn unknown_server_is_an_argument_error() {
 }
 
 #[test]
+/// CONTRACT: IF-128
 fn without_a_terminal_and_without_the_flag_it_asks_for_a_flag() {
     let dir = TempDir::new().expect("tempdir");
     std::fs::write(dir.path().join("mustel.jsonc"), ONE_SERVER).expect("seed");
@@ -111,6 +114,8 @@ fn without_a_terminal_and_without_the_flag_it_asks_for_a_flag() {
 }
 
 #[test]
+/// CONTRACT: IF-115
+/// CONTRACT: IF-126
 fn stores_the_password_in_the_keyring_when_enabled() {
     if !keyring_tests_enabled() {
         eprintln!("skipped: set MUSTEL_KEYRING_TESTS=1 to exercise the real keyring");

@@ -45,6 +45,7 @@ fn stdout_of(output: &Output) -> String {
 }
 
 #[test]
+/// CONTRACT: IF-122
 fn removes_a_server_by_name_and_updates_the_config() {
     let dir = TempDir::new().expect("tempdir");
     std::fs::write(dir.path().join("mustel.jsonc"), TWO_SERVERS).expect("seed");
@@ -69,6 +70,7 @@ fn removes_a_server_by_name_and_updates_the_config() {
 }
 
 #[test]
+/// CONTRACT: IF-123
 fn removing_an_unknown_server_is_an_argument_error() {
     let dir = TempDir::new().expect("tempdir");
     std::fs::write(dir.path().join("mustel.jsonc"), TWO_SERVERS).expect("seed");
@@ -86,6 +88,7 @@ fn removing_an_unknown_server_is_an_argument_error() {
 }
 
 #[test]
+/// CONTRACT: IF-124
 fn removing_from_an_empty_config_is_success_with_a_message() {
     let dir = TempDir::new().expect("tempdir");
 

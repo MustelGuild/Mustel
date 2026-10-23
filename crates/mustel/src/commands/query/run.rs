@@ -67,10 +67,7 @@ pub async fn run(args: QueryRunArgs, token: &CancellationToken) -> Result<i32, C
 
     // A confirmação vem **depois** da seleção e do `--all`, como no legado — é quando já se sabe
     // quantos servidores e bancos a consulta vai atingir.
-    if analyzer::analyze(&sql) == QueryType::Destructive
-        && !args.no_confirm
-        && defaults.require_confirmation
-    {
+    if needs_confirmation(&sql, args.no_confirm, defaults.require_confirmation) {
         let databases = selected
             .iter()
             .map(|server| {
@@ -233,6 +230,15 @@ fn select_servers(servers: &[ServerConfigEntry]) -> Result<Vec<ServerConfigEntry
 }
 
 /// Caminho absoluto, como o `Path.GetFullPath` do legado.
+/// A consulta pede confirmação antes de rodar?
+///
+/// Três condições, na ordem do legado: a consulta é destrutiva, o usuário **não** passou
+/// `--no-confirm`, e o cadastro **não** desligou `requireConfirmation`. Extraída para poder ser
+/// testada sem terminal — o prompt em si é N3 e vive nos testes de PTY.
+fn needs_confirmation(sql: &str, no_confirm: bool, require_confirmation: bool) -> bool {
+    analyzer::analyze(sql) == QueryType::Destructive && !no_confirm && require_confirmation
+}
+
 fn absolute_path(path: &str) -> String {
     std::path::absolute(path)
         .map(|value| value.to_string_lossy().to_string())
@@ -269,6 +275,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-015
     fn the_inline_query_is_unescaped_like_the_legacy() {
         assert_eq!(unescape_inline_query("\"SELECT 1\""), "SELECT 1");
         assert_eq!(unescape_inline_query("'SELECT 1'"), "SELECT 1");
@@ -280,6 +287,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-011
     fn command_and_input_are_mutually_exclusive() {
         let mut command = args();
         command.command = Some("SELECT 1".to_string());
@@ -292,6 +300,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-012
     fn neither_command_nor_input_is_refused() {
         assert_eq!(
             resolve_sql(&args()).expect_err("recusa"),
@@ -300,6 +309,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-013
     fn a_missing_input_file_is_refused_with_the_absolute_path() {
         let mut command = args();
         command.input = Some("nao-existe.sql".to_string());
@@ -313,6 +323,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-014
     fn a_traversal_input_path_is_refused() {
         let mut command = args();
         command.input = Some("%2e%2e%2fsegredo.sql".to_string());
@@ -339,6 +350,32 @@ mod tests {
         assert_eq!(
             resolve_sql(&comment_only).expect("aceita"),
             "-- só um comentário"
+        );
+    }
+
+    /// IF-181: `--no-confirm` dispensa a confirmação; `requireConfirmation=false` também; e uma
+    /// consulta de leitura nunca pede confirmação.
+    ///
+    /// A tabela fixa as três condições de uma vez — em especial o bypass do `--no-confirm`, que é o
+    /// que torna o comando utilizável em automação.
+    /// CONTRACT: IF-181
+    #[test]
+    fn only_a_destructive_query_without_no_confirm_asks_for_confirmation() {
+        let destructive = "DROP TABLE clientes";
+        let reading = "SELECT * FROM clientes";
+
+        assert!(needs_confirmation(destructive, false, true));
+        assert!(
+            !needs_confirmation(destructive, true, true),
+            "--no-confirm dispensa"
+        );
+        assert!(
+            !needs_confirmation(destructive, false, false),
+            "requireConfirmation=false dispensa"
+        );
+        assert!(
+            !needs_confirmation(reading, false, true),
+            "consulta de leitura não pede confirmação"
         );
     }
 }

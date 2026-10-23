@@ -393,6 +393,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-052
     fn defaults_are_localhost_and_5432() {
         let connection = validate(&options(Some("mydb"))).expect("válido");
 
@@ -406,6 +407,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-057
     fn an_invalid_host_is_refused_with_the_legacy_message() {
         let mut command = options(Some("mydb"));
         command.host = Some("host_com_underscore".to_string());
@@ -416,6 +418,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-057
     fn an_invalid_port_is_refused_with_the_legacy_message() {
         let mut command = options(Some("mydb"));
         command.port = Some("70000".to_string());
@@ -427,6 +430,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-057
     fn an_invalid_username_is_refused_but_an_absent_one_is_fine() {
         let mut invalid = options(Some("mydb"));
         invalid.username = Some("com espaco".to_string());
@@ -445,6 +449,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-051
     fn the_database_is_required_unless_all_is_used() {
         for database in [None, Some(""), Some("   ")] {
             assert_eq!(
@@ -488,6 +493,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-053
     fn argv_follows_the_legacy_order() {
         let argv = build_pg_dump_args(&options(Some("mydb")), &connection("mydb"), "mydb.dump");
 
@@ -510,6 +516,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-054
     fn argv_glues_the_format_and_keeps_an_empty_username() {
         let mut command = options(Some("mydb"));
         command.format = Some("p".to_string());
@@ -526,6 +533,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-055
     fn argv_puts_verbose_before_the_exclusion_patterns() {
         let mut command = options(Some("mydb"));
         command.verbose = true;
@@ -549,6 +557,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-056
     fn argv_skips_blank_exclusion_patterns() {
         let mut command = options(Some("mydb"));
         command.exclude = vec!["".to_string(), "   ".to_string()];
@@ -560,6 +569,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// CONTRACT: IF-060
     async fn a_failed_run_emits_one_step_event_per_database_and_continues() {
         // `--all` contra um servidor inalcançável: a **listagem** é que falha, e ela sobe como erro
         // do núcleo (exit 40), não como saída impressa.
@@ -603,6 +613,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-059
     fn the_dump_extension_is_the_legacy_one() {
         assert_eq!(DUMP_EXTENSION, ".dump");
     }

@@ -240,6 +240,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// CONTRACT: IF-032
     fn null_becomes_an_empty_field() {
         assert_eq!(format_cell(&TextValue::Null), "");
     }
@@ -264,6 +265,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-030
     fn floats_follow_the_dotnet_format() {
         assert_eq!(format_cell(&TextValue::Float(1.5)), "1.5");
         // O oráculo escreveu `2` (não `2.0`) para `float8` 2.
@@ -277,6 +279,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-030
     fn float4_is_formatted_as_f32() {
         // O `ToString()` do `float` (4 bytes) do .NET imprime os dígitos do `f32`; converter para
         // `f64` antes mostraria o ruído da representação.
@@ -285,6 +288,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-031
     fn bytea_and_arrays_show_the_dotnet_type_name() {
         assert_eq!(format_cell(&TextValue::Bytes), "System.Byte[]");
         assert_eq!(
@@ -298,6 +302,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-029
     fn timestamps_use_the_en_us_general_format() {
         // Números conferidos no próprio Postgres: `'2026-10-18'::date - '2000-01-01'::date` = 9787.
         // `2026-10-18T10:52:15.123456+00:00` → `10/18/2026 10:52:15 AM` no oráculo.
@@ -314,6 +319,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-029
     fn dates_and_times_use_the_short_patterns() {
         // `date` 2026-10-18 → `10/18/2026`; `date` 2026-01-02 → `1/2/2026`.
         assert_eq!(format_cell(&TextValue::Date(9_787)), "10/18/2026");
@@ -336,6 +342,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-032
     fn uuid_is_lowercase_with_hyphens() {
         let bytes = [
             0x3f, 0x25, 0x04, 0xe0, 0x4f, 0x89, 0x11, 0xd3, 0x9a, 0x0c, 0x03, 0x05, 0xe8, 0x2c,

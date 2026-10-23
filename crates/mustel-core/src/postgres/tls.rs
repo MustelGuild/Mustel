@@ -92,6 +92,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// CONTRACT: IF-021
     fn parses_every_legacy_name_ignoring_case() {
         assert_eq!("Disable".parse::<SslMode>().expect("ok"), SslMode::Disable);
         assert_eq!("prefer".parse::<SslMode>().expect("ok"), SslMode::Prefer);

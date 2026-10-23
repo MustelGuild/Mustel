@@ -256,12 +256,14 @@ mod tests {
     use super::*;
 
     #[test]
+    /// CONTRACT: IF-120
     fn split_list_trims_and_drops_empties() {
         assert_eq!(split_list("mydb, app_dev ,"), vec!["mydb", "app_dev"]);
         assert!(split_list("   ").is_empty());
     }
 
     #[test]
+    /// CONTRACT: IF-121
     fn missing_required_flags_report_the_legacy_text() {
         let error = require(None, "--name (-n)").expect_err("must fail");
         assert_eq!(error.to_string(), "--name (-n) is required.");
@@ -272,6 +274,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-119
     fn exclude_patterns_fall_back_to_the_defaults() {
         assert_eq!(split_list_or_default(""), default_exclude_patterns());
         assert_eq!(split_list_or_default("a",), vec!["a"]);

@@ -1,0 +1,5 @@
+---
+source: crates/mustel/tests/contract_text.rs
+expression: message
+---
+PostgreSQL binary 'pg_dump' not found. Please ensure PostgreSQL is installed and the binaries are in your PATH.

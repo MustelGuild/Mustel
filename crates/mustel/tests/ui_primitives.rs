@@ -8,11 +8,13 @@ use mustel::ui;
 use mustel_core::error::exit_code;
 
 #[test]
+/// CONTRACT: IF-142
 fn environment_without_terminal_is_detected() {
     assert!(!ui::is_interactive());
 }
 
 #[test]
+/// CONTRACT: IF-142
 fn every_prompt_refuses_to_block_without_a_terminal() {
     let options = vec!["dev".to_string(), "prod".to_string()];
 

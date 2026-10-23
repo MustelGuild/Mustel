@@ -200,6 +200,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-093
     fn defaults_match_the_legacy_record() {
         let entry = PgPassEntry::default();
         assert_eq!(entry.hostname, "localhost");
@@ -225,6 +226,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-095
     fn serialize_escapes_backslash_before_colon() {
         // A ordem do legado: `\` primeiro, depois `:`. `a\b:c` vira `a\\b\:c`.
         assert_eq!(
@@ -235,6 +237,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-095
     fn escape_and_unescape_are_inverse() {
         for password in ["simples", "com:dois", "com\\barra", "\\:misturado", "fim\\"] {
             assert_eq!(

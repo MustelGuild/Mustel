@@ -140,6 +140,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-090
     fn the_database_can_come_from_the_positional_or_the_legacy_option() {
         let positional = resolve_target(&args(Some("mydb"))).expect("posicional");
         assert_eq!(positional.database, "mydb");
@@ -150,6 +151,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-091
     fn a_blank_database_is_refused() {
         for database in [None, Some(""), Some("   ")] {
             let error = resolve_target(&args(database)).expect_err("deve recusar");
@@ -158,6 +160,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-093
     fn defaults_match_the_legacy_entry_record() {
         let target = resolve_target(&args(Some("mydb"))).expect("válido");
         assert_eq!(target.hostname, "localhost");
@@ -166,6 +169,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-092
     fn an_invalid_host_is_refused_and_the_wildcard_is_accepted() {
         let mut invalid = args(Some("mydb"));
         invalid.host = Some("host_com_underscore".to_string());
@@ -180,6 +184,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-092
     fn an_invalid_port_is_refused_and_the_wildcard_is_accepted() {
         for port in ["0", "70000", "abc", ""] {
             let mut command = args(Some("mydb"));
@@ -196,6 +201,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-094
     fn an_empty_password_flag_means_absence_and_prompts() {
         for provided in [None, Some("")] {
             let password =
@@ -205,6 +211,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-094
     fn a_provided_password_is_used_verbatim() {
         // Espaço é senha válida para o legado; só a string vazia é ausência.
         assert_eq!(

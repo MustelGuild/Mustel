@@ -27,6 +27,8 @@ fn child_command(test_name: &str, body: &str) -> String {
         .to_string()
 }
 
+/// IF-140: a confirmação destrutiva aceita o default (sim) ao apertar Enter.
+/// CONTRACT: IF-140
 #[test]
 fn confirm_accepts_default_on_enter() {
     if let Ok(body) = std::env::var(CHILD_ENV) {

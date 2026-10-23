@@ -79,6 +79,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// CONTRACT: IF-027
     fn exclude_names_are_trimmed_case_insensitive_and_ignore_blanks() {
         let names = exclude_names(Some(" Dev , PROD ,, "));
 
@@ -90,6 +91,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-028
     fn patterns_follow_the_legacy_regex() {
         // Curinga `*` em qualquer posição, sem diferenciar maiúsculas.
         assert!(matches_pattern("log_2026", "log*"));

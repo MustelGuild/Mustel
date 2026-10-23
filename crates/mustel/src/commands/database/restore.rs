@@ -131,6 +131,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-081
     fn the_exit_codes_are_the_restore_ones() {
         assert_eq!(exit_code(FailureKind::Usage), 2);
         assert_eq!(
@@ -142,6 +143,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// CONTRACT: IF-077
     async fn validation_failures_exit_with_2() {
         let exit = run(args(None), &CancellationToken::new())
             .await
@@ -150,6 +152,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// CONTRACT: IF-077
     async fn an_invalid_ssl_mode_is_refused_with_2() {
         let mut command = args(Some("mydb"));
         command.ssl_mode = Some("Allow".to_string());
@@ -159,6 +162,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-082
     fn the_flags_are_translated_verbatim() {
         let mut command = args(Some("mydb"));
         command.jobs = Some(4);

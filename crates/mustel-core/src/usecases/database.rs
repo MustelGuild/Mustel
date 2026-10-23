@@ -175,6 +175,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-059
     fn the_dump_file_name_matches_the_legacy() {
         assert_eq!(dump_file_name("mydb"), "mydb.dump");
     }

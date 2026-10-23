@@ -732,6 +732,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// CONTRACT: IF-037
     async fn the_writer_logs_the_error_and_writes_it_to_the_errors_file() {
         let (directory, timestamp, result) = write(vec![Message::Finished(log_entry(
             "dev",
@@ -816,6 +817,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-036
     fn the_duration_of_the_log_reads_like_the_dotnet_double() {
         assert_eq!(milliseconds(Duration::from_millis(12)), "12");
         assert_eq!(milliseconds(Duration::from_micros(12_500)), "12.5");

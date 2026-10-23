@@ -14,14 +14,35 @@ use mustel_core::signal::CancellationToken;
 use crate::cli::{MustelCli, TopCommand};
 use crate::ui;
 
+/// O que o binário faz quando não recebe subcomando.
+///
+/// É a decisão do binário único (D9 + divergência 18): quem digita `mustel` num terminal espera a
+/// interface; em script, pipe ou CI a ajuda é o contrato e o exit é 0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RootAction {
+    /// Abre a janela (só faz sentido com terminal interativo).
+    OpenGui,
+    /// Imprime a ajuda e sai 0.
+    PrintUsage,
+}
+
+/// Decide o que fazer sem subcomando. Função pura: o teste cobre as duas pontas sem abrir janela.
+pub fn root_action(interactive: bool) -> RootAction {
+    if interactive {
+        RootAction::OpenGui
+    } else {
+        RootAction::PrintUsage
+    }
+}
+
 /// Executa o comando pedido e devolve o exit code (`Ok`) ou o erro para o chamador reportar.
 pub async fn dispatch(cli: MustelCli, token: &CancellationToken) -> Result<i32, CoreError> {
     let Some(command) = cli.command else {
         // Sem subcomando: a GUI é o padrão **de quem tem terminal**; sem ele, a ajuda é o contrato
         // (o oráculo imprime a ajuda e sai 0, e é isso que scripts e o harness esperam).
-        return match ui::is_interactive() {
-            true => gui(token),
-            false => Ok(print_usage()),
+        return match root_action(ui::is_interactive()) {
+            RootAction::OpenGui => gui(token),
+            RootAction::PrintUsage => Ok(print_usage()),
         };
     };
 
@@ -62,4 +83,20 @@ fn gui(_token: &CancellationToken) -> Result<i32, CoreError> {
         "this build has no GUI support; rebuild without --no-default-features to get `mustel gui`"
             .to_string(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RootAction, root_action};
+
+    /// IF-180: com terminal interativo o binário sem subcomando abre a GUI; sem terminal, imprime a ajuda.
+    ///
+    /// O que o teste prende é a **decisão**; abrir a janela em si não é verificável em teste (a outra
+    /// metade é `nao-coberta` no manifesto).
+    /// CONTRACT: IF-180
+    #[test]
+    fn without_a_subcommand_the_terminal_decides_between_gui_and_usage() {
+        assert_eq!(root_action(true), RootAction::OpenGui);
+        assert_eq!(root_action(false), RootAction::PrintUsage);
+    }
 }

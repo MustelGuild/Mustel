@@ -1,0 +1,5 @@
+---
+source: crates/mustel/tests/contract_text.rs
+expression: stdout
+---
+Error: Database name is required when --all is not specified.

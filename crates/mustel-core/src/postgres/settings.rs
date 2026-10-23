@@ -124,6 +124,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// CONTRACT: IF-024
     fn defaults_match_the_legacy() {
         let settings = ConnectionSettings::default();
         assert_eq!(settings.port, 5432);

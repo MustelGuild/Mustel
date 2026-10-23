@@ -462,6 +462,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-038
     fn a_plain_postgres_error_is_the_sqlstate_and_the_text() {
         assert_eq!(
             postgres_message(
@@ -475,6 +476,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-038
     fn the_position_comes_after_a_blank_line_like_npgsql_writes_it() {
         // Medido no oráculo (`SELECT nao_existe FROM clientes`): os bytes do `_erros.csv` são
         // `"42703: column ""nao_existe"" does not exist\r\n\r\nPOSITION: 8"`.
@@ -490,6 +492,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-038
     fn the_detail_is_the_redacted_sentence_npgsql_shows_by_default() {
         // Medido no oráculo (`INSERT INTO clientes SELECT * FROM clientes`, que falha e não muda
         // nada): o `DETAIL` do servidor **não** aparece — o Npgsql o redige por default.

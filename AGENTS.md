@@ -1,6 +1,162 @@
-# Mustel — Guia para agentes
+# Mustel — Guia de desenvolvimento e de agentes
 
-Este repositório tem dois produtos:
+> Fonte de verdade do trabalho em andamento: `MustelPlans/` (cada plano é executável). O contrato de
+> interface do CLI vive em `docs/contrato-de-interface.md` e é verificado por `cargo test`.
 
-- **Mustel** (Rust, ativo): workspace Cargo na raiz — grupos `query`, `database` e `settings`, mais a GUI egui.
-- **FurLab** (.NET 10, congelado, em `legacy/`): pro
+## Idioma
+
+Todo output para o usuário (explicações, resumos, mensagens de erro de ferramentas, perguntas) deve ser
+em **português do Brasil (pt-BR)**. Exceção: não traduza nomes de skills, comandos do OpenSpec,
+identificadores de código, nomes de arquivos ou comandos de terminal.
+
+Todas as **mensagens exibidas ao usuário pelo CLI** (output de comandos, prompts interativos, erros,
+confirmações) são escritas em **inglês** — é o contrato de paridade herdado do FurLab (níveis N1–N3 da
+escada de fidelidade). O binário fala inglês; a documentação, o plano e a conversa com o usuário do
+repositório falam pt-BR.
+
+## Estado do repositório
+
+| Área | O que é |
+|------|---------|
+| `crates/` | **Mustel** (Rust) — o produto ativo |
+| `oracle/` | baseline **congelado**, relatórios de divergência e números de performance |
+| `MustelPlans/` | planos de implementação (fonte de verdade do trabalho) |
+| `openspec/` | specs canônicas (pt-BR) do produto anterior — **histórico**, não é contrato do Mustel |
+| `docs/` | documentação do Mustel em quatro quadrantes (Diátaxis) e o manifesto `contrato-de-interface.md` |
+
+Escopo do produto: grupos **`query`**, **`database`** e **`settings`**, mais a GUI em egui. O código
+.NET do produto anterior foi **removido** do repositório em 2026-10-22; o comportamento dele sobrevive
+como contrato em `oracle/baseline/` e em `docs/contrato-de-interface.md`.
+
+## Stack
+
+- Rust 1.98 (pinado em `rust-toolchain.toml`), edition 2024, resolver 3
+- CLI: `clap` (derive) · prompts `inquire` · tabelas `tabled` · progresso `indicatif` · estilo `console` + `owo-colors`
+- Async: `tokio` (+ `tokio-util` para `CancellationToken`) — **somente para I/O**
+- Postgres: `tokio-postgres`, com `with-serde_json-1` · dados exportados com `csv`
+- Config: `serde` + `jsonc-parser`, caminho resolvido por `dirs` · credenciais: `keyring` — **com os
+  backends nativos habilitados por plataforma** (`windows-native`, `apple-native`,
+  `sync-secret-service`); sem essas features o crate usa um store mock que aceita `set` e não persiste
+- Erros: `thiserror` no core, `anyhow` apenas no binário · logs: `tracing`
+- GUI: `eframe`/`egui` (+ `egui_extras`), atrás da feature `gui`
+- Testes: `insta` (snapshots), `expectrl` (PTY), `tempfile`, `tokio-postgres` (integração Postgres)
+
+## Estrutura
+
+```text
+crates/
+├── mustel-core/     lib: config, credentials, postgres, pgpass, casos de uso, eventos (sem UI)
+├── mustel/          bin `mustel`: clap, UI de terminal, comandos finos
+├── mustel-gui/      lib egui usada pelo subcomando `gui`
+└── mustel-testkit/  fixtures do baseline + comparação de contrato (bins de captura/diagnóstico)
+legacy/              (removido em 2026-10-22; recuperável pelo histórico do Git)
+oracle/              baseline/ (contrato congelado), perf/, known-divergences.md
+docs/                contrato-de-interface.md, tutorials/, how-to/, reference/, explanation/
+```
+
+## Comandos
+
+```bash
+# Rust (na raiz do repositório)
+cargo build --workspace
+cargo test --workspace          # é o GATE: inclui a suíte de contrato
+cargo fmt --all                 # CI roda com --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo run -p mustel -- --help
+./target/release/mustel --version
+
+# Suítes gated (só rodam com a variável)
+MUSTEL_KEYRING_TESTS=1 cargo test --workspace
+MUSTEL_PG_TEST_URL=postgres://postgres:dev@localhost:55432/mustel_test cargo test -p mustel-core --test postgres_integration
+
+# Diagnóstico de paridade (não é gate)
+cargo run -p mustel-testkit --bin oracle-compare -- --report --scope query,database,settings
+```
+
+## Convenções de código
+
+- **Formatação**: `cargo fmt` (default do rustfmt, 100 colunas). O CI reprova qualquer diff.
+- **Lint**: `clippy -D warnings`; `unsafe_code = "forbid"` no workspace.
+- **Sem UI no core**: `mustel-core` não depende de `clap`, `inquire`, `indicatif` nem `egui`
+  (`cargo tree -p mustel-core` deve ficar limpo).
+- **Comandos finos**: o comando parseia argumentos, resolve entradas (flags + prompts) e chama o caso de
+  uso do core. Nenhuma regra de negócio dentro do comando.
+- **Erros**: `CoreError` (thiserror) no core; o CLI traduz para exit code e mensagem. Nunca
+  `unwrap()`/`expect()` em caminho de execução — apenas em teste.
+- **Processos externos**: argumentos sempre em `Vec<String>`; nunca shell, nunca string interpolada;
+  stdout/stderr capturados; árvore de processos morta no cancelamento.
+- **Credenciais**: sempre `keyring`; nenhum segredo em arquivo, log ou mensagem.
+- **Async apenas para I/O**; CPU puro é síncrono (e roda em worker quando chamado pela GUI).
+- **Documentação**: `//!` no módulo e `///` em itens públicos, em pt-BR; mensagens de CLI em inglês.
+- **Um módulo por arquivo**, tipos agrupados por domínio (evitar `types.rs` genérico).
+
+## Paridade e contrato de interface (o contrato do projeto)
+
+O comportamento do CLI é **contrato**, não sugestão. Ele está em três lugares, nesta ordem de
+precedência:
+
+1. `docs/contrato-de-interface.md` — o **manifesto**: uma linha por decisão de superfície, com ID
+   (`IF-NNN`), origem e o teste que a prova.
+2. `oracle/baseline/*.json` — as **47 capturas congeladas** do comportamento antigo; o binário .NET
+   **não** é necessário para comparar (o `oracle-compare` apenas relê o baseline).
+3. `oracle/known-divergences.md` — as divergências aceitas, com justificativa.
+
+A escada de fidelidade (detalhe na seção 4.4 de `MustelPlans/migracao-rust.md`):
+
+| Nível | Exige | Bloqueia? |
+|-------|-------|-----------|
+| N1 | mesma árvore de comandos, flags, defaults; inválidos rejeitados do mesmo jeito | sim |
+| N2 | mesmos artefatos byte a byte, mesmos exit codes | sim |
+| N3 | mesmos fluxos interativos (perguntas, ordem, atalhos, defaults) | sim |
+| N4 | formatação textual (`--help`, cores, tabelas, redação de erros) | não — registrar em `oracle/known-divergences.md` |
+
+**O gate é `cargo test --workspace`.** Ele roda o replay das 47 capturas (`contract_replay`), os
+snapshots de texto (`contract_text`), a cobertura do manifesto (`contract_manifest`) e a cobertura de
+superfície (`contract_surface`). Nenhuma decisão é considerada pronta sem teste; adicionar
+comportamento sem linha no manifesto quebra a suíte.
+
+## Exit codes (herdados do oráculo)
+
+`0` sucesso · `1` erro geral · `2` validação de comando · `10`/`11` Postgres (com/sem SQLSTATE) ·
+`20`–`22` I/O · `30` acesso · `40`/`41` estado inválido / argumento inválido · `50` timeout ·
+`130` cancelado pelo usuário.
+
+Quirks herdados: binário ausente é **3** no `database backup` e **1** no `database restore`; erro de uso
+sai em **stdout** com **1**.
+
+## Legado .NET (removido)
+
+- O diretório `legacy/` **não existe mais** (removido em 2026-10-22, sem tag: recuperável pelo
+  histórico do Git, no commit anterior à remoção).
+- O baseline em `oracle/baseline/` é **contrato congelado** — não há como re-gravar. Mudar
+  comportamento significa mudar um teste, com revisão explícita.
+- As skills `furlab-command-manager` valiam apenas para o legado e foram removidas com ele.
+- Os pacotes antigos (`FurLab` no NuGet, `FurLab.CLI` no winget) não são tocados. O Mustel publica
+  `Mustel.CLI` no winget e `mustel`, `mustel-core`, `mustel-gui` no crates.io.
+
+## Guard Rails (Agent Safety Protocol)
+
+> **Regra obrigatória:** agentes **não** fazem commit, **não** fazem staging (`git add`), **não** criam
+> tags e **não** fazem push. As mudanças ficam na árvore de trabalho para o dono revisar e confirmar.
+
+### Pode fazer sem perguntar
+
+Leituras (`git status`, `git log`, `git diff`, `git show`, `git branch -a`, `git rev-parse`), build,
+testes, formatação e análise.
+
+### Exige autorização explícita do dono
+
+`git add`, `git commit`, `git tag`, `git push`, `git pull`, `git fetch`, `git merge`, `git rebase`,
+`git reset`, `git checkout` (com arquivos modificados), `git stash`, e remoção de arquivos rastreados.
+
+### Como remover arquivos rastreados
+
+Use `rm`/`mv` do sistema de arquivos, **nunca** `git rm`/`git mv` (esses stageiam). A remoção fica
+visível como mudança não-staged, e o dono decide o commit.
+
+## OpenSpec
+
+O fluxo OpenSpec continua sendo o lugar das especificações canônicas do **produto antigo**
+(`openspec/specs/<slug>/spec.md`, em pt-BR). Elas são **histórico**: o contrato vivo do Mustel é o
+manifesto + os testes descritos acima.
+

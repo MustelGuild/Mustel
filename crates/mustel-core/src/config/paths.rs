@@ -41,6 +41,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// CONTRACT: IF-161
     fn override_directory_wins() {
         assert_eq!(
             config_dir_with(Some(Path::new("/tmp/mustel-tests"))),
@@ -49,6 +50,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-131
     fn without_override_uses_a_directory_named_mustel() {
         let dir = config_dir_with(None).expect("platform config dir must resolve");
         assert!(
@@ -58,6 +60,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-131
     fn config_file_lives_inside_the_config_directory() {
         let path = config_file_path().expect("platform config file path");
         assert_eq!(

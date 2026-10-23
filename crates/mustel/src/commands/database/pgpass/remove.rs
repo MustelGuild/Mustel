@@ -70,12 +70,14 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-101
     fn the_key_uses_the_same_defaults_as_add() {
         let key = key_for(&args("mydb"));
         assert_eq!(key.formatted_key(), "localhost:5432:mydb:postgres");
     }
 
     #[test]
+    /// CONTRACT: IF-101
     fn the_wildcard_is_a_literal_part_of_the_key() {
         let mut command = args("mydb");
         command.host = Some("*".to_string());

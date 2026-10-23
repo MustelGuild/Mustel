@@ -71,6 +71,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// CONTRACT: IF-112
     fn databases_cell_follows_the_three_legacy_cases() {
         let auto = ServerConfigEntry {
             fetch_all_databases: true,
@@ -89,6 +90,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-112
     fn row_matches_the_legacy_columns() {
         let server = ServerConfigEntry {
             name: "dev".to_string(),

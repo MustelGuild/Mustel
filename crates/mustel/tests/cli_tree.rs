@@ -58,6 +58,7 @@ const SCOPE_COMMANDS: &[&[&str]] = &[
 ];
 
 #[test]
+/// CONTRACT: IF-002
 fn root_help_lists_the_migrated_groups_and_the_gui() {
     let help = stdout_of(&["--help"]);
     for group in ["query", "database", "settings", "gui"] {
@@ -69,6 +70,7 @@ fn root_help_lists_the_migrated_groups_and_the_gui() {
 }
 
 #[test]
+/// CONTRACT: IF-007
 fn every_migrated_command_renders_its_own_help() {
     for path in SCOPE_COMMANDS {
         let mut args = path.to_vec();
@@ -83,6 +85,10 @@ fn every_migrated_command_renders_its_own_help() {
 }
 
 #[test]
+/// CONTRACT: IF-010
+/// CONTRACT: IF-050
+/// CONTRACT: IF-070
+/// CONTRACT: IF-110
 fn flags_follow_the_legacy_contract() {
     let query_help = stdout_of(&["query", "run", "--help"]);
     for flag in [
@@ -170,6 +176,7 @@ fn flags_follow_the_legacy_contract() {
 }
 
 #[test]
+/// CONTRACT: IF-090
 fn pgpass_add_accepts_the_database_as_a_positional_argument() {
     // Decisão do usuário: `pgpass add <banco>` (documentado) é a forma correta, e `--database` fica
     // por compatibilidade. As duas formas convivem; juntas são ambíguas e o parser recusa.
@@ -258,6 +265,7 @@ fn no_command_reports_not_implemented() {
 }
 
 #[test]
+/// CONTRACT: IF-006
 fn missing_required_argument_follows_the_oracle() {
     // `database pgpass remove` exige <database>. O oráculo (T9) devolve `1` e escreve a mensagem em
     // stdout — o clap devolveria `2` em stderr, então o `main` remapeia (ver `handle_parse_error`).
@@ -275,6 +283,7 @@ fn missing_required_argument_follows_the_oracle() {
 }
 
 #[test]
+/// CONTRACT: IF-003
 fn version_uses_the_workspace_version() {
     let output = stdout_of(&["--version"]);
     assert!(output.contains("mustel 1.0.0"), "got {output}");

@@ -168,6 +168,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// CONTRACT: IF-040
     async fn without_any_accessible_database_the_command_stops_before_writing_files() {
         let output = tempfile::tempdir().expect("tempdir");
         // Servidor sem banco e sem descoberta: o plano sai vazio.
@@ -221,6 +222,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// CONTRACT: IF-041
     async fn the_summary_and_the_file_paths_are_emitted_after_the_run() {
         let output = tempfile::tempdir().expect("tempdir");
         let request = request(vec![server("fora-do-ar", &["app"])], output.path());

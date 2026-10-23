@@ -22,6 +22,7 @@ fn stdout_of(output: &Output) -> String {
 }
 
 #[test]
+/// CONTRACT: IF-114
 fn adds_a_server_with_flags_and_writes_the_config() {
     let dir = TempDir::new().expect("tempdir");
 
@@ -84,6 +85,7 @@ fn adds_a_server_with_flags_and_writes_the_config() {
 }
 
 #[test]
+/// CONTRACT: IF-116
 fn duplicate_name_is_refused_with_exit_40() {
     let dir = TempDir::new().expect("tempdir");
     let first = run(
@@ -125,6 +127,7 @@ fn duplicate_name_is_refused_with_exit_40() {
 }
 
 #[test]
+/// CONTRACT: IF-117
 fn invalid_host_and_port_are_argument_errors() {
     let dir = TempDir::new().expect("tempdir");
 
@@ -192,6 +195,7 @@ fn wildcards_are_accepted_like_the_legacy() {
 }
 
 #[test]
+/// CONTRACT: IF-115
 fn storing_a_password_with_w_cleans_up_after_itself() {
     // O `-W` grava no cofre **real** do usuário, então o teste apaga no fim. Isto não é zelo
     // excessivo: uma execução anterior deixou um `dev.mustel` órfão no Windows Credential Manager,

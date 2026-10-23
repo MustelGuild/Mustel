@@ -46,6 +46,7 @@ fn run_with_config(dir: &Path, args: &[&str]) -> Output {
 }
 
 #[test]
+/// CONTRACT: IF-112
 fn lists_configured_servers_with_the_legacy_columns() {
     let dir = TempDir::new().expect("tempdir");
     std::fs::write(dir.path().join("mustel.jsonc"), SAMPLE_CONFIG).expect("seed config");
@@ -77,6 +78,8 @@ fn lists_configured_servers_with_the_legacy_columns() {
 }
 
 #[test]
+/// CONTRACT: IF-113
+/// CONTRACT: IF-164
 fn listing_an_empty_config_is_success_with_guidance() {
     let dir = TempDir::new().expect("tempdir");
 
@@ -92,6 +95,7 @@ fn listing_an_empty_config_is_success_with_guidance() {
 }
 
 #[test]
+/// CONTRACT: IF-111
 fn listing_creates_the_config_file_on_first_use() {
     let dir = TempDir::new().expect("tempdir");
     assert!(!dir.path().join("mustel.jsonc").exists());

@@ -4,23 +4,25 @@ Este arquivo é a memória do que é **aceito** na migração para Rust: as dive
 (nível N4) entre o Mustel e o FurLab (.NET, o oráculo) e as ocorrências de nome legado que permanecem
 no repositório de propósito.
 
+> **Estado desde 2026-10-22:** o diretório `legacy/` foi removido. O baseline de `oracle/baseline/` é
+> **contrato congelado** e não pode mais ser re-gravado. As menções a caminhos `legacy/...` nos
+> doc-comments são rastreabilidade histórica do porte.
+
 ## 1. Lista branca de resíduos `furlab` / `fur`
 
-O critério da seção 6 do plano (`MustelPlans/migracao-rust.md`) exige que, fora de `legacy/`,
-`openspec/`, `docs/`, `.git/` e `MustelPlans/`, o termo apareça apenas nos lugares abaixo:
+Com o `legacy/` removido, o critério é: fora de `openspec/`, `docs/`, `.git/` e `MustelPlans/`, o termo
+aparece apenas nos lugares abaixo.
 
 | Caminho | Por que permanece |
 |---------|-------------------|
 | `Cargo.toml`, `crates/*/Cargo.toml` | `repository` aponta para `liphvf/FurLab` (D18: o repositório só é renomeado depois) |
-| `crates/**` (doc comments) | **58 linhas** citam o FurLab/FurLab.CLI para rastrear o porte: “contrato `Program.cs` do FurLab”, “Porte do grupo `legacy/FurLab.CLI/Commands/...`”, “o legado diz `fur settings ...`”. É a rastreabilidade da paridade, não resíduo de nome: apagar tornaria o código mais difícil de conferir contra o oráculo |
-| `oracle/baseline/*.json` | são **capturas do oráculo**: a saída do `fur` inclui o nome do binário e da config, e elas são o contrato — não podem ser reescritas |
-| `AGENTS.md`, `CLAUDE.md` | descrevem o legado congelado e as regras de paridade |
-| `README.md`, `README.pt-BR.md` | aviso de migração: o que permaneceu no .NET |
-| `winget-publish.ps1` | URL de release do repositório `liphvf/FurLab` (D18) |
+| `crates/**` (doc comments) | citam o FurLab/FurLab.CLI para rastrear o porte (“contrato `Program.cs` do FurLab”, “Porte de `PgPassService.cs`”). É rastreabilidade da paridade: apagar tornaria mais difícil conferir o código contra o contrato |
+| `oracle/baseline/*.json` | são **capturas do oráculo**: a saída do `fur` inclui o nome do binário e da config, e elas são o contrato congelado — não podem ser reescritas |
+| `AGENTS.md` | descreve a paridade com o legado e o estado do baseline congelado |
+| `README.md`, `README.pt-BR.md` | explicam de onde o Mustel veio (produto anterior) |
+| `publish.ps1`, `publish.sh` | `repository`/URL de release do repositório `liphvf/FurLab` (D18) |
 | `.github/workflows/release-build.yml` | nomes do repositório e do pacote (`Mustel.CLI`) nos comentários e no artefato |
-| `oracle/perf/baseline.md`, `oracle/README.md`, `oracle/known-divergences.md` | documentam o oráculo por nome |
-| `.vscode/launch.json`, `.vscode/tasks.json` | configs de debug do legado (`Legacy .NET ...`) |
-| `.claude/skills/furlab-command-manager/**`, `.opencode/skills/furlab-command-manager/**` | skill de convenções C# do legado — `CLAUDE.md` declara que vale **somente** para `legacy/` |
+| `oracle/perf/baseline.md`, `oracle/perf/final.md`, `oracle/README.md`, `oracle/known-divergences.md` | documentam o oráculo e as medições por nome |
 | `.opencode/skills/gh-pr-create/SKILL.md` | exemplos citam o repositório pelo nome atual |
 
 ## 2. Divergências N4 (formatação) aceitas
@@ -28,6 +30,10 @@ O critério da seção 6 do plano (`MustelPlans/migracao-rust.md`) exige que, fo
 Nenhuma registrada até aqui.
 
 ## 2.1 Divergências de comportamento aceitas por decisão de produto
+
+> **Nota de numeração (2026-10-22):** não existe o item **10**. A lacuna é histórica e foi mantida de
+> propósito: `DIV11`..`DIV18` já são citadas em outros documentos, então renumerar quebraria
+> referências. Quem procurar o item 10 não perdeu nada — ele nunca existiu.
 
 | # | Divergência | Decisão | Efeito na comparação |
 |---|-------------|---------|----------------------|

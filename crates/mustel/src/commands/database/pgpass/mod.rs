@@ -34,6 +34,7 @@ mod tests {
     use mustel_core::error::exit_code;
 
     #[test]
+    /// CONTRACT: IF-105
     fn write_failures_become_general_errors_like_the_legacy() {
         assert_eq!(
             map_error(PgPassError::Write).exit_code(),

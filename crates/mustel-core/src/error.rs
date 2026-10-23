@@ -142,6 +142,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// CONTRACT: IF-150
     fn maps_every_variant_to_the_observed_exit_code() {
         let cases: Vec<(CoreError, i32)> = vec![
             (
@@ -224,6 +225,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-153
     fn cancellation_is_identifiable() {
         assert!(CoreError::Cancelled.is_cancelled());
         assert!(!CoreError::Other("boom".to_string()).is_cancelled());

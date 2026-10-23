@@ -309,6 +309,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-016
     fn the_connection_string_is_parsed_like_npgsql() {
         let parsed = parse_connection_string(
             "Host=127.0.0.1;Port=55432;Database=mustel_test;Username=postgres;Password=dev;\
@@ -329,6 +330,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-017
     fn the_ad_hoc_server_takes_the_name_from_the_host_and_drops_the_password() {
         let command = args();
         let ad_hoc = ad_hoc_server(
@@ -352,6 +354,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-020
     fn command_line_overrides_win_over_the_connection_string() {
         let mut command = args();
         command.host = Some("outro.host".to_string());
@@ -368,6 +371,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-019
     fn command_line_overrides_win_over_the_configured_server() {
         let mut command = args();
         command.host = Some("10.0.0.9".to_string());
@@ -397,6 +401,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-022
     fn an_unknown_ssl_mode_falls_back_to_prefer() {
         let mut command = args();
         command.ssl_mode = Some("Inventado".to_string());
@@ -420,6 +425,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-023
     fn an_invalid_port_override_keeps_the_configured_port() {
         let mut command = args();
         command.port = Some("nao-e-porta".to_string());

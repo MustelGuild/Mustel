@@ -1,0 +1,18 @@
+---
+source: crates/mustel/tests/contract_text.rs
+expression: stdout
+---
+Mustel — automation CLI for PostgreSQL queries, database backups and server settings
+
+Usage: mustel [COMMAND]
+
+Commands:
+  query     Execute SQL queries and export results to CSV
+  database  Database utilities
+  settings  Manage Mustel settings and server configurations
+  gui       Open the graphical interface
+  help      Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version

@@ -1,0 +1,49 @@
+# Documentação do Mustel
+
+O Mustel roda SQL em vários servidores PostgreSQL, exporta CSV, faz backup e restore e mantém o
+cadastro de servidores — do terminal ou de uma janela.
+
+Esta documentação segue o **[Diátaxis](https://diataxis.fr/)**. A ideia é simples: existem quatro
+tipos de documento, cada um respondendo a uma necessidade diferente. Misturar os quatro num arquivo
+só é a origem da maior parte da documentação ruim.
+
+## Por onde começar
+
+| Você quer… | Vá para |
+|---|---|
+| **aprender** fazendo, do zero | [Tutorial: primeiros passos](tutorials/primeiros-passos.md) |
+| **resolver um problema** concreto | [How-to guides](how-to/) |
+| **consultar** um comando, flag, exit code ou formato de arquivo | [Referência](reference/) |
+| **entender por que** algo é assim | [Explicação](explanation/) |
+
+## A bússola
+
+O que separa os quadrantes não é o assunto, é a intenção do leitor:
+
+| O conteúdo… | …e serve para… | …então é |
+|---|---|---|
+| informa **ação** | **adquirir** habilidade | **tutorial** |
+| informa **ação** | **aplicar** habilidade | **how-to** |
+| informa **cognição** | **aplicar** habilidade | **referência** |
+| informa **cognição** | **adquirir** habilidade | **explicação** |
+
+Na prática: um tutorial ensina; um how-to resolve; a referência descreve; a explicação justifica.
+
+## O que havia aqui antes
+
+Os 11 documentos anteriores eram do produto .NET (e de um plano de GUI em Electron que nunca existiu
+no Mustel). Antes de removê-los, cada um foi minerado — esta tabela registra o destino de cada um.
+
+| Documento antigo | Destino |
+|---|---|
+| `QUERY_COMMAND.md` | [Referência do `query run`](reference/query-run.md) + [Explicação do CSV](explanation/csv-como-o-npgsql.md) (corrigido: `--exclude` casa **nomes exatos**, não curingas) |
+| `MULTI_SERVER.md` | [How-to: rodar em vários bancos](how-to/varios-bancos.md) + [Referência do `query run`](reference/query-run.md) |
+| `pt-BR/credenciais.md` | [Explicação: credenciais](explanation/credenciais.md) (já era doc do Mustel; movido) |
+| `rust-postgres-spike.md` | [Explicação: por que `tokio-postgres`](explanation/por-que-tokio-postgres.md) |
+| `pt-BR/FEATURE_SPECIFICATION.md`, `en/FEATURE_SPECIFICATION.md` | Descartados: descrevem features dos grupos não migrados (`file`, `claude`, `opencode`, `winget`) e o blob DPAPI |
+| `pt-BR/ARCHITECTURE.md`, `en/ARCHITECTURE.md` | Descartados: arquitetura .NET (DI, `System.CommandLine`); a do Mustel está no `AGENTS.md` |
+| `pt-BR/GUI_REFACTORING_PLAN.md`, `en/GUI_REFACTORING_PLAN.md` | Descartados: plano de GUI em Electron/Angular, abandonado em favor do egui (D5) |
+| `pt-BR/SESSION_SUMMARY_2025-03-17.md` | Descartado: diário de sessão, sem valor de contrato |
+
+O contrato vigente não está aqui: está em [`contrato-de-interface.md`](contrato-de-interface.md) e é
+verificado por `cargo test --workspace`.

@@ -1,0 +1,5 @@
+---
+source: crates/mustel/tests/contract_text.rs
+expression: stdout
+---
+Entry added: localhost:5432:mydb:postgres

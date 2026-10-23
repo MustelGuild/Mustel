@@ -126,6 +126,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// CONTRACT: IF-062
     async fn validation_failures_exit_with_2() {
         for database in [None, Some("")] {
             let exit = run(args(database), &CancellationToken::new())
@@ -136,6 +137,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// CONTRACT: IF-058
     async fn a_missing_pg_dump_exits_with_3() {
         // Localizador real: nesta máquina não há `pg_dump` no PATH do teste, mas se houver o
         // argumento é válido e o comando só tentaria o dump; o que importa aqui é a tabela de
@@ -146,6 +148,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-061
     fn the_flags_are_translated_verbatim() {
         let mut command = args(Some("mydb"));
         command.host = Some("127.0.0.1".to_string());

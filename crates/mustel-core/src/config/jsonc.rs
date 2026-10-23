@@ -72,6 +72,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-130
     fn keeps_double_slash_inside_strings() {
         let input = r#"{ "host": "http://db.local", "path": "a/*b*/c" }"#;
         let stripped = strip_comments(input);

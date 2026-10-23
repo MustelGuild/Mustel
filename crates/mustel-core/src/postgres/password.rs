@@ -99,18 +99,21 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-018
     fn the_flag_wins() {
         let resolved = resolve_password(Some("da-flag"), Some("guardada"), never).expect("senha");
         assert_eq!(resolved, "da-flag");
     }
 
     #[test]
+    /// CONTRACT: IF-018
     fn the_stored_password_is_used_when_there_is_no_flag() {
         let resolved = resolve_password(None, Some("guardada"), never).expect("senha");
         assert_eq!(resolved, "guardada");
     }
 
     #[test]
+    /// CONTRACT: IF-018
     fn the_prompt_is_the_last_resort_and_its_value_is_used_verbatim() {
         assert_eq!(
             resolve_password(None, None, || Ok("digitada".to_string())).expect("senha"),

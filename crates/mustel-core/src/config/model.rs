@@ -174,6 +174,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-114
     fn serializes_with_camel_case_keys_in_legacy_order() {
         let config = UserConfig::default();
         let json = serde_json::to_string_pretty(&config).expect("serializes");
@@ -184,6 +185,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-129
     fn tolerates_unknown_fields_from_hand_edited_files() {
         let json = r#"{
           "servers": [

@@ -1,9 +1,10 @@
 <div align="center">
-  <img src="assets/FurLab_icon.png" alt="FurLab Logo" width="160" />
+  <img src="assets/Mustel_icon.png" alt="Mustel Logo" width="160" />
 
-  # FurLab
+  # Mustel
 
-  Uma poderosa ferramenta CLI .NET para automatizar tarefas comuns de desenvolvimento.
+  Um único binário nativo para rodar SQL em vários servidores PostgreSQL, exportar CSV, fazer backup e
+  restore — do terminal ou de uma janela.
 </div>
 
 ---
@@ -11,28 +12,18 @@
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K3K41AP4RO)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-yellow?logo=buymeacoffee&logoColor=white)](https://www.buymeacoffee.com/liphvf)
 
-> **Reescrita em Rust em andamento** (branch `feat/rust-migration`). Os grupos `query`, `database` e
-> `settings` foram reescritos em Rust como **Mustel** — binário `mustel`, instalado a partir do
-> arquivo de release (ver abaixo). A implementação .NET agora vive em `legacy/`: é o **oráculo de
-> paridade** durante a migração e continua sendo o produto dos demais grupos (`file`, `claude`,
-> `opencode`, `winget`, `windowsfeatures`, `docker`) até a segunda onda.
-> O plano da migração está em [`MustelPlans/migracao-rust.md`](MustelPlans/migracao-rust.md).
+O Mustel é a reescrita em Rust de um CLI .NET que se chamava FurLab. Os três grupos do produto —
+`query`, `database` e `settings` — estão migrados, e a interface gráfica vem no mesmo binário. A
+implementação .NET foi removida do repositório; o comportamento observável dela está congelado como
+**contrato de teste** em `oracle/baseline/`, e cada caso roda em `cargo test`.
 
-> **Estado (2026-10-21)**: os três grupos estão migrados e a GUI também — `mustel gui`.
-> As seções **Mustel (atual)** abaixo descrevem o que existe hoje; **FurLab (.NET, congelado)**
-> documenta o CLI legado que ainda responde pelos grupos restantes.
+## Descrição
 
----
+O Mustel executa SQL em vários servidores PostgreSQL de uma vez, grava o resultado em CSV, faz backup e
+restore com `pg_dump`/`pg_restore` e mantém o cadastro de servidores — do terminal (`mustel ...`) ou de
+uma janela (`mustel gui`), sobre o **mesmo núcleo**.
 
-## Mustel (atual)
-
-### Descrição
-
-Mustel é a reescrita em Rust do CLI FurLab: um único binário nativo que roda SQL em vários
-servidores PostgreSQL, exporta CSV, faz backup e restore de bancos e gerencia o cadastro de
-servidores — pelo terminal (`mustel ...`) ou por uma janela (`mustel gui`), sobre o **mesmo núcleo**.
-
-### Instalação
+## Instalação
 
 Gere o pacote de release da plataforma atual:
 
@@ -43,22 +34,22 @@ Gere o pacote de release da plataforma atual:
 ./publish.sh
 ```
 
-Cada um produz `packaging/mustel-<versão>-<target>/` (binário, `mustel.example.jsonc`, `LICENSE`,
+Cada um produz `packaging/mustel-<versão>-<alvo>/` (binário, `mustel.example.jsonc`, `LICENSE`,
 `README.txt`), um arquivo compactado (`.zip` no Windows, `.tar.gz` no Unix) e o `.sha256` ao lado.
-Copie o binário para um diretório no `PATH`.
+Copie o binário para um diretório do seu `PATH`.
 
 **Alvos suportados**: `x86_64-pc-windows-msvc` e `x86_64-unknown-linux-gnu`.
-macOS **não** é suportado por ora.
+macOS **não** é suportado por enquanto.
 
 **Dependência de runtime (Linux)**: `libdbus-1.so.3` — `sudo apt install libdbus-1-3` no
-Debian/Ubuntu. Para abrir a janela é preciso também X11 ou Wayland com OpenGL; o CLI sozinho
-já carrega a libdbus na inicialização.
+Debian/Ubuntu. Abrir a janela exige também X11 ou Wayland com OpenGL; o CLI sozinho ainda carrega a
+libdbus na partida.
 
 > `cargo install mustel` e o pacote do winget (`Mustel.CLI`) **ainda não estão publicados** — ver
-> [`MustelPlans/release-pendencias.md`](MustelPlans/release-pendencias.md). Até lá, use o arquivo
-> de release.
+> [`MustelPlans/release-pendencias.md`](MustelPlans/release-pendencias.md). Até lá, use o arquivo de
+> release.
 
-### O que está migrado
+## Comandos
 
 | Grupo | Comandos |
 |---|---|
@@ -67,19 +58,38 @@ já carrega a libdbus na inicialização.
 | `settings` | `settings db-servers ls/add/rm/test/set-password` |
 | `gui` | `mustel gui` — cadastro de servidores e `query run` numa janela |
 
-Os demais grupos (`file`, `claude`, `opencode`, `winget`, `windowsfeatures`, `docker`) continuam
-sendo o CLI .NET em `legacy/` — segunda onda.
+### Exemplos
 
-### Configuração
+```bash
+# Rodar um arquivo SQL nos servidores selecionados
+mustel query run -i query.sql
+
+# Consulta inline, todos os bancos do servidor
+mustel query run -c "select count(*) from pedidos" --all --exclude postgres
+
+# Cadastro de servidores
+mustel settings db-servers add -n dev -H localhost -p 5432 -U postgres -d mydb
+mustel settings db-servers set-password dev
+mustel settings db-servers ls
+
+# Backup e restore
+mustel database backup mydb -o ./backups
+mustel database restore mydb ./backups/mydb.dump
+
+# pgpass.conf
+mustel database pgpass add mydb --host localhost --username postgres
+```
+
+## Configuração
 
 `%APPDATA%\Mustel\mustel.jsonc` no Windows, `$XDG_CONFIG_HOME/Mustel/mustel.jsonc`
-(normalmente `~/.config/Mustel/mustel.jsonc`) no Linux. JSONC, aceita comentários. As senhas **não**
-ficam no arquivo: vão para o cofre do sistema (Windows Credential Manager / Secret Service), com
-chave pelo nome do servidor.
+(normalmente `~/.config/Mustel/mustel.jsonc`) no Linux. JSONC, com comentários. As senhas **não**
+ficam no arquivo: vão para o cofre do SO (Windows Credential Manager / Secret Service), com a chave
+igual ao nome do servidor.
 
-Comece pelo [`mustel.example.jsonc`](mustel.example.jsonc).
+Comece por [`mustel.example.jsonc`](mustel.example.jsonc).
 
-### Rodar a partir do código
+## Como rodar a partir do código
 
 ```bash
 cargo run -p mustel -- --help
@@ -88,287 +98,49 @@ cargo run -p mustel -- gui           # o mesmo, explícito
 cargo run -p mustel --no-default-features -- --help   # só CLI, sem egui no build
 ```
 
-Rodar `mustel` **sem subcomando** abre a GUI quando há terminal interativo (digitando no terminal ou
-dando duplo-clique no binário). Sem terminal — script, pipe, CI — ele imprime a ajuda e sai 0, igual
-ao CLI .NET, então nada quebra para automação.
+Rodar `mustel` **sem subcomando** abre a GUI quando existe terminal interativo (digitando, ou com
+duplo-clique no binário). Sem terminal — script, pipe, CI — ele imprime a ajuda e sai 0, então nada
+quebra para automação.
 
-A GUI vive no mesmo binário, então todo comando paga o custo de partida dela (~55 ms). Para quem só
-usa script, o build com `--no-default-features` entrega o CLI enxuto (7,8 ms em vez de 63 ms).
+A GUI vive no mesmo binário, então todo comando paga o custo de partida dela (~55 ms). Se você só
+scripta, construa com `--no-default-features` para ter o CLI enxuto (7,8 ms em vez de 63 ms).
 
----
+## O contrato
 
-## FurLab (.NET, congelado — oráculo de paridade)
+O comportamento é preso por duas camadas dentro de `cargo test`:
 
-Daqui para baixo está o CLI .NET como foi congelado. Ele ainda responde pelos grupos que não
-foram migrados e é a referência com que o porte em Rust é comparado (`oracle/README.md`).
+- `oracle/baseline/*.json` — 47 capturas congeladas do binário antigo, reexecutadas contra o `mustel`
+  (`contract_replay`);
+- [`docs/contrato-de-interface.md`](docs/contrato-de-interface.md) — uma linha por decisão de
+  interface, cada uma apontando o teste que a prova (`contract_manifest`).
 
-
-## Descrição
-
-FurLab é uma interface de linha de comando (CLI) multiplataforma construída com .NET que ajuda desenvolvedores a automatizar tarefas repetitivas de desenvolvimento. Ela fornece comandos para operações de banco de dados, gerenciamento de arquivos, instalação de ferramentas de IA (Claude Code, OpenCode) e gerenciamento de pacotes Windows.
-
-> **Nota**: Este é um projeto hobby criado para uso pessoal. Pode não seguir todas as melhores práticas ou ter testes abrangentes. Contribuições e feedback são bem-vindos, mas por favor tenha em mente que isso foi criado para resolver as necessidades específicas do autor.
-
-## Problema que Resolve
-
-Desenvolvedores frequentemente executam tarefas repetitivas que podem ser automatizadas:
-- Combinar múltiplos arquivos em um só
-- Instalar e configurar ferramentas de IA para desenvolvimento
-- Fazer backup e restaurar pacotes do Windows
-- Executar queries SQL em múltiplos servidores PostgreSQL
-
-FurLab consolida essas tarefas em uma única ferramenta CLI fácil de usar.
-
-## Principais Funcionalidades
-
-- **Database Backup**: Faz backup de bancos de dados PostgreSQL usando pg_dump
-- **Execução de Queries**: Executa queries SQL em múltiplos servidores PostgreSQL com seleção interativa, execução paralela e exportação CSV
-- **Guard Rail para Queries Destrutivas**: Detecção automática de INSERT, UPDATE, DELETE, ALTER, DROP, etc. com prompt de confirmação
-- **Gerenciamento de Servidores**: Adiciona, lista, remove e testa servidores PostgreSQL via CLI
-- **File (Combine)**: Combina múltiplos arquivos em um único
-- **Integração com Claude Code**: Instala e configura CLI do Claude Code
-- **Integração com OpenCode**: Instala e configura CLI do OpenCode
-- **Gerenciador Winget**: Faz backup e restaura pacotes do gerenciador de pacotes Windows
-
-## Tecnologias
-
-- **Framework**: .NET 10
-- **Linguagem**: C#
-- **CLI Parsing**: System.CommandLine
-- **Banco de Dados**: Npgsql (PostgreSQL)
-- **Configuração**: JSONC (furlab.jsonc)
-- **UI**: Spectre.Console
-
-## Instalação
-
-### Pré-requisitos
-
-- .NET SDK 10 ou superior
-- Windows (necessário para comandos Claude, OpenCode e Winget)
-
-### Instalar como Ferramenta .NET
-
-```bash
-dotnet tool install --global FurLab
-```
-
-Ou instalar pelo NuGet:
-
-```bash
-dotnet tool install -g FurLab
-```
-
-### Compilar a Partir do Código Fonte
-
-```bash
-git clone https://github.com/seu-repositorio/FurLab.git
-cd FurLab
-dotnet restore
-dotnet build
-```
-
-## Como Executar Localmente
-
-```bash
-dotnet run -- --help
-```
-
-## Exemplos de Uso Básico
-
-### Execução de Queries
-
-```bash
-# Executar arquivo SQL nos servidores selecionados
-FurLab query run --input query.sql
-
-# Executar query inline
-FurLab query run --command "SELECT * FROM users"
-
-# Executar com diretório de saída
-FurLab query run -i query.sql -o ./results
-
-# Gerar um CSV por servidor
-FurLab query run -i query.sql --separate-files
-```
-
-Na execução, FurLab exibe um prompt interativo de seleção de servidores (todos pré-selecionados). Os resultados são exportados para CSV com colunas `Server, Database, <colunas da query>`.
-
-### Gerenciamento de Servidores
-
-```bash
-# Listar servidores configurados
-FurLab settings db-servers ls
-
-# Adicionar servidor interativamente
-FurLab settings db-servers add -i
-
-# Adicionar servidor com flags
-FurLab settings db-servers add -n dev -h localhost -p 5432 -U postgres -W minhasenha
-
-# Testar conexão com servidor
-FurLab settings db-servers test -n dev
-
-# Remover servidor
-FurLab settings db-servers rm -n dev
-```
-
-### Database Backup
-
-```bash
-# Backup com configurações padrão
-FurLab database backup meubanco
-
-# Backup com configurações personalizadas
-FurLab database backup meubanco --host localhost --port 5432 --username postgres --password minhasenha
-
-# Backup com caminho de saída personalizado
-FurLab database backup meubanco -o "C:\backups\meubanco.backup"
-```
-
-### Operações de Arquivo
-
-```bash
-# Combinar múltiplos arquivos em um só
-FurLab file combine -i "C:\temp\*.sql" -o "C:\temp\resultado.sql"
-
-# Converter encoding de arquivos (detecção automática da origem)
-FurLab file convert-encoding -i "src/**/*.cs" --to UTF-8
-
-# Converter com encoding de origem explícito e criar backup
-FurLab file convert-encoding -i "*.txt" --from Latin1 --to UTF-8 --backup
-
-# Converter e salvar em um diretório diferente
-FurLab file convert-encoding -i "docs/*.md" --to UTF-8 -o "converted_docs/"
-```
-
-### Instalar Claude Code
-
-```bash
-FurLab claude install
-```
-
-### Backup/Restaurar Winget
-
-```bash
-FurLab winget backup -o "C:\backup"
-FurLab winget restore -i "C:\backup\backup-winget.json"
-```
-
-## Configuração
-
-FurLab armazena a configuração do usuário em `%LocalAppData%\FurLab\furlab.jsonc` (formato JSONC com suporte a comentários).
-
-### Exemplo furlab.jsonc
-
-```jsonc
-{
-  // Configuração de servidores PostgreSQL
-  "servers": [
-    {
-      "name": "dev",           // Identificador único
-      "host": "localhost",
-      "port": 5432,
-      "username": "postgres",
-      "password": "minhasenha",
-      "databases": ["meubanco", "app_dev"],
-      "sslMode": "Prefer",
-      "timeout": 30,
-      "commandTimeout": 300,
-      "maxParallelism": 4
-    },
-    {
-      "name": "prod",
-      "host": "prod-db.empresa.com",
-      "port": 5432,
-      "username": "readonly",
-      "password": "secreta",
-      "fetchAllDatabases": true,
-      "excludePatterns": ["template*", "postgres"],
-      "sslMode": "Require"
-    }
-  ],
-  // Configurações padrão
-  "defaults": {
-    "outputFormat": "csv",
-    "outputDirectory": "./results",
-    "fetchAllDatabases": false,
-    "requireConfirmation": true,
-    "maxParallelism": 4
-  }
-}
-```
-
-## Lista de Comandos
-
-| Comando | Descrição |
-|---------|-----------|
-| `query run` | Executa queries SQL e exporta para CSV |
-| `settings db-servers ls` | Lista servidores configurados |
-| `settings db-servers add` | Adiciona servidor (interativo ou com flags) |
-| `settings db-servers rm` | Remove servidor |
-| `settings db-servers test` | Testa conexão com servidor |
-| `database backup` | Faz backup de banco de dados PostgreSQL |
-| `file combine` | Combina múltiplos arquivos em um único |
-| `claude` | Integração com Claude Code |
-| `opencode` | Integração com CLI do OpenCode |
-| `winget` | Gerenciador de pacotes Windows |
-
-## Detalhes do Comando Query
-
-### Opções
-
-| Opção | Descrição |
-|-------|-----------|
-| `-i, --input <arquivo>` | Arquivo SQL de entrada |
-| `-c, --command <sql>` | Query SQL inline (mutuamente exclusivo com `-i`) |
-| `-o, --output <caminho>` | Arquivo ou diretório de saída |
-| `--separate-files` | Um CSV por servidor (padrão: arquivo consolidado) |
-| `--all, -a` | Consultar todas as databases do servidor |
-| `--exclude <dbs>` | Databases para excluir, separadas por vírgula |
-| `--no-confirm` | Pular confirmação de query destrutiva |
-
-### Formato do CSV
-
-- **Consolidado** (padrão): Arquivo único com colunas `Server, Database, <colunas da query>`
-- **Arquivos separados** (`--separate-files`): Um arquivo por servidor (`<server>_<timestamp>.csv`)
-- Erros são logados no terminal, não incluídos no CSV
-
-### Detecção de Queries Destrutivas
-
-Queries contendo INSERT, UPDATE, DELETE, ALTER, DROP, CREATE, TRUNCATE, MERGE, GRANT, REVOKE ou SET ROLE acionam um prompt de confirmação antes da execução. Use `--no-confirm` para pular em CI/scripts.
+O gate é `cargo test --workspace`. O `oracle-compare` continua como diagnóstico que mostra as
+diferenças de texto N4 caso a caso.
 
 ## Documentação
 
-Para informações mais detalhadas, consulte:
-
-- [Arquitetura](./docs/pt-BR/ARCHITECTURE.md)
-- [Especificação de Funcionalidades](./docs/pt-BR/FEATURE_SPECIFICATION.md)
-- [Comando Query](./docs/QUERY_COMMAND.md)
-- [Multi-Server](./docs/MULTI_SERVER.md)
+Comece por [`docs/README.md`](docs/README.md), organizada em quatro quadrantes (tutorial, how-to,
+referência, explicação).
 
 ## Contribuição
 
-Contribuições são bem-vindas! Por favor, siga estes passos:
+Contribuições são bem-vindas:
 
-1. Fork o repositório
-2. Crie uma branch de funcionalidade (`git checkout -b feature/nova-funcionalidade`)
-3. Commit suas mudanças (`git commit -m 'Adiciona nova funcionalidade'`)
-4. Push para a branch (`git push origin feature/nova-funcionalidade`)
+1. Faça um fork do repositório
+2. Crie uma branch (`git checkout -b feature/amazing-feature`)
+3. Faça o commit (`git commit -m 'Add amazing feature'`)
+4. Faça o push (`git push origin feature/amazing-feature`)
 5. Abra um Pull Request
 
-Por favor, certifique-se de que todos os testes passam e que o código segue os padrões de codificação do projeto.
+O guia do repositório para quem contribui e para agentes é o [`AGENTS.md`](AGENTS.md). Antes de abrir
+um PR, rode `cargo fmt`, `cargo clippy -- -D warnings` e `cargo test --workspace`.
 
 ## Licença
 
-Este projeto está licenciado sob a **GNU General Public License v3.0** (`GPL-3.0-only`) — veja o
-arquivo [LICENSE](./LICENSE) para detalhes. Os manifestos do Cargo declaram `license = "GPL-3.0-only"`.
+Este projeto é licenciado sob a **GNU General Public License v3.0** (`GPL-3.0-only`) — ver o arquivo
+[LICENSE](./LICENSE) para detalhes. Os manifestos do Cargo declaram `license = "GPL-3.0-only"`.
 
 ---
 
-🇺🇸 English: [README.md](./README.md)  
-🇧🇷 Português (padrão)
-
----
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K3K41AP4RO)
-<a href="https://www.buymeacoffee.com/liphvf"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="36" /></a>
+🇺🇸 Inglês (padrão): [README.md](./README.md)  
+🇧🇷 Português (este arquivo)

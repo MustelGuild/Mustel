@@ -9,7 +9,6 @@ use base64::engine::general_purpose::STANDARD;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::config_sandbox::LegacyConfigSandbox;
 use crate::paths::workspace_dir;
 
 /// Placeholder do diretório de trabalho do harness.
@@ -23,6 +22,17 @@ pub const REPO_PLACEHOLDER: &str = "<REPO>";
 /// Placeholder do diretório pessoal do usuário.
 pub const HOME_PLACEHOLDER: &str = "<HOME>";
 
+/// Caminho que o **legado** usava para a configuração, para redigir as capturas antigas.
+///
+/// O `legacy/` saiu do repositório, mas o baseline congelado ainda contém esse caminho no texto; sem
+/// esta substituição o arquivo versionado carregaria o nome de usuário da máquina que capturou.
+fn legacy_config_path() -> PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(|| PathBuf::from("C:\\Users\\legacy"))
+        .join("FurLab")
+        .join("furlab.jsonc")
+}
+
 /// Substitui caminhos específicos da máquina por placeholders.
 ///
 /// Sem isso o baseline versionado carrega `C:\Users\liphv\...` (ou `/home/...`) e deixa de ser
@@ -35,10 +45,7 @@ pub fn redact(text: &str) -> String {
     let mut result = text.to_string();
     let mut replacements = vec![
         (workspace_dir(), WORKDIR_PLACEHOLDER.to_string()),
-        (
-            LegacyConfigSandbox::config_path(),
-            LEGACY_CONFIG_PLACEHOLDER.to_string(),
-        ),
+        (legacy_config_path(), LEGACY_CONFIG_PLACEHOLDER.to_string()),
         (
             crate::paths::mustel_config_dir(),
             MUSTEL_CONFIG_PLACEHOLDER.to_string(),

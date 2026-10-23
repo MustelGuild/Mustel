@@ -1,49 +1,36 @@
 # Oráculo de paridade
 
-O Mustel é uma reescrita: o comportamento atual é **observado no binário .NET** (o oráculo), não
-inferido da documentação. Este diretório guarda o processo e as evidências dessa observação.
+O Mustel é uma reescrita: o comportamento do produto anterior foi **observado no binário .NET** e
+congelado aqui. Este diretório guarda as evidências dessa observação.
+
+> **Desde 2026-10-22 o diretório `legacy/` não existe mais.** O baseline é **contrato congelado**: não
+> há como re-gravá-lo. Mudar comportamento agora significa mudar um teste, com revisão explícita — não
+> re-capturar.
 
 ```
 oracle/
-├── bin/                  (ignorado) FurLab.CLI publicado pelo harness
-├── workdir/              (ignorado) diretório de trabalho das capturas
-├── reports/              (ignorado) relatórios de `oracle-compare`
-├── baseline/             (versionado) uma captura por caso — o contrato
+├── baseline/             (versionado) uma captura por caso — o contrato congelado
 ├── perf/                 números de performance (.NET como baseline)
 └── known-divergences.md  divergências aceitas + lista branca de resíduos do nome legado
 ```
 
-## Como o baseline é capturado
+## Como o contrato é verificado hoje
 
 ```bash
-# publica o legado em oracle/bin e grava/atualiza oracle/baseline/*.json
-cargo run -p mustel-testkit --bin oracle-capture
+# o gate: replay das 47 capturas + manifesto + superfície, sem .NET
+cargo test --workspace
 
-# reaproveita o binário já publicado (mais rápido)
-cargo run -p mustel-testkit --bin oracle-capture -- --skip-publish
-
-# usa um binário específico
-MUSTEL_ORACLE_BIN=/caminho/para/FurLab.CLI cargo run -p mustel-testkit --bin oracle-capture
+# diagnóstico: mostra as diferenças de texto (N4) caso a caso
+cargo run -p mustel-testkit --bin oracle-compare -- --report
 ```
 
 Cada captura (`oracle/baseline/<slug>.json`) registra: argumentos, **exit code**, `stdout`/`stderr`
-(como texto *lossy* para leitura **e** em base64, porque a saída de tabela do legado não é UTF-8) e
+(como texto *lossy* para leitura **e** em base64, porque a saída de tabela do antigo não era UTF-8) e
 os artefatos gerados (hash SHA-256 + conteúdo quando é texto).
 
-O `oracle-capture` **preserva a configuração real do usuário**: ele salva
-`%LOCALAPPDATA%\FurLab\furlab.jsonc`, semeia os fixtures, captura e restaura no fim (inclusive em
-pânico, via `Drop`).
+Do lado do Mustel, a configuração e o `pgpass.conf` são sempre isolados (`MUSTEL_CONFIG_DIR`,
+`MUSTEL_PGPASS_FILE`) — nenhum arquivo real do usuário é tocado por teste ou comparação.
 
-O mesmo vale para o **`pgpass.conf`** (`%APPDATA%\postgresql\pgpass.conf`), que o legado resolve por
-`SpecialFolder.ApplicationData`: como no Windows esse valor vem do **registro**, apontar `%APPDATA%`
-para outro diretório não muda o arquivo lido (verificado na prática). Como esse arquivo guarda
-**senhas em texto claro**, o harness grava também uma cópia em `oracle/workdir/legacy-pgpass.backup`
-antes de sobrescrever — se o processo morrer sem passar pelo `Drop`, a recuperação é copiar o arquivo
-de volta. Nenhum caso do baseline pode rodar sem semear o `pgpass.conf` (o `oracle-capture` recusa, com
-erro, um caso de `pgpass` com `pgpass_seed: unchanged`).
-
-Do lado do Mustel o arquivo é **outro**: `oracle/workdir/mustel-pgpass/postgresql/pgpass.conf`, chegado
-ao processo por `MUSTEL_PGPASS_FILE`. O arquivo real do usuário nunca é tocado pelo `mustel`.
 
 ## Fatos de paridade já observados (T9)
 

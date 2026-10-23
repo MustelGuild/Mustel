@@ -261,6 +261,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-116
     fn a_repeated_name_is_refused_with_exit_40() {
         let (_directory, store) = store();
         add(&store, &server("dev")).expect("cadastra");
@@ -295,6 +296,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-118
     fn a_server_without_username_is_accepted_like_in_the_legacy() {
         let (_directory, store) = store();
         let anonymous = ServerConfigEntry {

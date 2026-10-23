@@ -340,6 +340,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-096
     fn add_preserves_existing_entries_and_appends_colada_when_there_is_no_final_newline() {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let path = dir.path().join("pgpass.conf");
@@ -372,6 +373,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-097
     fn duplicate_identity_does_not_touch_the_file() {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let path = dir.path().join("pgpass.conf");
@@ -455,6 +457,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-098
     fn list_is_empty_when_the_file_does_not_exist_or_has_no_valid_line() {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let path = dir.path().join("pgpass.conf");
@@ -473,6 +476,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-098
     fn list_ignores_comments_and_reads_every_valid_line() {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let path = dir.path().join("pgpass.conf");
@@ -492,6 +496,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-099
     fn list_reads_a_file_with_utf8_bom_and_invalid_bytes() {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let path = dir.path().join("pgpass.conf");
@@ -509,6 +514,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-102
     fn remove_deletes_only_the_matching_entry() {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let path = dir.path().join("pgpass.conf");
@@ -537,6 +543,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-102
     fn remove_leaves_the_file_untouched_when_the_entry_is_not_there() {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let path = dir.path().join("pgpass.conf");

@@ -2201,6 +2201,8 @@ dependencies = [
  "insta",
  "mustel-core",
  "mustel-gui",
+ "mustel-testkit",
+ "serde_json",
  "tabled",
  "tempfile",
  "tokio",

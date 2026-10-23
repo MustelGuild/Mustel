@@ -205,6 +205,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// CONTRACT: IF-111
     fn native_newlines_follow_the_platform() {
         let converted = native_newlines("a\nb".to_string());
         if cfg!(windows) {

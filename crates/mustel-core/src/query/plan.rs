@@ -234,6 +234,8 @@ mod tests {
     }
 
     #[tokio::test]
+    /// CONTRACT: IF-026
+    /// CONTRACT: IF-042
     async fn a_failed_discovery_warns_and_falls_back_to_the_configuration() {
         // Porta fechada na máquina de teste: a descoberta falha rápido e o plano cai no cadastro.
         let mut server = server("fora-do-ar", &["app"]);

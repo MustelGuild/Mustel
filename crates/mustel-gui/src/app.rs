@@ -17,20 +17,23 @@ use std::sync::mpsc::{Receiver, Sender};
 use mustel_core::config::{ConfigStore, ServerConfigEntry};
 use mustel_core::events::Status;
 use mustel_core::signal::CancellationToken;
-use mustel_core::usecases::{db_servers, query_run};
+use mustel_core::usecases::{db_servers, gui_prefs, query_run};
 
 use crate::actions;
 use crate::events::{ChannelSink, GuiEvent};
 use crate::query;
 use crate::request::{JobResult, Request};
 use crate::runtime::Runtime;
-use crate::screens::{query as query_screen, servers as servers_screen};
+use crate::screens::{
+    query as query_screen, servers as servers_screen, settings as settings_screen,
+};
 
 /// Qual tela está à frente.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Screen {
     Servers,
     Query,
+    Settings,
 }
 
 /// O job em andamento.
@@ -63,6 +66,8 @@ pub struct App {
     schemas: crate::schema_cache::SchemaCache,
     /// Bancos descobertos e senha presente, por servidor (linha "Referência do autocomplete").
     reference: crate::reference::Reference,
+    /// Aba Settings: preferências de aparência.
+    settings: settings_screen::State,
 }
 
 impl App {
@@ -103,6 +108,15 @@ impl App {
         });
         query.sync_servers(&servers);
 
+        // Preferências de aparência: lidas do cadastro na abertura e aplicadas antes do primeiro
+        // quadro (senão a janela pisca no tamanho padrão).
+        let prefs = ConfigStore::with_default_path()
+            .ok()
+            .and_then(|store| mustel_core::usecases::gui_prefs::load(&store).ok())
+            .flatten();
+        let settings = settings_screen::State::with_prefs(prefs.as_ref());
+        crate::fonts::apply(&cc.egui_ctx, settings.chosen());
+
         Ok(Self {
             runtime,
             ctx: cc.egui_ctx.clone(),
@@ -118,6 +132,7 @@ impl App {
             reference: crate::reference::Reference::default(),
             servers: servers_screen::State::new(servers),
             query,
+            settings,
         })
     }
 
@@ -129,6 +144,39 @@ impl App {
     /// Executa um pedido de tela.
     fn dispatch(&mut self, request: Request, ctx: &egui::Context) {
         match request {
+            // Aplicar é síncrono: mudar fonte é mexer no contexto do egui, não trabalho de núcleo.
+            Request::ApplyGuiPrefs(chosen) => {
+                let problems = crate::fonts::apply(ctx, &chosen);
+                self.settings.set_warning(problems.first().cloned());
+
+                // O mínimo acompanha a escala: fonte maior precisa de janela maior para o layout
+                // continuar com a mesma folga que tinha em 1.0.
+                ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(
+                    crate::fonts::min_window_size(chosen.scale),
+                ));
+            }
+            // Gravar vai para o núcleo (mesmo caminho do cadastro).
+            Request::SaveGuiPrefs(prefs) => {
+                // Aplica **e** grava: é o commit da aba Settings. Aplicar aqui é o que faz trocar de
+                // fonte surtir efeito imediato (a prévia ao vivo é do `ApplyGuiPrefs`).
+                let chosen = crate::fonts::Chosen::from_prefs(Some(&prefs));
+                let problems = crate::fonts::apply(ctx, &chosen);
+                self.settings.set_warning(problems.first().cloned());
+                ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(
+                    crate::fonts::min_window_size(chosen.scale),
+                ));
+
+                match ConfigStore::with_default_path() {
+                    Ok(store) => match gui_prefs::save(&store, Some(prefs)) {
+                        Ok(()) => {
+                            self.status = "Appearance saved.".to_string();
+                            ctx.request_repaint();
+                        }
+                        Err(error) => self.status = error.to_string(),
+                    },
+                    Err(error) => self.status = error.to_string(),
+                }
+            }
             Request::CancelJob => self.cancel(),
             Request::ReloadServers => {
                 let results = self.results.clone();
@@ -514,8 +562,38 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 ui.heading("Mustel");
                 ui.separator();
-                ui.selectable_value(&mut self.screen, Screen::Query, "Query");
-                ui.selectable_value(&mut self.screen, Screen::Servers, "Servers");
+                // Abas com ícone **desenhado**: emoji vinha de fonte do sistema e ficava fora da
+                // linha do texto (ver `tabs`).
+                if crate::tabs::tab(
+                    ui,
+                    self.screen == Screen::Query,
+                    crate::tabs::Icon::Query,
+                    "Query",
+                )
+                .clicked()
+                {
+                    self.screen = Screen::Query;
+                }
+                if crate::tabs::tab(
+                    ui,
+                    self.screen == Screen::Servers,
+                    crate::tabs::Icon::Servers,
+                    "Servers",
+                )
+                .clicked()
+                {
+                    self.screen = Screen::Servers;
+                }
+                if crate::tabs::tab(
+                    ui,
+                    self.screen == Screen::Settings,
+                    crate::tabs::Icon::Settings,
+                    "Settings",
+                )
+                .clicked()
+                {
+                    self.screen = Screen::Settings;
+                }
                 ui.separator();
                 ui.label(&self.status);
                 if let Some(running) = &self.running {
@@ -543,6 +621,7 @@ impl eframe::App for App {
                         .map(|schema| std::sync::Arc::new(schema.clone()));
                     self.query.ui(ui, &servers, schema, &self.reference)
                 }
+                Screen::Settings => self.settings.ui(ui),
             };
 
             if let Some(request) = request {

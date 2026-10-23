@@ -8,7 +8,10 @@ use std::path::PathBuf;
 use mustel_core::config::ServerConfigEntry;
 
 /// Pedido de uma tela para o `App` executar.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Sem `Eq` porque carrega preferências de aparência com `f32` (escala de fonte); `PartialEq` é o
+/// que os testes de tela comparam.
+#[derive(Debug, Clone, PartialEq)]
 pub enum Request {
     /// Recarrega o cadastro do disco.
     ReloadServers,
@@ -47,6 +50,10 @@ pub enum Request {
         /// Banco de referência.
         database: String,
     },
+    /// Aplica as preferências de aparência no contexto do `egui` (fonte e escala).
+    ApplyGuiPrefs(crate::fonts::Chosen),
+    /// Grava as preferências da janela na seção `gui` do `mustel.jsonc`.
+    SaveGuiPrefs(mustel_core::config::model::GuiPrefs),
     /// Executa a consulta nos servidores escolhidos.
     RunQuery {
         /// Servidores escolhidos, na ordem da tela.

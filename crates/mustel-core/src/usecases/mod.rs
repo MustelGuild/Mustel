@@ -9,5 +9,6 @@ pub mod database;
 pub mod database_backup;
 pub mod database_restore;
 pub mod db_servers;
+pub mod gui_prefs;
 pub mod query_run;
 pub mod schema;

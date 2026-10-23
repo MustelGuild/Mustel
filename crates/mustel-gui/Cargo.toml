@@ -28,6 +28,10 @@ eframe = { version = "0.37", default-features = false, features = [
     "wayland",
 ] }
 egui = "0.37"
+# `fontique` já vem compilada como dependência do `egui_system_font_provider` (feature `system_fonts`
+# do eframe). Declarada aqui direto para **enumerar** as famílias instaladas e carregar os bytes da
+# que o usuário escolher na aba Settings — sem custo novo de compilação, mesma versão do `Cargo.lock`.
+fontique = "0.11"
 # `TableBuilder`: tabela com cabeçalho fixo, colunas redimensionáveis e linhas virtualizadas — o
 # `ScrollArea::show_rows` sozinho punha a barra de rolagem no meio da tela, na largura do conteúdo.
 egui_extras = "0.37"

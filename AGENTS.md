@@ -72,6 +72,13 @@ MUSTEL_PG_TEST_URL=postgres://postgres:dev@localhost:55432/mustel_test cargo tes
 cargo run -p mustel-testkit --bin oracle-compare -- --report --scope query,database,settings
 ```
 
+## Verificar a GUI na janela
+
+O gate automatizado não cobre teclado, foco nem clique de verdade. Quando a mudança for de GUI (e
+sobretudo quando um bug só aparecer na janela), siga a skill
+[`mustel-gui-smoke-test`](.agents/skills/mustel-gui-smoke-test/SKILL.md): janela real no Windows,
+entrada sintética, captura em `scratch://` e o que **não** dá para provar assim.
+
 ## Convenções de código
 
 - **Formatação**: `cargo fmt` (default do rustfmt, 100 colunas). O CI reprova qualquer diff.

@@ -991,3 +991,67 @@ O Docker Desktop também foi iniciado nesta rodada (o daemon estava parado) para
   comportamento que o dono pediu para mudar. Verificado na janela: lista desmarcada, `Select all`
   marcando/desmarcando os dois servidores e `Run query` habilitando só com alvo escolhido.
   `cargo test --workspace` = **472 testes, 0 falhas**.
+- `[2026-10-23]` **Aba Settings (fonte) e ícones nas abas (pedido do dono).** Cinco decisões fechadas na
+  conversa: (1) fonte = **interface + editor + tamanho**; (2) origem = **fontes do sistema**
+  (`fontique`, já compilado pelo `system_fonts`) **+ Fira Code embutida**; (3) persistência na **seção
+  `gui` do `mustel.jsonc`**; (4) aba chamada **Settings**, só fonte nesta rodada; (5) ícones por
+  **emoji**.
+
+  **Licença conferida antes de embutir:** a Fira Code é **SIL OFL 1.1** e o preâmbulo permite
+  expressamente embutir junto com software; a obrigação é levar copyright + licença (feito:
+  `crates/mustel-gui/assets/fonts/FiraCode-OFL.txt`) e não relicenciar a fonte. O Mustel é GPL-3.0 e a
+  fonte continua OFL-1.1 — asset separado, sem conflito.
+
+  **O teto da escala foi medido, não escolhido.** Teste descartável medindo a linha mais larga da tela
+  de consulta: 332 px na embutida, 336 px na Arial, **413 px na Lucida Console** (a pior) a 13 px.
+  Contas: o limite matemático da pior fonte é 1,41; adotei **1,25** para sobrar folga com o rótulo de
+  estado mais longo. Com nomes de 20 caracteres a linha já estoura 640 px **antes** desta mudança —
+  limite antigo do layout, registrado como tal.
+
+  **Encanamento:** `GuiPrefs` no modelo do core com `skip_serializing_if` (o arquivo fica **byte a
+  byte igual** enquanto ninguém configura nada) e `usecases::gui_prefs::{load, save}`; a GUI tem
+  `fonts.rs` (resolve família → bytes, monta a cadeia com a escolhida na frente e as embutidas atrás,
+  aplica a escala em `all_styles_mut`) e `screens/settings.rs`. A fonte escolhida entra **na frente**
+  de propósito: é o que mantém `⟳`, `▼`, `📂`, `🗂`, `🔍`, `🖥`, `⚙` visíveis numa fonte que não os tem.
+  O mínimo da janela passou a ser `640×480 × escala`.
+
+  **Verificado na janela:** as três abas com emoji renderizado (sem tofu); a lista de fontes do
+  sistema no combo (Agency FB, Arial, Bahnschrift…); escolher **Arial** trocou a interface, gravou
+  `"gui": { "interfaceFont": "Arial" }` no `mustel.jsonc` **e o editor continuou monoespaçado**;
+  `⟳`, `▼`, `📂`, `🗂` continuaram aparecendo com Arial na frente (fallback de verdade). Depois do
+  teste, a seção `gui` foi **removida** do cadastro do dono (estado restaurado) e conferi com
+  `settings db-servers ls`.
+
+  Manifesto: **IF-218** (preferências na seção `gui`, preservadas pelo CLI), **IF-219** (fallback e
+  fonte ausente) e **IF-220** (escala e mínimo da janela). Docs: `reference/settings-aba.md` e
+  `explanation/fontes.md` (com a licença e a tabela das medições). `cargo test --workspace` = **483
+  testes, 0 falhas**.
+
+  **Uma boa notícia sobre a automação:** o clique na aba **Query** funcionou nesta rodada, embora
+  cliques em aba tivessem falhado antes — o que põe em dúvida a nota “clique em aba não troca de tela”
+  da skill `mustel-gui-smoke-test`. Fica como “intermitente, provavelmente foco”, não como regra do
+  app.
+- `[2026-10-23]` **Dois bugs da aba Settings, relatados pelo dono.**
+
+  **(1) Trocar a fonte não aplicava; só o tamanho aplicava.** Causa: a aba emitia `ApplyGuiPrefs`
+  quando `apply_now` e `SaveGuiPrefs` quando `changed`, com dois `if` seguidos — escolher fonte põe os
+  dois em verdadeiro, então o segundo **sobrescrevia** o primeiro e só o salvamento saía. Como salvar
+  não aplicava, a janela ficava com a fonte velha até outro controle forçar a aplicação. Correção em
+  duas partes: a decisão virou função pura (`decision`, com precedência do commit) e `SaveGuiPrefs`
+  passou a **aplicar antes de gravar**. Teste: `choosing_a_font_emits_the_commit_request` (IF-222).
+  Verificado na janela: escolher **Arial** mudou a interface no mesmo instante, sem mexer no slider.
+
+  **(2) Ícones das abas fora da linha do texto.** Medi os pixels na captura ampliada: o centro do
+  ícone ficava 2,5 px acima do centro do texto a 13 px. Emoji não era o problema em si — era **de onde
+  ele vinha**: no Windows vem do *Segoe UI Emoji* por fallback do sistema (`SystemFontProvider`), e
+  `FontTweak` só alcança fonte declarada por nós, não glifo de fallback alheio. Tentei pelo caminho da
+  fonte primeiro (`egui-icons` + `y_offset_factor`), e as medições **não mudaram** — foi o que provou
+  que o glifo não vinha dali. Solução: ícones **desenhados** em `crates/mustel-gui/src/tabs.rs`,
+  centrados no mesmo `center.y` do texto, sem depender de fonte nem de sistema. Teste:
+  `the_icon_and_the_label_share_the_same_center_line` (IF-221). Verificado na janela em 4x.
+
+  **Lição de método:** duas tentativas de medir por captura ampliada me deram números falsos (a
+  imagem tinha um separador escuro embaixo e o recorte cortava os descendentes), e uma estimativa de
+  coordenada errada me fez concluir que o combo “não abria”. Capturar **1:1** e medir a faixa da linha
+  pela contagem de tinta por linha (para achar a banda dos widgets) resolveu — vale para a skill.
+  `cargo test --workspace` = **485 testes, 0 falhas**.

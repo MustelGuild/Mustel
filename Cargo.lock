@@ -2234,6 +2234,7 @@ dependencies = [
  "eframe",
  "egui",
  "egui_extras",
+ "fontique",
  "mustel-core",
  "tempfile",
  "thiserror 2.0.21",

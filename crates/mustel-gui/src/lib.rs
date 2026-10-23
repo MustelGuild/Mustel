@@ -23,6 +23,7 @@ pub mod actions;
 pub mod app;
 pub mod desktop;
 pub mod events;
+pub mod fonts;
 pub mod picker;
 pub mod query;
 pub mod reference;
@@ -33,6 +34,7 @@ pub mod screens;
 pub mod smooth_scroll;
 pub mod sql_completion;
 pub mod sql_editor;
+pub mod tabs;
 
 pub use app::App;
 pub use events::{ChannelSink, GuiEvent};
@@ -68,7 +70,10 @@ const WINDOW_ICON: &[u8] = include_bytes!("../assets/icon.png");
 fn viewport() -> egui::ViewportBuilder {
     let builder = egui::ViewportBuilder::default()
         .with_inner_size([900.0, 620.0])
-        .with_min_inner_size([640.0, 480.0])
+        .with_min_inner_size({
+            let min = crate::fonts::min_window_size(1.0);
+            [min.x, min.y]
+        })
         .with_title("Mustel")
         .with_maximized(true);
 

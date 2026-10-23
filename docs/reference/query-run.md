@@ -77,3 +77,45 @@ double. Uma linha por banco.
 - Falha de um banco → linha de erro + `Status` no log; os outros continuam.
 - Nenhum banco alcançável → para **antes** de escrever arquivos e falha com a mensagem do produto
   anterior.
+
+## Nova tentativa (retry)
+
+Uma consulta que falha é tentada de novo até **3 vezes**, com espera exponencial de
+**1 s, 2 s e 4 s** entre as tentativas (`500 ms · 2^n`, com `n` = 1, 2, 3).
+
+Só retenta quando **as duas** condições valem:
+
+1. o erro é de Postgres (`CoreError::Postgres`) ou **timeout** — erro de configuração, validação ou I/O
+   não é retentado;
+2. **nenhuma linha** daquela consulta já foi gravada. Uma consulta que começou a escrever e falhou no
+   meio **não** é retentada, porque retentar duplicaria dados no arquivo daquele banco.
+
+Esgotadas as tentativas, o banco entra no `_erros.csv` e o log recebe `Status=Error`, `RowCount=0` e
+`DurationMs=0` — o valor que o produto anterior gravava no caminho de erro.
+
+## Cancelamento (`Ctrl+C`)
+
+`Ctrl+C` cancela **todas** as consultas em andamento — em todos os servidores e bancos — e o processo
+termina com **130**.
+
+- Nenhuma consulta nova começa depois do sinal.
+- Um banco cancelado no meio **não** entra no `_erros.csv`: o produto anterior também não registrava
+  o que foi interrompido. Medido: com `Ctrl+C` durante uma consulta longa, saem 130 e
+  `Error: operation cancelled`, e **nenhum arquivo é criado** — a tabela ao vivo também não sobrevive
+  ao cancelamento.
+- Pressionar `Ctrl+C` mais de uma vez tem o mesmo efeito da primeira; não há execução duplicada de
+  cancelamento nem travamento.
+
+## Escrita conforme chega
+
+As linhas vão para o arquivo do servidor **em blocos de 64**, à medida que o driver as entrega — não
+há materialização do resultado inteiro em memória.
+
+Duas consequências que valem saber:
+
+- Uma consulta que emite linhas e falha **depois** deixa no arquivo daquele banco as linhas já
+  gravadas; ela não é retentada (ver acima).
+- Dois bancos do **mesmo** servidor escrevem no mesmo arquivo e podem **intercalar** blocos. A ordem
+  das linhas de bancos diferentes não é determinística — quem termina primeiro escreve primeiro.
+
+O arquivo consolidado é montado no fim, a partir dos arquivos por servidor.

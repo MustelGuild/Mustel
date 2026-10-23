@@ -85,6 +85,30 @@ Detalhe completo em [query run](query-run.md).
 
 Default dos campos: `localhost`, `5432`, `postgres`.
 
+### O curinga `*`
+
+Cada um dos campos `host`, `port` e `username` aceita `*`, que significa "qualquer valor" na
+resolução do `pgpass.conf`. O banco **não** é validado como curinga — ele é a chave do `remove`.
+
+O `*` é aceito **sozinho** no campo. Ele não é um padrão: `*` não casa com `postgres`, e
+`loc*host` não é curinga nenhum (é host inválido).
+
+### O que é validado
+
+| Campo | Aceita | Recusa |
+|---|---|---|
+| `host` | nome DNS, `localhost`, IPv4, IPv6, `*` | espaço (`"a b"`), caractere fora de letra/dígito/hífen/ponto, vazio, mais de 253 |
+| `port` | número de **1 a 65535**, `*` | `0`, `65536`, texto, espaço |
+| `username` | qualquer texto (inclusive com espaço) e `*` | vazio |
+| `database` | qualquer nome não vazio (a chave) | vazio |
+
+O `pgpass add` valida **só host e porta** — é o que o produto anterior fazia. `username` não passa
+por validação, então `--username 'a b'` é gravado como veio (verificado: exit 0). Já o
+`settings db-servers add`, que cadastra no `mustel.jsonc`, **valida** o usuário.
+
+Um campo inválido no `add` sai com **exit 2** e a mensagem do produto anterior — não grava nada no
+arquivo.
+
 ## `settings db-servers`
 
 | Comando | Argumentos |

@@ -20,6 +20,23 @@
 
 Erro de uso escreve em **stdout**, não em stderr.
 
+### Cancelamento (`Ctrl+C`)
+
+O Mustel instala um listener de `Ctrl+C` que cancela um token compartilhado; o comando em andamento
+observa esse token e encerra com **130**.
+
+| Situação | Comportamento |
+|---|---|
+| `Ctrl+C` durante `query run` | cancela **todos** os bancos em andamento, em todos os servidores |
+| `Ctrl+C` duas vezes | mesmo efeito da primeira; não trava nem duplica o cancelamento |
+| banco interrompido no meio | **não** entra no `_erros.csv` (o produto anterior também não registrava o interrompido) |
+| `Ctrl+C` durante uma nova tentativa | não inicia outra tentativa |
+
+O que já foi gravado **pode** ficar nos arquivos por servidor: o cancelamento não apaga arquivo já
+aberto. Medido em dois cenários, porém, o que se vê é diferente: numa consulta que ainda não emitiu
+linhas (o caso comum de `pg_sleep` ou de um `SELECT` longo), **nenhum arquivo é criado** e o
+comando termina com 130 e `Error: operation cancelled`.
+
 ### Quirks herdados
 
 | Situação | Código |

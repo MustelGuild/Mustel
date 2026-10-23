@@ -42,6 +42,27 @@ máquina de referência produzia. Numa máquina pt-BR, o produto anterior escrev
 Usamos — mas com as opções acima e uma regra de aspas restrita: aspas **só** quando o campo contém
 vírgula, aspas ou quebra de linha. Campos com espaços nas pontas ficam sem aspas, como no original.
 
+## Escrita conforme chega, e a intercalação
+
+As linhas vão para o arquivo do servidor em **blocos de 64**, à medida que o driver entrega — o
+resultado inteiro nunca é materializado em memória. Isso é o que mantém a memória estável num export
+de 1M de linhas.
+
+Duas consequências visíveis no arquivo:
+
+1. **Falha no meio deixa o parcial.** Uma consulta que emite linhas e falha depois deixa no arquivo
+daquele banco o que já foi gravado, e **não** é retentada — retentar duplicaria linhas.
+2. **Dois bancos do mesmo servidor intercalam.** Eles escrevem no mesmo arquivo e a ordem dos blocos
+segue quem termina primeiro. A ordem das linhas de bancos diferentes **não é determinística**; dentro
+de um banco, é a ordem da consulta.
+
+No caminho de sucesso não há diferença em relação ao produto anterior: com 1, 2 ou 3 bancos o arquivo
+sai byte a byte igual. A diferença só aparece nos dois casos acima, e ambos estão registrados em
+`oracle/known-divergences.md` (item 15).
+
+O consolidado é montado **no fim**, a partir dos arquivos por servidor, unindo as colunas na ordem em
+que aparecem pela primeira vez.
+
 ## Onde isso é garantido
 
 `crates/mustel-core/src/postgres/value.rs` (tipo → texto) e

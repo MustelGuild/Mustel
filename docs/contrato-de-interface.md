@@ -202,11 +202,12 @@
 | IF-191 | CD14 | A | toda flag longa do `--help` é exercitada por um caso do baseline ou tem a cobertura declarada | `mustel <cmd> --help` cruzado com `oracle/baseline/*` | crates/mustel/tests/contract_surface.rs::every_long_flag_is_exercised_or_declared | coberta |
 | IF-192 | CD16 | A | todo link relativo da documentação (`docs/**`, READMEs) resolve para um arquivo existente | links em `docs/**/*.md` e `README*.md` | crates/mustel-core/tests/contract_decisions.rs::documentation_links_resolve | coberta |
 | IF-200 | GUI | B | o formulário rola quando não cabe, e a tabela de resultados fica com uma fatia fixa | janela alta ou pequena com SQL longo | crates/mustel-gui/src/screens/query.rs::tests::the_results_panel_takes_a_share_and_leaves_the_form_the_rest; crates/mustel-gui/src/screens/query.rs::tests::without_results_the_form_has_the_whole_window | coberta |
+| IF-201 | GUI | B | o botão "ir ao fim" só aparece quando o formulário transborda, e rola suavemente até o fim | janela pequena com SQL longo | crates/mustel-gui/src/smooth_scroll.rs::tests::it_reaches_the_target_and_stops; crates/mustel-gui/src/smooth_scroll.rs::tests::it_is_frame_rate_independent | coberta |
 
 ## Resumo
 
-- **Total de linhas:** 127
-- **`coberta`:** 124
+- **Total de linhas:** 128
+- **`coberta`:** 125
 - **`pendente`:** 0
 - **`nao-coberta`:** 3 (IF-025 pool até o T34; IF-141 prompt por servidor; IF-163 superfície nova do Mustel)
 > As linhas `pendente` são as que o restante do plano fecha: T5/T6 (replay), T8 (texto), T9 (exit

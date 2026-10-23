@@ -28,6 +28,7 @@ pub mod query;
 pub mod request;
 pub mod runtime;
 pub mod screens;
+pub mod smooth_scroll;
 pub mod sql_editor;
 
 pub use app::App;

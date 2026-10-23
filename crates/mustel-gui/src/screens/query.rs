@@ -21,6 +21,7 @@ use mustel_core::query::analyzer::{self, QueryType};
 use mustel_core::query::csv_writer::parse_records;
 
 use crate::request::{JobResult, Request};
+use crate::smooth_scroll::SmoothScroll;
 use crate::{desktop, picker::Picker, sql_editor};
 
 /// Teto de linhas carregadas para a tabela. O arquivo não é truncado — só a leitura da tela.
@@ -105,6 +106,8 @@ pub struct State {
     confirmation: Option<Confirmation>,
     /// Seletor de pastas da caixa de saída (modal do próprio app).
     picker: Picker,
+    /// Animação de rolagem do formulário (o botão "ir ao fim").
+    form_scroll: SmoothScroll,
 }
 
 impl Default for State {
@@ -123,8 +126,24 @@ impl Default for State {
             error: None,
             confirmation: None,
             picker: Picker::default(),
+            form_scroll: SmoothScroll::default(),
         }
     }
+}
+
+/// Distância do fim a partir da qual o botão "ir ao fim" some.
+///
+/// Quando o usuário já está no fim não há para onde ir — e o botão pararia em cima do
+/// `Run query`, que é justamente o que ele quer clicar depois. Rolando de volta, ele reaparece.
+const SCROLL_BUTTON_AT_END_PX: f32 = 8.0;
+
+/// O botão "ir ao fim" deve ser desenhado?
+///
+/// Sim quando o conteúdo transborda **e** ainda há o que rolar. Função pura: a decisão é testável
+/// sem janela, e é ela que evita o botão cobrir o `Run query` no fim da página.
+pub fn should_show_scroll_button(content_height: f32, viewport_height: f32, offset: f32) -> bool {
+    let max_offset = (content_height - viewport_height).max(0.0);
+    max_offset > 1.0 && (max_offset - offset) > SCROLL_BUTTON_AT_END_PX
 }
 
 /// Altura reservada para a tabela de resultados, quando há resultados.
@@ -445,6 +464,14 @@ impl State {
     /// Dois consumidores de altura crescem com o uso — o SQL e as linhas do resultado. Sem divisão,
     /// um deles sai da janela e não há como alcançá-lo (bug relatado: com o editor alto, a barra de
     /// rolagem não existia). A divisão é explícita em [`results_height`] e testada.
+    /// Pede a rolagem suave até o fim do formulário.
+    ///
+    /// Separado do desenho para ser testável: o clique é do egui, mas a decisão (quando animar e de
+    /// onde para onde) é do app.
+    pub fn scroll_to_end(&mut self, current: f32, max_offset: f32) {
+        self.form_scroll.start(current, max_offset);
+    }
+
     pub fn ui(&mut self, ui: &mut egui::Ui, servers: &[ServerConfigEntry]) -> Option<Request> {
         let total = ui.available_height();
         let has_results = !self.rows.is_empty();
@@ -454,18 +481,61 @@ impl State {
         // Barra **sólida** (não flutuante): o padrão do egui é `floating`, que só aparece enquanto o
         // usuário rola — e some depois. Numa tela que cresce sozinha, a barra precisa ser visível
         // o tempo todo, senão ninguém descobre que há mais conteúdo abaixo.
+        let dt = ui.input(|input| input.stable_dt);
+        let animated_offset = self.form_scroll.step(dt);
+
         let area = ui
             .scope(|ui| {
                 ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
-                egui::ScrollArea::vertical()
+                let mut scroll = egui::ScrollArea::vertical()
                     .id_salt("query_form")
                     .max_height(form_height)
                     .auto_shrink([false, false])
-                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
-                    .show(ui, |ui| self.form_ui(ui, servers))
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible);
+
+                // Enquanto anima, o offset vem da animação; fora disso o `ScrollArea` obedece ao
+                // usuário (roda, arrasto da barra, teclado).
+                if let Some(offset) = animated_offset {
+                    scroll = scroll.vertical_scroll_offset(offset);
+                }
+
+                scroll.show(ui, |ui| self.form_ui(ui, servers))
             })
             .inner;
         let mut request = area.inner;
+
+        if animated_offset.is_some() {
+            // Sem isto a animação pararia no primeiro quadro: ninguém pediria o próximo.
+            ui.ctx().request_repaint();
+        }
+
+        // Botão flutuante de "ir ao fim": desenhado **depois** do `ScrollArea`, sobre a região dele.
+        // Fica no canto **inferior direito** (o esquerdo é do `Run query`) e some quando já se está no
+        // fim, para não cobrir o botão de executar.
+        let content_height = area.content_size.y;
+        let viewport_height = area.inner_rect.height();
+        let max_offset = (content_height - viewport_height).max(0.0);
+        let offset = area.state.clamped_offset().y;
+
+        if should_show_scroll_button(content_height, viewport_height, offset) {
+            let size = egui::vec2(30.0, 24.0);
+            // Recuo da borda direita: a barra sólida ocupa ~12 px, e o botão não deve encostar nela.
+            let rect = egui::Rect::from_min_size(
+                egui::pos2(
+                    area.inner_rect.right() - size.x - 22.0,
+                    area.inner_rect.bottom() - size.y - 10.0,
+                ),
+                size,
+            );
+
+            let button = ui.put(rect, egui::Button::new("▼").small());
+            let button = button.on_hover_text("Ir para o fim da página");
+
+            if button.clicked() {
+                self.scroll_to_end(offset, max_offset);
+                ui.ctx().request_repaint();
+            }
+        }
 
         if has_results {
             ui.separator();
@@ -682,6 +752,47 @@ fn preview_of(sql: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// IF-201: clicar no botão anima do offset atual até o fim; se já está no fim, não liga animação.
+    /// CONTRACT: IF-201
+    #[test]
+    fn the_scroll_to_end_button_starts_a_smooth_animation() {
+        let mut state = State::default();
+
+        state.scroll_to_end(0.0, 400.0);
+        assert!(
+            state.form_scroll.is_active(),
+            "clicar precisa começar a rolagem suave"
+        );
+
+        let mut already_there = State::default();
+        already_there.scroll_to_end(400.0, 400.0);
+        assert!(
+            !already_there.form_scroll.is_active(),
+            "já no fim não anima nada"
+        );
+    }
+
+    /// IF-201: o botão não aparece quando não há overflow nem quando já se chegou ao fim — é isso
+    /// que impede ele de cobrir o `Run query` na página rolada até embaixo.
+    /// CONTRACT: IF-201
+    #[test]
+    fn the_scroll_button_hides_when_there_is_nothing_left_to_scroll() {
+        // Conteúdo cabe na janela: nada a rolar.
+        assert!(!should_show_scroll_button(200.0, 400.0, 0.0));
+
+        // Transborda, no topo: aparece.
+        assert!(should_show_scroll_button(800.0, 400.0, 0.0));
+
+        // Transborda, no meio: continua aparecendo.
+        assert!(should_show_scroll_button(800.0, 400.0, 200.0));
+
+        // Chegou ao fim: some, porque não há para onde ir e ele cobriria o `Run query`.
+        assert!(!should_show_scroll_button(800.0, 400.0, 400.0));
+
+        // Rollou de volta para cima: reaparece.
+        assert!(should_show_scroll_button(800.0, 400.0, 100.0));
+    }
 
     /// IF-200: com resultados, a tabela reserva uma fatia e o formulário fica com o resto — os dois
     /// nunca disputam a janela inteira.

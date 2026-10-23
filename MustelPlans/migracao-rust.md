@@ -911,3 +911,31 @@ O Docker Desktop também foi iniciado nesta rodada (o daemon estava parado) para
 - `[2026-10-21]` **T47 — evidência do gate final coletada; falta o aval nas divergências** — `oracle-compare` completo **47 casos, 0 falhas, 25 avisos N4, 2 pulados** (filtro `--scope query`: 3 casos, 0 falhas), e o relatório só classifica **N4**: **nenhuma N1–N3**. Também: fmt/clippy limpos, **330 testes** com `MUSTEL_KEYRING_TESTS=1`, e as suites **gated** contra um Postgres 16 de verdade (`postgres_integration` **8/8** e `query_flow` verde). O `known-divergences.md` está com **18 divergências**, todas com justificativa e efeito na comparação; como o critério pede **revisão e aprovação do usuário**, a tarefa fica aberta até esse aval
 - `[2026-10-21]` **T47 FECHADA com o aval do usuário** — *"pode fechar o T47 eu concordo"* sobre as **18 divergências** do `known-divergences.md` (todas N4 de desenho/redação ou decisão de produto; **nenhuma N1–N3**). Evidência do gate: `oracle-compare` **47 casos, 0 falhas, 25 avisos N4, 2 pulados**; fmt/clippy limpos; **330 testes** com `MUSTEL_KEYRING_TESTS=1`; suites gated contra Postgres 16 (`postgres_integration` 8/8 e `query_flow`); smoke manual da GUI confirmado no T43
 - `[2026-10-21]` **T48 feita — `legacy/` congelado** — criado `legacy/README.md` com o estado e os **dois papéis ativos** do diretório (oráculo de paridade e produto dos grupos não migrados), como compilar (SDK 10 + NBGV) e a **armadilha dos dois `publish.ps1`**. `winget-publish.ps1` movido com `git mv` (histórico preservado, nada apagado). **Nada foi removido**: o workflow NuGet já tinha saído no D24 e `format.ps1`/`dotnet-tools.json`/`version.json`/`publish.ps1` já estavam sob `legacy/` — a linha de "autorização para remoção" era preventiva. Verificado: `dotnet build FurLab.slnx -c Release` no `legacy/` dá **0 warnings, 0 erros**, e o harness segue 47/0/2 após o move. **Não mexido por falta de aval**: o ícone `assets/FurLab_icon.png` e renomear `legacy/publish.ps1` (dois itens pequenos de backlog). **Plano concluído: 39 de 39 tarefas**
+- `[2026-10-23]` **ícone do produto e janela maximizada (pedido do dono)** — o dono trocou o asset do produto por
+  `assets/Mustel_icon.png` (a imagem que os dois READMEs já exibem) e pediu duas mudanças de janela, ambas
+  feitas:
+  - **Ícone da janela.** Não existia nenhum: o `ViewportBuilder` não chamava `with_icon`, então a janela e a
+    barra de tarefas mostravam o ícone genérico. Agora o PNG é embutido e decodificado com
+    `eframe::icon_data::from_png_bytes`, e o `viewport()` é uma função testável (IF-213).
+  - **Janela maximizada.** `with_maximized(true)` em vez de `with_fullscreen(true)`: ocupa a tela **e**
+    mantém a barra de título, então dá para desmaximizar e fechar pelo sistema — o `fullscreen` de verdade
+    exigiria um atalho nosso para sair.
+
+  **Detalhe que evitou um bug de release:** a primeira versão usava `include_bytes!` apontando para
+  `../../assets/Mustel_icon.png`. Compila no repositório, mas `cargo publish` empacota só o diretório da
+  crate — o build a partir do crate publicado quebraria. A janela passou a embutir
+  `crates/mustel-gui/assets/icon.png`, **derivado** do master (256×256, quadrado, arte encaixada e
+  centralizada), com o master preservado na raiz porque os READMEs o usam como logo. A regra de
+  regeneração está no comentário da constante.
+
+  **Este item fecha o backlog do T48**: o ícone antigo (`assets/FurLab_icon.png`) foi substituído pelo do
+  dono, então não é mais "não mexido por falta de aval". Continua pendente a renomeação de
+  `legacy/publish.ps1`.
+
+  Verificado na janela de verdade: janela **2576×1408 numa tela 2560×1440** (maximizada) e o ícone novo na
+  barra de título e na barra de tarefas. `cargo test --workspace` = **466 testes, 0 falhas**; fmt e clippy
+  limpos.
+
+  **Fora de escopo, registrado:** o ícone do **executável** no Windows (Explorer/Start) continua sendo o
+  padrão do Rust — exige um `.ico` mais recurso de build (`winres`/`embed-resource`), e não há nada disso no
+  repositório hoje. Idem para um `.desktop` no Linux.

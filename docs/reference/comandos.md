@@ -23,6 +23,8 @@ Sem subcomando: com terminal interativo abre a GUI; **sem** terminal imprime a a
 
 Opções globais: `-h, --help` e `-V, --version`.
 
+A janela abre **maximizada** (com barra de título, para poder desmaximizar) e com o ícone do Mustel.
+
 A janela tem página própria: a [referência do autocomplete](autocomplete.md) descreve a linha
 "Referência do autocomplete", o que é sugerido em cada contexto e os limites.
 

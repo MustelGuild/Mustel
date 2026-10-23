@@ -1,5 +1,0 @@
-{
-  "chat.tools.autoApprove": true,
-  "github.copilot.chat.agent.autoFix": true,
-  "chat.agent.maxRequests": 100
-}

@@ -201,6 +201,19 @@ impl State {
                 self.selected.push(only.name.clone());
             }
         }
+
+        // O servidor de referência pode ter sido removido (ou renomeado) no cadastro. Sem esta
+        // limpeza o combo continuava exibindo o nome antigo, o `⟳` tentava carregar um servidor que
+        // não existe mais e o esquema guardado continuava alimentando as sugestões.
+        let still_exists = servers
+            .iter()
+            .any(|server| server.name == self.reference_server);
+        if !still_exists {
+            self.reference_server.clear();
+            self.reference_database.clear();
+            self.reference_loaded = None;
+            self.reference_schema = None;
+        }
     }
 
     /// A consulta está rodando?
@@ -1089,6 +1102,45 @@ mod tests {
         state.sync_servers(&[server("dev")]);
 
         assert_eq!(state.selected, vec!["dev".to_string()]);
+    }
+
+    /// Remover o servidor de referência limpa a escolha, o rótulo e o esquema.
+    ///
+    /// Bug relatado: apagando todos os servidores, o combo continuava mostrando o nome do que já não
+    /// existia, e o esquema velho seguia alimentando as sugestões.
+    /// CONTRACT: IF-216
+    #[test]
+    fn removing_the_reference_server_clears_the_reference_state() {
+        let mut state = State::default();
+        state.sync_servers(&[server("Local"), server("outro")]);
+        state.reference_server = "Local".to_string();
+        state.reference_database = "dev".to_string();
+        state.reference_loaded = Some(("Local".to_string(), "dev".to_string()));
+        state.reference_schema = Some(std::sync::Arc::new(
+            mustel_core::usecases::schema::Schema::default(),
+        ));
+
+        // O servidor sai do cadastro.
+        state.sync_servers(&[server("outro")]);
+
+        assert!(
+            state.reference_server.is_empty(),
+            "o combo não guarda fantasma"
+        );
+        assert!(state.reference_database.is_empty());
+        assert!(
+            state.reference_loaded.is_none(),
+            "o rótulo volta a 'não carregado'"
+        );
+        assert!(
+            state.reference_schema.is_none(),
+            "as sugestões perdem o molde"
+        );
+
+        // Sem servidor nenhum também não sobra nada.
+        state.reference_server = "outro".to_string();
+        state.sync_servers(&[]);
+        assert!(state.reference_server.is_empty(), "lista vazia limpa tudo");
     }
 
     #[test]

@@ -49,6 +49,10 @@ terminar, `Schema of '<banco>' loaded: N relation(s), M function(s).`
 Cada par `(servidor, banco)` fica em cache enquanto a janela estiver aberta. Recarregar substitui a
 entrada daquele par; trocar de servidor ou de banco **não** descarta as outras entradas.
 
+Se o servidor escolhido sair do cadastro (removido na aba Servers), a linha **volta ao início**:
+servidor e banco em `—`, rótulo `não carregado`, e o esquema guardado daquele servidor é descartado —
+nada de sugestão vinda de um servidor que já não existe.
+
 ## O que é sugerido, por contexto
 
 O contexto é a **última palavra-chave antes do cursor**. As tabelas citadas na consulta são

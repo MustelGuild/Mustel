@@ -25,6 +25,12 @@ Opções globais: `-h, --help` e `-V, --version`.
 
 A janela abre **maximizada** (com barra de título, para poder desmaximizar) e com o ícone do Mustel.
 
+Na aba **Servers**, o cadastro novo pode começar de outro servidor: o combo **Template** copia host,
+porta, usuário, bancos, descoberta automática, padrões de exclusão, SSL, timeout e paralelismo do
+servidor escolhido, e o resto fica editável. **Nome e senha não são copiados** — o nome é a
+identidade do servidor novo, e a senha mora no cofre com a chave do nome (copiá-la daria ao novo
+servidor a senha do antigo sem ninguém perceber).
+
 A janela tem página própria: a [referência do autocomplete](autocomplete.md) descreve a linha
 "Referência do autocomplete", o que é sugerido em cada contexto e os limites.
 

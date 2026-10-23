@@ -481,6 +481,11 @@ impl App {
                 _ => {}
             }
 
+            // Servidor removido: o esquema carregado dele também sai da memória.
+            if let JobResult::Removed(name) = &result {
+                self.schemas.forget_server(name);
+            }
+
             // Cadastro mudou: recarrega a lista para refletir o disco.
             if matches!(
                 result,

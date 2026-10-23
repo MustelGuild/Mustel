@@ -216,11 +216,13 @@
 | IF-212 | AUTOCOMPLETE | B | o `⟳` fica desabilitado quando o cofre não tem senha para o servidor | `⟳` num servidor sem senha guardada | crates/mustel-gui/src/reference.rs::tests::the_button_is_disabled_without_a_stored_password; crates/mustel-gui/src/reference.rs::tests::the_blocked_reason_matches_the_button_state | coberta |
 | IF-213 | GUI | B | a janela abre **maximizada** e com o ícone do Mustel (derivado de `assets/Mustel_icon.png`, embutido na crate) | abrir `mustel gui` | crates/mustel-gui/src/lib.rs::tests::the_window_starts_maximized_with_the_mustel_icon | coberta |
 | IF-214 | GUI | B | a linha "Referência do autocomplete" vem **antes** do editor de SQL | topo da tela de consulta | crates/mustel-gui/src/screens/query.rs::tests::the_reference_row_comes_before_the_sql_editor | coberta |
+| IF-215 | GUI | B | no cadastro novo da aba Servers, o combo **Template** copia os valores de um servidor existente, **sem** o nome e **sem** a senha, e o que foi copiado continua editável | aba Servers, botão `Add server` | crates/mustel-gui/src/screens/servers.rs::tests::copying_a_template_brings_every_value_except_name_and_password; crates/mustel-gui/src/screens/servers.rs::tests::copied_values_can_be_changed_before_saving | coberta |
+| IF-216 | AUTOCOMPLETE | B | tirar o servidor de referência do cadastro limpa a escolha, o rótulo e o esquema carregado (e o cache esquece os esquemas daquele servidor) | remover o servidor escolhido na linha de referência | crates/mustel-gui/src/screens/query.rs::tests::removing_the_reference_server_clears_the_reference_state; crates/mustel-gui/src/schema_cache.rs::tests::forgetting_a_server_drops_only_its_schemas | coberta |
 
 ## Resumo
 
-- **Total de linhas:** 141
-- **`coberta`:** 138
+- **Total de linhas:** 143
+- **`coberta`:** 140
 - **`pendente`:** 0
 - **`nao-coberta`:** 3 (IF-025 pool até o T34; IF-141 prompt por servidor; IF-163 superfície nova do Mustel)
 

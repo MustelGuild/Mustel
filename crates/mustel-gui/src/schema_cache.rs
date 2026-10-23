@@ -34,6 +34,14 @@ impl SchemaCache {
             .remove(&(server.to_string(), database.to_string()));
     }
 
+    /// Esquece **todos** os esquemas de um servidor.
+    ///
+    /// É o que resolve o caso de o servidor sair do cadastro: sem isto, recadastrar um servidor com o
+    /// mesmo nome e outro banco traria de volta o esquema antigo, como se estivesse carregado.
+    pub fn forget_server(&mut self, server: &str) {
+        self.loaded.retain(|(name, _), _| name != server);
+    }
+
     /// Quantos esquemas estão na memória (para teste e para o rótulo da tela).
     pub fn len(&self) -> usize {
         self.loaded.len()
@@ -104,5 +112,29 @@ mod tests {
             cache.get("dev", "db1").expect("carregado").tables[0].name,
             "novo"
         );
+    }
+
+    /// Servidor removido do cadastro leva junto os esquemas dele.
+    ///
+    /// CONTRACT: IF-216
+    #[test]
+    fn forgetting_a_server_drops_only_its_schemas() {
+        let mut cache = SchemaCache::default();
+        cache.insert("Local", "dev", schema("t1"));
+        cache.insert("Local", "outro", schema("t2"));
+        cache.insert("outro-servidor", "dev", schema("t3"));
+
+        cache.forget_server("Local");
+
+        assert!(cache.get("Local", "dev").is_none(), "o servidor saiu");
+        assert!(
+            cache.get("Local", "outro").is_none(),
+            "todos os bancos dele"
+        );
+        assert!(
+            cache.get("outro-servidor", "dev").is_some(),
+            "os outros servidores ficam"
+        );
+        assert_eq!(cache.len(), 1);
     }
 }

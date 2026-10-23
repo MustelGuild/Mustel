@@ -21,6 +21,8 @@ struct Form {
     exclude_patterns: String,
     /// Senha a guardar junto (opcional).
     password: String,
+    /// De qual servidor os valores foram copiados (só informativo, para o combo mostrar a origem).
+    template: Option<String>,
 }
 
 impl Form {
@@ -32,6 +34,7 @@ impl Form {
             databases: String::new(),
             exclude_patterns: "template*,postgres".to_string(),
             password: String::new(),
+            template: None,
         }
     }
 
@@ -43,7 +46,34 @@ impl Form {
             databases: server.databases.join(", "),
             exclude_patterns: server.exclude_patterns.join(","),
             password: String::new(),
+            template: None,
         }
+    }
+
+    /// Copia os valores de `server` para o formulário, como ponto de partida de um cadastro novo.
+    ///
+    /// Ficam de fora, de propósito:
+    ///
+    /// - o **nome**, que é a identidade do servidor novo — copiá-lo só criaria um conflito;
+    /// - a **senha**, que mora no cofre com a chave do nome; copiar daria ao servidor novo a senha do
+    ///   antigo sem ninguém perceber. Quem quiser a mesma senha digita no campo (ou usa o CLI).
+    ///
+    /// Todo o resto é copiado: host, porta, usuário, bancos, descoberta automática, padrões de
+    /// exclusão, SSL, timeout e paralelismo. Depois é só editar o que quiser.
+    fn copy_from(&mut self, server: &ServerConfigEntry) {
+        self.draft.host = server.host.clone();
+        self.draft.port = server.port;
+        self.draft.username = server.username.clone();
+        self.draft.databases = server.databases.clone();
+        self.draft.fetch_all_databases = server.fetch_all_databases;
+        self.draft.exclude_patterns = server.exclude_patterns.clone();
+        self.draft.ssl_mode = server.ssl_mode.clone();
+        self.draft.timeout = server.timeout;
+        self.draft.max_parallelism = server.max_parallelism;
+
+        self.databases = server.databases.join(", ");
+        self.exclude_patterns = server.exclude_patterns.join(",");
+        self.template = Some(server.name.clone());
     }
 
     /// O servidor como o núcleo espera, já com as listas convertidas.
@@ -224,6 +254,33 @@ impl State {
         ui.group(|ui| {
             ui.label(if editing { "Edit server" } else { "New server" });
 
+            // Modelo: atalho para cadastrar a partir de um servidor que já existe. Só no cadastro
+            // novo (editar um servidor existente é sobre aquele servidor) e só quando há de onde
+            // copiar. Clicar numa linha copia **na hora**, inclusive a mesma já escolhida — o combo
+            // é um botão de copiar, não um vínculo que se mantém.
+            if !editing && !self.servers.is_empty() {
+                ui.horizontal(|ui| {
+                    ui.label("Template");
+                    let selected = form.template.clone().unwrap_or_else(|| "—".to_string());
+                    egui::ComboBox::from_id_salt("server_template")
+                        .selected_text(selected)
+                        .show_ui(ui, |ui| {
+                            for server in &self.servers {
+                                if ui
+                                    .selectable_label(
+                                        form.template.as_deref() == Some(server.name.as_str()),
+                                        &server.name,
+                                    )
+                                    .clicked()
+                                {
+                                    form.copy_from(server);
+                                }
+                            }
+                        });
+                    ui.weak("copia os valores do servidor escolhido (sem nome e sem senha)");
+                });
+            }
+
             egui::Grid::new("server_form")
                 .num_columns(2)
                 .show(ui, |ui| {
@@ -325,6 +382,76 @@ fn split(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Copiar de um modelo traz **todos** os valores do formulário, menos nome e senha.
+    ///
+    /// O nome é a identidade do servidor novo e a senha mora no cofre com a chave do nome: copiar a
+    /// senha daria ao servidor novo a senha do antigo sem ninguém perceber.
+    /// CONTRACT: IF-215
+    #[test]
+    fn copying_a_template_brings_every_value_except_name_and_password() {
+        let template = ServerConfigEntry {
+            name: "origem".to_string(),
+            host: "db.interno".to_string(),
+            port: 5544,
+            username: "leitor".to_string(),
+            databases: vec!["a".to_string(), "b".to_string()],
+            fetch_all_databases: true,
+            exclude_patterns: vec!["template*".to_string(), "postgres".to_string()],
+            ssl_mode: "Require".to_string(),
+            timeout: 45,
+            max_parallelism: 8,
+        };
+
+        let mut form = Form::new();
+        form.draft.name = "novo".to_string();
+        form.copy_from(&template);
+
+        assert_eq!(form.draft.name, "novo", "o nome é do servidor novo");
+        assert!(form.password.is_empty(), "senha não é copiada");
+
+        let entry = form.to_entry();
+        assert_eq!(entry.host, "db.interno");
+        assert_eq!(entry.port, 5544);
+        assert_eq!(entry.username, "leitor");
+        assert_eq!(entry.databases, vec!["a".to_string(), "b".to_string()]);
+        assert!(entry.fetch_all_databases);
+        assert_eq!(
+            entry.exclude_patterns,
+            vec!["template*".to_string(), "postgres".to_string()]
+        );
+        assert_eq!(entry.ssl_mode, "Require");
+        assert_eq!(entry.timeout, 45);
+        assert_eq!(entry.max_parallelism, 8);
+
+        assert_eq!(
+            form.template.as_deref(),
+            Some("origem"),
+            "o formulário lembra de onde copiou"
+        );
+    }
+
+    /// Depois de copiar, os campos continuam editáveis e valem para o save.
+    ///
+    /// CONTRACT: IF-215
+    #[test]
+    fn copied_values_can_be_changed_before_saving() {
+        let template = ServerConfigEntry {
+            name: "origem".to_string(),
+            host: "antigo".to_string(),
+            port: 5432,
+            ..ServerConfigEntry::default()
+        };
+
+        let mut form = Form::new();
+        form.copy_from(&template);
+        form.draft.host = "novo-host".to_string();
+        form.databases = "so-esta".to_string();
+
+        let entry = form.to_entry();
+        assert_eq!(entry.host, "novo-host", "a edição vence o modelo");
+        assert_eq!(entry.databases, vec!["so-esta".to_string()]);
+    }
 
     #[test]
     fn the_form_splits_the_lists_like_the_cli() {

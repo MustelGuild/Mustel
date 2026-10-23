@@ -939,3 +939,32 @@ O Docker Desktop também foi iniciado nesta rodada (o daemon estava parado) para
   **Fora de escopo, registrado:** o ícone do **executável** no Windows (Explorer/Start) continua sendo o
   padrão do Rust — exige um `.ico` mais recurso de build (`winres`/`embed-resource`), e não há nada disso no
   repositório hoje. Idem para um `.desktop` no Linux.
+- `[2026-10-23]` **Cadastro novo a partir de um modelo (pedido do dono).** A aba **Servers**, no botão
+  `Add server`, ganhou o combo **Template**: escolher um servidor existente copia os valores dele para
+  o formulário, que continua todo editável.
+
+  **Duas exceções, deliberadas:**
+  - o **nome** não é copiado — é a identidade do servidor novo, e copiá-lo só criaria conflito;
+  - a **senha** não é copiada — ela mora no cofre com a chave do nome, então copiar daria ao servidor
+    novo a senha do antigo **sem ninguém saber**. Quem quiser a mesma senha digita no campo.
+
+  Copia todo o resto: host, porta, usuário, bancos, descoberta automática (`fetchAllDatabases`),
+  padrões de exclusão, SSL, timeout e paralelismo. A regra ficou em `Form::copy_from`, com teste
+  (IF-215) que fixa exatamente o que é e o que **não** é copiado — inclusive que a edição depois do
+  modelo vence na hora de gravar.
+
+  **Decisão de interação:** o combo é um **botão de copiar**, não um vínculo. Clicar numa linha copia
+  na hora, mesmo que seja a linha já escolhida (`selectable_label(...).clicked()` em vez de esperar
+  `changed()`), então nunca existe o caso “selecionei o mesmo modelo e nada aconteceu”. O combo só
+  aparece no cadastro novo e só quando há servidores de onde copiar.
+
+  Verificado na janela: `New server` → `Template: Local` preencheu host `127.0.0.1`, porta `5432`,
+  usuário `postgres`, `fetch all` marcado, `template*,postgres`, SSL `Prefer` — com **Name** e
+  **Password** vazios, como projetado. `cargo test --workspace` = **469 testes, 0 falhas**.
+
+  **Ressalva de método:** na automação da janela, cliques sintéticos na aba **Servers** não trocaram
+  de tela (cinco alturas testadas), enquanto o mesmo clique abriu o combo de servidor e o botão
+  `Escolher` dois centímetros abaixo. Não consegui atribuir a causa; para ver o formulário, subi uma
+  build temporária começando na aba Servers (removida em seguida). Como o dono usa essa aba
+  normalmente, tratei como limitação do robô de cliques, não do app — mas fica registrado para o caso
+  de aparecer no uso real.

@@ -201,11 +201,12 @@
 | IF-190 | CD14 | A | todo comando migrado tem pelo menos um caso no baseline congelado | `oracle/baseline/*` | crates/mustel/tests/contract_surface.rs::every_migrated_command_has_a_baseline_case | coberta |
 | IF-191 | CD14 | A | toda flag longa do `--help` é exercitada por um caso do baseline ou tem a cobertura declarada | `mustel <cmd> --help` cruzado com `oracle/baseline/*` | crates/mustel/tests/contract_surface.rs::every_long_flag_is_exercised_or_declared | coberta |
 | IF-192 | CD16 | A | todo link relativo da documentação (`docs/**`, READMEs) resolve para um arquivo existente | links em `docs/**/*.md` e `README*.md` | crates/mustel-core/tests/contract_decisions.rs::documentation_links_resolve | coberta |
+| IF-200 | GUI | B | o formulário rola quando não cabe, e a tabela de resultados fica com uma fatia fixa | janela alta ou pequena com SQL longo | crates/mustel-gui/src/screens/query.rs::tests::the_results_panel_takes_a_share_and_leaves_the_form_the_rest; crates/mustel-gui/src/screens/query.rs::tests::without_results_the_form_has_the_whole_window | coberta |
 
 ## Resumo
 
-- **Total de linhas:** 126
-- **`coberta`:** 123
+- **Total de linhas:** 127
+- **`coberta`:** 124
 - **`pendente`:** 0
 - **`nao-coberta`:** 3 (IF-025 pool até o T34; IF-141 prompt por servidor; IF-163 superfície nova do Mustel)
 > As linhas `pendente` são as que o restante do plano fecha: T5/T6 (replay), T8 (texto), T9 (exit

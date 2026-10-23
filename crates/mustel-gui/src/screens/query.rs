@@ -21,13 +21,19 @@ use mustel_core::query::analyzer::{self, QueryType};
 use mustel_core::query::csv_writer::parse_records;
 
 use crate::request::{JobResult, Request};
-use crate::{desktop, picker::Picker};
+use crate::{desktop, picker::Picker, sql_editor};
 
 /// Teto de linhas carregadas para a tabela. O arquivo não é truncado — só a leitura da tela.
 pub const MAX_DISPLAY_ROWS: usize = 20_000;
 
 /// Altura mínima reservada para a tabela quando a janela é pequena.
 const MIN_TABLE_HEIGHT: f32 = 120.0;
+
+/// Altura mínima do formulário rolável.
+///
+/// Abaixo disto a janela é considerada pequena demais: o formulário fica com esta altura e rola,
+/// em vez de encolher até desaparecer.
+const MIN_FORM_HEIGHT: f32 = 160.0;
 
 /// Uma linha do progresso (um banco que terminou).
 #[derive(Debug, Clone, PartialEq)]
@@ -119,6 +125,27 @@ impl Default for State {
             picker: Picker::default(),
         }
     }
+}
+
+/// Altura reservada para a tabela de resultados, quando há resultados.
+///
+/// A tela tem dois consumidores de altura que crescem sozinhos: o formulário (o SQL aumenta) e a
+/// tabela (as linhas aumentam). Se os dois crescerem sem limite, um deles sai da janela. A regra é:
+/// o formulário rola quando não cabe, e a tabela fica com uma fatia fixa — nunca os dois disputando
+/// o mesmo espaço.
+pub const RESULTS_PANEL_SHARE: f32 = 0.45;
+
+/// Altura da tabela de resultados dentro de uma janela de `total` pixels.
+///
+/// Sem resultados, a tabela não reserva nada: o formulário usa a janela inteira.
+/// Com resultados, a tabela fica entre [`MIN_TABLE_HEIGHT`] e [`RESULTS_PANEL_SHARE`] do total — o
+/// que sobra é do formulário, que rola.
+pub fn results_height(total: f32, has_results: bool) -> f32 {
+    if !has_results {
+        return 0.0;
+    }
+
+    (total * RESULTS_PANEL_SHARE).max(MIN_TABLE_HEIGHT)
 }
 
 impl State {
@@ -222,16 +249,33 @@ impl State {
         self.rows = rows;
     }
 
-    /// Desenha a tela e devolve o pedido, quando houver.
-    pub fn ui(&mut self, ui: &mut egui::Ui, servers: &[ServerConfigEntry]) -> Option<Request> {
+    /// Desenha o **formulário** (SQL, saída, servidores, botões, progresso e arquivos).
+    ///
+    /// Separado de [`State::ui`] porque o formulário rola: a altura dele é a que sobra depois de a
+    /// tabela de resultados reservar a fatia dela.
+    fn form_ui(&mut self, ui: &mut egui::Ui, servers: &[ServerConfigEntry]) -> Option<Request> {
         let mut request = None;
         let running = self.is_running();
 
         ui.label("SQL");
+        // A altura é calculada **antes** do widget: `TextEdit::multiline` toma `&mut self.sql`, e
+        // ler o texto depois disso seria um segundo empréstimo.
+        let rows = sql_editor::desired_rows(&self.sql);
+
+        // A caixa acompanha o texto: cresce com quebras e com linhas longas, até um teto em que
+        // passa a rolar. O realce é o mesmo em toda edição — o `layouter` é chamado a cada quadro,
+        // mas o trabalho é proporcional ao texto, não à janela.
+        let mut layouter = |ui: &egui::Ui, buffer: &dyn egui::TextBuffer, wrap_width: f32| {
+            let mut job = sql_editor::layout_job(ui, buffer.as_str(), wrap_width);
+            job.wrap.max_width = wrap_width;
+            ui.fonts_mut(|fonts| fonts.layout_job(job))
+        };
+
         ui.add(
             egui::TextEdit::multiline(&mut self.sql)
-                .desired_rows(3)
-                .desired_width(f32::INFINITY),
+                .desired_rows(rows)
+                .desired_width(f32::INFINITY)
+                .layouter(&mut layouter),
         );
 
         ui.horizontal(|ui| {
@@ -393,7 +437,37 @@ impl State {
             }
         }
 
-        if !self.rows.is_empty() {
+        request
+    }
+
+    /// Desenha a tela: o formulário rola, a tabela de resultados fica com a fatia de baixo.
+    ///
+    /// Dois consumidores de altura crescem com o uso — o SQL e as linhas do resultado. Sem divisão,
+    /// um deles sai da janela e não há como alcançá-lo (bug relatado: com o editor alto, a barra de
+    /// rolagem não existia). A divisão é explícita em [`results_height`] e testada.
+    pub fn ui(&mut self, ui: &mut egui::Ui, servers: &[ServerConfigEntry]) -> Option<Request> {
+        let total = ui.available_height();
+        let has_results = !self.rows.is_empty();
+        let table_height = results_height(total, has_results);
+        let form_height = (total - table_height).max(MIN_FORM_HEIGHT);
+
+        // Barra **sólida** (não flutuante): o padrão do egui é `floating`, que só aparece enquanto o
+        // usuário rola — e some depois. Numa tela que cresce sozinha, a barra precisa ser visível
+        // o tempo todo, senão ninguém descobre que há mais conteúdo abaixo.
+        let area = ui
+            .scope(|ui| {
+                ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
+                egui::ScrollArea::vertical()
+                    .id_salt("query_form")
+                    .max_height(form_height)
+                    .auto_shrink([false, false])
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+                    .show(ui, |ui| self.form_ui(ui, servers))
+            })
+            .inner;
+        let mut request = area.inner;
+
+        if has_results {
             ui.separator();
             ui.label(format!(
                 "Results ({} row(s){})",
@@ -404,11 +478,7 @@ impl State {
                     String::new()
                 }
             ));
-            self.results_table(ui);
-        } else {
-            // Sem linhas, o espaço restante é da tabela do mesmo jeito: a janela não precisa
-            // reorganizar o layout entre um quadro e outro.
-            ui.allocate_space(ui.available_size());
+            self.results_table(ui, table_height);
         }
 
         // O popup de confirmação destrutiva é desenhado por cima de tudo.
@@ -544,13 +614,11 @@ impl State {
     /// `TableBuilder` e não `ScrollArea::show_rows`: a rolagem vertical é da **tabela**, então a barra
     /// fica na borda direita do painel (com o `ScrollArea` aninhado ela ficava na largura do
     /// conteúdo, no meio da tela), o cabeçalho fica fixo e as colunas são redimensionáveis.
-    fn results_table(&mut self, ui: &mut egui::Ui) {
+    fn results_table(&mut self, ui: &mut egui::Ui, height: f32) {
         use egui_extras::{Column, TableBuilder};
 
         let header = self.header.clone();
         let row_height = egui::TextStyle::Body.resolve(ui.style()).size + 6.0;
-        // Lido **antes** do `TableBuilder`: ele toma `&mut Ui` emprestado.
-        let height = ui.available_height().max(MIN_TABLE_HEIGHT);
 
         let mut table = TableBuilder::new(ui)
             .striped(true)
@@ -566,7 +634,7 @@ impl State {
             // depois do primeiro quadro de rolagem.
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
             // A tabela ocupa o que sobrou da janela.
-            .max_scroll_height(height);
+            .max_scroll_height(height.max(MIN_TABLE_HEIGHT));
 
         for index in 0..header.len() {
             // A última coluna fica com o resto da largura; as outras se ajustam ao conteúdo e podem
@@ -614,6 +682,58 @@ fn preview_of(sql: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// IF-200: com resultados, a tabela reserva uma fatia e o formulário fica com o resto — os dois
+    /// nunca disputam a janela inteira.
+    /// CONTRACT: IF-200
+    #[test]
+    fn the_results_panel_takes_a_share_and_leaves_the_form_the_rest() {
+        let total = 800.0;
+        let table = results_height(total, true);
+
+        assert!(table > 0.0, "com resultados a tabela reserva espaço");
+        assert!(
+            table >= MIN_TABLE_HEIGHT,
+            "nunca menor que o mínimo ({table})"
+        );
+        assert!(
+            table < total,
+            "a tabela não pode comer a janela inteira ({table} de {total})"
+        );
+        assert!(
+            total - table >= MIN_FORM_HEIGHT,
+            "sobra pelo menos o mínimo para o formulário"
+        );
+    }
+
+    /// Sem resultados, nada é reservado: o formulário usa a janela toda e rola se precisar.
+    /// CONTRACT: IF-200
+    #[test]
+    fn without_results_the_form_has_the_whole_window() {
+        assert_eq!(results_height(800.0, false), 0.0);
+    }
+
+    /// Janela pequena: a tabela nunca cai abaixo do mínimo, e o formulário mantém o mínimo dele.
+    #[test]
+    fn a_small_window_keeps_both_minimums() {
+        // Com 300 px a fatia de 45% daria 135, que já passa do mínimo da tabela.
+        let table = results_height(300.0, true);
+        assert!(
+            table >= MIN_TABLE_HEIGHT,
+            "a tabela nunca cai abaixo do mínimo ({table})"
+        );
+
+        // Numa janela minúscula a fatia seria menor que o mínimo, e o piso entra em ação.
+        let tiny = results_height(100.0, true);
+        assert_eq!(tiny, MIN_TABLE_HEIGHT, "o piso da tabela entra em ação");
+
+        let form = (300.0 - table).max(MIN_FORM_HEIGHT);
+        assert!(
+            form >= MIN_FORM_HEIGHT,
+            "o formulário mantém o mínimo dele ({form})"
+        );
+    }
+
     fn server(name: &str) -> ServerConfigEntry {
         ServerConfigEntry {
             name: name.to_string(),

@@ -28,6 +28,7 @@ pub mod query;
 pub mod request;
 pub mod runtime;
 pub mod screens;
+pub mod sql_editor;
 
 pub use app::App;
 pub use events::{ChannelSink, GuiEvent};

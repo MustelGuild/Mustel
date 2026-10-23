@@ -6,8 +6,8 @@
 ## Idioma
 
 Todo output para o usuário (explicações, resumos, mensagens de erro de ferramentas, perguntas) deve ser
-em **português do Brasil (pt-BR)**. Exceção: não traduza nomes de skills, comandos do OpenSpec,
-identificadores de código, nomes de arquivos ou comandos de terminal.
+em **português do Brasil (pt-BR)**. Exceção: não traduza nomes de skills, identificadores de código,
+nomes de arquivos ou comandos de terminal.
 
 Todas as **mensagens exibidas ao usuário pelo CLI** (output de comandos, prompts interativos, erros,
 confirmações) são escritas em **inglês** — é o contrato de paridade herdado do FurLab (níveis N1–N3 da
@@ -21,7 +21,6 @@ repositório falam pt-BR.
 | `crates/` | **Mustel** (Rust) — o produto ativo |
 | `oracle/` | baseline **congelado**, relatórios de divergência e números de performance |
 | `MustelPlans/` | planos de implementação (fonte de verdade do trabalho) |
-| `openspec/` | specs canônicas (pt-BR) do produto anterior — **histórico**, não é contrato do Mustel |
 | `docs/` | documentação do Mustel em quatro quadrantes (Diátaxis) e o manifesto `contrato-de-interface.md` |
 
 Escopo do produto: grupos **`query`**, **`database`** e **`settings`**, mais a GUI em egui. O código
@@ -137,7 +136,9 @@ sai em **stdout** com **1**.
 ## Guard Rails (Agent Safety Protocol)
 
 > **Regra obrigatória:** agentes **não** fazem commit, **não** fazem staging (`git add`), **não** criam
-> tags e **não** fazem push. As mudanças ficam na árvore de trabalho para o dono revisar e confirmar.
+> tags e **não** fazem push **sem permissão explícita do dono para aquela ação**. As mudanças ficam na
+> árvore de trabalho para ele revisar e confirmar. Permissão dada uma vez serve para aquela ação — não
+> vale como autorização permanente para as próximas.
 
 ### Pode fazer sem perguntar
 
@@ -154,9 +155,32 @@ testes, formatação e análise.
 Use `rm`/`mv` do sistema de arquivos, **nunca** `git rm`/`git mv` (esses stageiam). A remoção fica
 visível como mudança não-staged, e o dono decide o commit.
 
-## OpenSpec
+## Documentação (Diátaxis)
 
-O fluxo OpenSpec continua sendo o lugar das especificações canônicas do **produto antigo**
-(`openspec/specs/<slug>/spec.md`, em pt-BR). Elas são **histórico**: o contrato vivo do Mustel é o
-manifesto + os testes descritos acima.
+A documentação do produto vive em `docs/` e segue o **Diátaxis**. Antes de escrever qualquer página,
+decida o quadrante — a diferença não é o assunto, é a intenção de quem lê:
+
+| O conteúdo… | …e serve para… | …então é | Pasta |
+|---|---|---|---|
+| informa **ação** | **adquirir** habilidade | tutorial | `docs/tutorials/` |
+| informa **ação** | **aplicar** habilidade | how-to | `docs/how-to/` |
+| informa **cognição** | **aplicar** habilidade | referência | `docs/reference/` |
+| informa **cognição** | **adquirir** habilidade | explicação | `docs/explanation/` |
+
+Regras práticas:
+
+- **Tutorial** ensina: uma lição com começo, meio e fim, que o leitor **executa** e termina com
+  sucesso. Nada de "opções avançadas" no meio.
+- **How-to** resolve: começa por uma situação concreta ("você precisa X") e vai direto ao caminho.
+- **Referência** descreve: árvore de comandos, flags, exit codes, formatos. Fria, completa, sem
+  opinião nem passo a passo. Deve bater com `mustel <cmd> --help`.
+- **Explicação** justifica: por que keyring e não arquivo, por que o CSV sai como sai, o que é a
+  escada N1–N4. Pode ter opinião e contexto.
+
+O que **não** é documentação de produto: o **manifesto de contrato**
+(`docs/contrato-de-interface.md`, uma linha por decisão com o teste que a prova) e os **planos**
+(`MustelPlans/`). Esses são artefatos de engenharia, não páginas para o leitor.
+
+Toda página nova precisa de link a partir de `docs/README.md`, e `documentation_links_resolve`
+(`cargo test`) falha se um link relativo apontar para arquivo inexistente.
 

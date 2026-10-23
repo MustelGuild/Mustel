@@ -76,7 +76,8 @@ Fatos adicionais aprendidos na comparação:
   comando legado (`return Task.FromResult(2)`), não do parser: o mustel precisa devolver `Ok(2)` ali,
   e não passar pelo mapeamento de `CoreError` (que daria 41).
 
-## Próximo passo
+## Como o baseline é usado hoje
 
-`oracle-compare` (T10) executa o `mustel`, compara com este baseline e classifica as divergências na
-escada N1–N4 descrita na seção 4.4 de `MustelPlans/migracao-rust.md`.
+`oracle-compare` executa o `mustel`, compara com este baseline e classifica as diferenças na escada
+N1–N4 descrita em `docs/explanation/escada-de-fidelidade.md`. Ele é **diagnóstico**: o gate é
+`cargo test --workspace`, que roda o mesmo `compare_case` nos testes de contrato.

@@ -23,7 +23,7 @@ aparece apenas nos lugares abaixo.
 | `publish.ps1`, `publish.sh` | `repository`/URL de release do repositório `liphvf/FurLab` (D18) |
 | `.github/workflows/release-build.yml` | nomes do repositório e do pacote (`Mustel.CLI`) nos comentários e no artefato |
 | `oracle/perf/baseline.md`, `oracle/perf/final.md`, `oracle/README.md`, `oracle/known-divergences.md` | documentam o oráculo e as medições por nome |
-| `.opencode/skills/gh-pr-create/SKILL.md` | exemplos citam o repositório pelo nome atual |
+| `oracle/baseline/help-root.json` | **captura congelada**: a ajuda do binário antigo listava `opencode`, `claude`, `file`; o arquivo é o contrato e não pode ser reescrito |
 
 ## 2. Divergências N4 (formatação) aceitas
 

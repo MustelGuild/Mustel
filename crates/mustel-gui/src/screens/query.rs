@@ -21,6 +21,7 @@ use mustel_core::query::analyzer::{self, QueryType};
 use mustel_core::query::csv_writer::parse_records;
 
 use crate::request::{JobResult, Request};
+use crate::{desktop, picker::Picker};
 
 /// Teto de linhas carregadas para a tabela. O arquivo não é truncado — só a leitura da tela.
 pub const MAX_DISPLAY_ROWS: usize = 20_000;
@@ -96,6 +97,8 @@ pub struct State {
     error: Option<String>,
     /// Consulta destrutiva esperando confirmação.
     confirmation: Option<Confirmation>,
+    /// Seletor de pastas da caixa de saída (modal do próprio app).
+    picker: Picker,
 }
 
 impl Default for State {
@@ -113,6 +116,7 @@ impl Default for State {
             summary: None,
             error: None,
             confirmation: None,
+            picker: Picker::default(),
         }
     }
 }
@@ -232,8 +236,47 @@ impl State {
 
         ui.horizontal(|ui| {
             ui.label("Output directory");
-            ui.add(egui::TextEdit::singleline(&mut self.output_directory).desired_width(360.0));
+            ui.add(egui::TextEdit::singleline(&mut self.output_directory).desired_width(250.0));
+
+            // Dois botões ao lado da caixa: escolher (abre o seletor do app) e abrir (mostra a pasta
+            // no gerenciador de arquivos). Ícone + tooltip para não roubar largura da caixa.
+            if ui
+                .button("📂 Escolher")
+                .on_hover_text("Escolher a pasta de saída")
+                .clicked()
+            {
+                let base =
+                    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+                let start = desktop::resolve_directory(&self.output_directory, &base);
+                self.picker.open(&start);
+            }
+
+            let base = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let target = desktop::resolve_directory(&self.output_directory, &base);
+            let can_open = desktop::can_open(&target);
+            let tooltip = if can_open {
+                "Abrir a pasta no gerenciador de arquivos".to_string()
+            } else {
+                format!("A pasta ainda não existe: {}", target.display())
+            };
+
+            let open = ui.add_enabled(can_open, egui::Button::new("🗂 Abrir"));
+            let open = if can_open {
+                open.on_hover_text(tooltip)
+            } else {
+                open.on_disabled_hover_text(tooltip)
+            };
+            if open.clicked()
+                && let Err(error) = desktop::open_directory(&target)
+            {
+                self.error = Some(format!("Não consegui abrir a pasta: {error}"));
+            }
         });
+
+        // O seletor é um modal: desenha sobre a tela, então basta chamar aqui uma vez por frame.
+        if let Some(chosen) = self.picker.show(ui.ctx()) {
+            self.output_directory = chosen.display().to_string();
+        }
 
         ui.separator();
         ui.label("Servers");

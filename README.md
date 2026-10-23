@@ -56,7 +56,7 @@ still loads libdbus at start-up.
 | `query` | `query run` (discovery, parallelism, CSV export, live progress) |
 | `database` | `database backup`, `database restore`, `database pgpass add/list/remove` |
 | `settings` | `settings db-servers ls/add/rm/test/set-password` |
-| `gui` | `mustel gui` — servers registry and `query run` in a window |
+| `gui` | `mustel gui` — SQL editor with autocomplete and syntax highlighting, servers registry and `query run` in a window |
 
 ### Examples
 

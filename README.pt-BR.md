@@ -56,7 +56,7 @@ libdbus na partida.
 | `query` | `query run` (descoberta, paralelismo, export CSV, progresso ao vivo) |
 | `database` | `database backup`, `database restore`, `database pgpass add/list/remove` |
 | `settings` | `settings db-servers ls/add/rm/test/set-password` |
-| `gui` | `mustel gui` — cadastro de servidores e `query run` numa janela |
+| `gui` | `mustel gui` — editor de SQL com autocomplete e realce de sintaxe, cadastro de servidores e `query run` numa janela |
 
 ### Exemplos
 

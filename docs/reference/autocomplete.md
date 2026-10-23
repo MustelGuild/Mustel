@@ -37,6 +37,9 @@ background) e é o que faz o combo listar **todos** os bancos — inclusive os q
 como nos servidores com `fetchAllDatabases`. A barra de status acompanha:
 `Discovering databases on '<servidor>'...` e, ao terminar, `'<servidor>' has N database(s).`.
 
+Enquanto a lista não chegou, o combo vazio diz `descobrindo bancos…`; se a descoberta falhar e o
+cadastro também estiver vazio, diz `nenhum banco no cadastro`.
+
 O `⟳` pede servidor **e** banco escolhidos e **senha no cofre**: sem senha guardada o botão fica
 desabilitado, e o tooltip diz como guardar. A janela **nunca** pergunta senha.
 

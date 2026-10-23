@@ -10,3 +10,4 @@ pub mod database_backup;
 pub mod database_restore;
 pub mod db_servers;
 pub mod query_run;
+pub mod schema;

@@ -389,7 +389,7 @@ pub async fn list_databases_for_discovery(
 /// mais os campos extras que o servidor mandar (ver [`postgres_message`]). Como o texto vem do
 /// servidor, os dois lados ficam iguais quando o erro nasce lá; sem SQLSTATE (falha de conexão, por
 /// exemplo) não há prefixo e a redação é a do driver — é o que a divergência 14 registra.
-fn map_error(error: tokio_postgres::Error) -> CoreError {
+pub fn map_error(error: tokio_postgres::Error) -> CoreError {
     let sqlstate = error.code().map(|code| code.code().to_string());
     let message = match (error.as_db_error(), &sqlstate) {
         (Some(db_error), Some(state)) => {

@@ -119,6 +119,8 @@ impl State {
                 });
                 self.error = None;
             }
+            // O esquema é da tela de consulta; a de servidores não tem o que fazer com ele.
+            JobResult::Schema { .. } => {}
             JobResult::Failed(error) => {
                 self.error = Some(error.clone());
             }

@@ -314,3 +314,101 @@ async fn servers_run_in_parallel_up_to_the_configured_degree() {
         "grau 1 tinha de ser bem mais lento: paralelo {parallel:.1}s, serial {serial:.1}s"
     );
 }
+
+/// O esquema lido do catálogo traz tabela, view, colunas com tipo e função com assinatura.
+///
+/// Cria objetos temporários com nome único (o banco é compartilhado entre execuções), lê o esquema e
+/// confere o que o autocomplete vai usar. Também prova o agrupamento de sobrecargas: a mesma função
+/// declarada duas vezes vira **um** item, com as duas assinaturas.
+#[tokio::test]
+async fn the_catalog_loads_tables_columns_and_functions() {
+    let Some(settings) = settings() else {
+        eprintln!("skipped: set MUSTEL_PG_TEST_URL");
+        return;
+    };
+
+    let client = connect(&settings).await.expect("conecta");
+    let suffix = std::process::id();
+    let table = format!("t_esquema_{suffix}");
+    let view = format!("v_esquema_{suffix}");
+    let function = format!("f_esquema_{suffix}");
+
+    client
+        .batch_execute(&format!(
+            "CREATE TABLE {table} (id integer PRIMARY KEY, nome text NOT NULL, valor numeric(10,2));
+             CREATE VIEW {view} AS SELECT id, nome FROM {table};
+             CREATE FUNCTION {function}(a integer, b text) RETURNS integer
+                LANGUAGE sql AS 'SELECT a';
+             CREATE FUNCTION {function}(a bigint) RETURNS bigint
+                LANGUAGE sql AS 'SELECT a';"
+        ))
+        .await
+        .expect("cria os objetos do teste");
+
+    let schema = mustel_core::usecases::schema::load(&client)
+        .await
+        .expect("lê o esquema");
+
+    // Tabela: colunas na ordem, com o tipo formatado.
+    let table_entry = schema
+        .tables
+        .iter()
+        .find(|entry| entry.name == table)
+        .expect("a tabela criada aparece");
+    assert_eq!(
+        table_entry.kind,
+        mustel_core::usecases::schema::RelationKind::Table
+    );
+    let columns: Vec<(&str, &str)> = table_entry
+        .columns
+        .iter()
+        .map(|column| (column.name.as_str(), column.type_name.as_str()))
+        .collect();
+    assert_eq!(
+        columns,
+        vec![
+            ("id", "integer"),
+            ("nome", "text"),
+            ("valor", "numeric(10,2)")
+        ]
+    );
+
+    // View aparece como view, com as colunas dela.
+    let view_entry = schema
+        .tables
+        .iter()
+        .find(|entry| entry.name == view)
+        .expect("a view criada aparece");
+    assert_eq!(
+        view_entry.kind,
+        mustel_core::usecases::schema::RelationKind::View
+    );
+    assert_eq!(view_entry.columns.len(), 2);
+
+    // Função: uma entrada só, com as duas assinaturas agrupadas.
+    let function_entry = schema
+        .functions
+        .iter()
+        .find(|entry| entry.name == function)
+        .expect("a função criada aparece");
+    let arguments = function_entry.arguments.as_deref().unwrap_or("");
+    assert!(
+        arguments.contains("integer") && arguments.contains("text"),
+        "assinatura da primeira sobrecarga: {arguments}"
+    );
+    assert!(
+        arguments.contains("bigint"),
+        "assinatura da segunda sobrecarga: {arguments}"
+    );
+
+    // Limpeza: o banco é compartilhado.
+    client
+        .batch_execute(&format!(
+            "DROP VIEW IF EXISTS {view};
+             DROP TABLE IF EXISTS {table} CASCADE;
+             DROP FUNCTION IF EXISTS {function}(integer, text);
+             DROP FUNCTION IF EXISTS {function}(bigint);"
+        ))
+        .await
+        .expect("remove os objetos do teste");
+}

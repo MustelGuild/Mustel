@@ -27,8 +27,10 @@ pub mod picker;
 pub mod query;
 pub mod request;
 pub mod runtime;
+pub mod schema_cache;
 pub mod screens;
 pub mod smooth_scroll;
+pub mod sql_completion;
 pub mod sql_editor;
 
 pub use app::App;

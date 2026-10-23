@@ -22,7 +22,7 @@ use mustel_core::query::csv_writer::parse_records;
 
 use crate::request::{JobResult, Request};
 use crate::smooth_scroll::SmoothScroll;
-use crate::{desktop, picker::Picker, sql_editor};
+use crate::{desktop, picker::Picker, sql_completion, sql_editor};
 
 /// Teto de linhas carregadas para a tabela. O arquivo não é truncado — só a leitura da tela.
 pub const MAX_DISPLAY_ROWS: usize = 20_000;
@@ -86,6 +86,14 @@ pub struct State {
     pub output_directory: String,
     /// Nomes marcados na lista de servidores.
     selected: Vec<String>,
+    /// Servidor escolhido como **referência do autocomplete**.
+    reference_server: String,
+    /// Banco de referência do autocomplete.
+    reference_database: String,
+    /// Último esquema que o app confirmou ter carregado (para o rótulo).
+    reference_loaded: Option<(String, String)>,
+    /// Cópia do esquema de referência, para o motor de sugestão (evita emprestar o cache no desenho).
+    reference_schema: Option<std::sync::Arc<mustel_core::usecases::schema::Schema>>,
     /// Fase atual.
     phase: Phase,
     /// Linhas de progresso, na ordem em que os bancos terminaram.
@@ -108,6 +116,8 @@ pub struct State {
     picker: Picker,
     /// Animação de rolagem do formulário (o botão "ir ao fim").
     form_scroll: SmoothScroll,
+    /// Memória do popup entre quadros (pedido do `Ctrl+Space` e pausa depois de um aceite).
+    completion_trigger: sql_completion::Trigger,
 }
 
 impl Default for State {
@@ -116,6 +126,10 @@ impl Default for State {
             sql: "SELECT 1 AS valor".to_string(),
             output_directory: String::new(),
             selected: Vec::new(),
+            reference_server: String::new(),
+            reference_database: String::new(),
+            reference_loaded: None,
+            reference_schema: None,
             phase: Phase::Idle,
             progress: Vec::new(),
             header: Vec::new(),
@@ -127,6 +141,7 @@ impl Default for State {
             confirmation: None,
             picker: Picker::default(),
             form_scroll: SmoothScroll::default(),
+            completion_trigger: sql_completion::Trigger::default(),
         }
     }
 }
@@ -213,6 +228,15 @@ impl State {
     /// Aplica o resultado final de um job.
     pub fn apply(&mut self, result: &JobResult) {
         match result {
+            JobResult::Schema {
+                server,
+                database,
+                schema,
+            } => {
+                if schema.is_ok() {
+                    self.reference_loaded = Some((server.clone(), database.clone()));
+                }
+            }
             JobResult::QueryDone {
                 consolidated,
                 log,
@@ -272,7 +296,26 @@ impl State {
     ///
     /// Separado de [`State::ui`] porque o formulário rola: a altura dele é a que sobra depois de a
     /// tabela de resultados reservar a fatia dela.
+    /// Servidor escolhido como referência do autocomplete.
+    pub fn reference_server(&self) -> &str {
+        &self.reference_server
+    }
+
+    /// Banco escolhido como referência do autocomplete.
+    pub fn reference_database(&self) -> &str {
+        &self.reference_database
+    }
+
+    /// Guarda o esquema já carregado para o motor de sugestão.
+    pub fn set_reference_schema(
+        &mut self,
+        schema: Option<std::sync::Arc<mustel_core::usecases::schema::Schema>>,
+    ) {
+        self.reference_schema = schema;
+    }
+
     fn form_ui(&mut self, ui: &mut egui::Ui, servers: &[ServerConfigEntry]) -> Option<Request> {
+        let mut loaded_request: Option<Request> = None;
         let mut request = None;
         let running = self.is_running();
 
@@ -290,12 +333,39 @@ impl State {
             ui.fonts_mut(|fonts| fonts.layout_job(job))
         };
 
-        ui.add(
-            egui::TextEdit::multiline(&mut self.sql)
-                .desired_rows(rows)
-                .desired_width(f32::INFINITY)
-                .layouter(&mut layouter),
-        );
+        let text_edit = egui::TextEdit::multiline(&mut self.sql)
+            .desired_rows(rows)
+            .desired_width(f32::INFINITY)
+            .layouter(&mut layouter);
+
+        // Autocomplete: o `CompletionPopup` do egui consome `Tab`/`Enter`/setas **antes** do
+        // `TextEdit` e insere o texto aceito — não há consumo manual de teclas aqui.
+        //
+        // Gatilho, fronteira de palavra e pedido ao motor ficam em `sql_completion`: é lá que as
+        // regras vivem (e são testadas sem janela).
+        let force = ui.input(sql_completion::force_requested);
+        let schema = self.reference_schema.clone();
+
+        // O gatilho vive no estado da tela e atravessa o quadro: o `popup` pergunta a cada quadro se
+        // deve abrir, e as respostas do atalho/aceite valem para os quadros seguintes.
+        let mut trigger = std::mem::take(&mut self.completion_trigger);
+
+        let output = egui::CompletionPopup::new(sql_completion::id())
+            .word_boundary(sql_completion::word_boundary)
+            .accept_keys([egui::Key::Tab, egui::Key::Enter])
+            // Abaixo da caixa: o padrão do egui (`TOP_START`) desenha a lista **acima** do editor,
+            // tapando o cabeçalho da janela. Se não houver espaço, o egui inverte sozinho.
+            .align(egui::RectAlign::BOTTOM_START)
+            .max_height(220.0)
+            .show(ui, text_edit, |query| {
+                sql_completion::candidates(&mut trigger, query, schema.as_deref(), force)
+            });
+
+        trigger.record_accepted(output.accepted.is_some());
+        self.completion_trigger = trigger;
+
+        // O popup já gravou o texto aceito no buffer; o retorno não tem o que fazer aqui.
+        drop(output);
 
         ui.horizontal(|ui| {
             ui.label("Output directory");
@@ -365,6 +435,108 @@ impl State {
                     }
                 }
             });
+
+        ui.separator();
+        // Referência do autocomplete: **um** banco serve de molde para as sugestões. Explícito de
+        // propósito — carregar no foco surpreenderia (e pode pedir senha que a janela não tem).
+        ui.horizontal(|ui| {
+            ui.label("Referência do autocomplete:");
+
+            // Servidor: o primeiro marcado é o padrão.
+            if self.reference_server.is_empty()
+                && let Some(first) = servers
+                    .iter()
+                    .find(|server| self.selected.contains(&server.name))
+            {
+                self.reference_server = first.name.clone();
+            }
+
+            egui::ComboBox::from_id_salt("reference_server")
+                .selected_text(if self.reference_server.is_empty() {
+                    "—".to_string()
+                } else {
+                    self.reference_server.clone()
+                })
+                .show_ui(ui, |ui| {
+                    for server in servers {
+                        if ui
+                            .selectable_value(
+                                &mut self.reference_server,
+                                server.name.clone(),
+                                &server.name,
+                            )
+                            .clicked()
+                        {
+                            // Trocar de servidor invalida o banco escolhido.
+                            self.reference_database.clear();
+                        }
+                    }
+                });
+
+            // Banco: os do cadastro do servidor escolhido.
+            let databases: Vec<String> = servers
+                .iter()
+                .find(|server| server.name == self.reference_server)
+                .map(|server| server.databases.clone())
+                .unwrap_or_default();
+
+            if self.reference_database.is_empty()
+                && let Some(first) = databases.first()
+            {
+                self.reference_database = first.clone();
+            }
+
+            egui::ComboBox::from_id_salt("reference_database")
+                .selected_text(if self.reference_database.is_empty() {
+                    "—".to_string()
+                } else {
+                    self.reference_database.clone()
+                })
+                .show_ui(ui, |ui| {
+                    if databases.is_empty() {
+                        ui.weak("nenhum banco no cadastro");
+                    }
+                    for database in &databases {
+                        ui.selectable_value(
+                            &mut self.reference_database,
+                            database.clone(),
+                            database,
+                        );
+                    }
+                });
+
+            let can_load = !self.reference_server.is_empty() && !self.reference_database.is_empty();
+            let load = ui.add_enabled(can_load, egui::Button::new("⟳"));
+            let load = if can_load {
+                load.on_hover_text("Carregar o esquema deste banco para o autocomplete")
+            } else {
+                load.on_disabled_hover_text(
+                    "Escolha servidor e banco (e tenha a senha no cofre) para carregar",
+                )
+            };
+
+            if load.clicked() {
+                loaded_request = Some(Request::LoadSchema {
+                    server: self.reference_server.clone(),
+                    database: self.reference_database.clone(),
+                });
+            }
+
+            // Rótulo do estado: o que está carregado, se algo.
+            match &self.reference_loaded {
+                Some((server, database))
+                    if server == &self.reference_server && database == &self.reference_database =>
+                {
+                    ui.weak(format!("carregado ({database})"));
+                }
+                Some(_) => {
+                    ui.weak("carregado outro banco");
+                }
+                None => {
+                    ui.weak("não carregado");
+                }
+            }
+        });
 
         ui.separator();
         // O `horizontal` devolve o pedido em vez de escrever no `request` de fora: um `Option<Request>`
@@ -456,7 +628,7 @@ impl State {
             }
         }
 
-        request
+        loaded_request.or(request)
     }
 
     /// Desenha a tela: o formulário rola, a tabela de resultados fica com a fatia de baixo.
@@ -472,7 +644,13 @@ impl State {
         self.form_scroll.start(current, max_offset);
     }
 
-    pub fn ui(&mut self, ui: &mut egui::Ui, servers: &[ServerConfigEntry]) -> Option<Request> {
+    pub fn ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        servers: &[ServerConfigEntry],
+        schema: Option<std::sync::Arc<mustel_core::usecases::schema::Schema>>,
+    ) -> Option<Request> {
+        self.set_reference_schema(schema);
         let total = ui.available_height();
         let has_results = !self.rows.is_empty();
         let table_height = results_height(total, has_results);

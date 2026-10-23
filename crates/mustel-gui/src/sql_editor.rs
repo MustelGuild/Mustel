@@ -326,6 +326,16 @@ impl Palette {
     }
 }
 
+/// O cursor está dentro de uma string ou de um comentário?
+///
+/// **Delega** para o núcleo (`mustel_core::completion::cursor_in_literal_or_comment`): a regra de
+/// aspas e comentários é uma só, testada num lugar só. Aqui fica apenas o adaptador do editor.
+///
+/// `cursor` é índice de **caractere**, como o que o `TextEdit` do egui entrega.
+pub fn cursor_in_literal_or_comment(sql: &str, cursor: usize) -> bool {
+    mustel_core::completion::cursor_in_literal_or_comment(sql, cursor)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -203,13 +203,25 @@
 | IF-192 | CD16 | A | todo link relativo da documentação (`docs/**`, READMEs) resolve para um arquivo existente | links em `docs/**/*.md` e `README*.md` | crates/mustel-core/tests/contract_decisions.rs::documentation_links_resolve | coberta |
 | IF-200 | GUI | B | o formulário rola quando não cabe, e a tabela de resultados fica com uma fatia fixa | janela alta ou pequena com SQL longo | crates/mustel-gui/src/screens/query.rs::tests::the_results_panel_takes_a_share_and_leaves_the_form_the_rest; crates/mustel-gui/src/screens/query.rs::tests::without_results_the_form_has_the_whole_window | coberta |
 | IF-201 | GUI | B | o botão "ir ao fim" só aparece quando o formulário transborda, e rola suavemente até o fim | janela pequena com SQL longo | crates/mustel-gui/src/smooth_scroll.rs::tests::it_reaches_the_target_and_stops; crates/mustel-gui/src/smooth_scroll.rs::tests::it_is_frame_rate_independent | coberta |
+| IF-202 | AUTOCOMPLETE | B | o esquema de referência é carregado por **um** banco escolhido e cacheado por `(servidor, banco)` | linha "Referência do autocomplete", botão `⟳` | crates/mustel-gui/src/schema_cache.rs::tests::the_cache_is_keyed_by_server_and_database | coberta |
+| IF-203 | AUTOCOMPLETE | B | recarregar substitui a entrada do mesmo par, sem duplicar; invalidar remove só aquele par | `⟳` na linha de referência | crates/mustel-gui/src/schema_cache.rs::tests::reloading_replaces_the_entry; crates/mustel-gui/src/schema_cache.rs::tests::invalidating_one_pair_keeps_the_others | coberta |
+| IF-204 | AUTOCOMPLETE | A | a sugestão não aparece dentro de string ou comentário, e o limite é exato (espaço após o fecha-aspas conta como fora) | digitar dentro de `'...'` ou `--` | crates/mustel-core/src/completion.rs::tests::the_literal_and_comment_boundary_is_exact | coberta |
+| IF-205 | AUTOCOMPLETE | A | `FROM`/`JOIN` sugerem tabelas, views e **CTEs**; nomes homônimos saem qualificados; `schema.` filtra por schema | `FROM ` e `vendas.` no editor | crates/mustel-core/src/completion.rs::tests::from_suggests_relations; crates/mustel-core/src/completion.rs::tests::duplicate_table_names_are_qualified; crates/mustel-core/src/completion.rs::tests::typing_a_schema_filters_its_tables | coberta |
+| IF-206 | AUTOCOMPLETE | A | `alias.` sugere as colunas da tabela daquele alias, com o tipo no detalhe | `SELECT c.` com `FROM clientes c` | crates/mustel-core/src/completion.rs::tests::an_alias_resolves_to_the_table_columns | coberta |
+| IF-207 | AUTOCOMPLETE | A | funções são sugeridas com a assinatura no detalhe, uma entrada por nome | digitar o começo do nome da função | crates/mustel-core/src/completion.rs::tests::functions_come_with_their_signature | coberta |
+| IF-208 | AUTOCOMPLETE | A | a lista respeita o teto de 50 e o ranking põe prefixo antes de substring | esquema grande | crates/mustel-core/src/completion.rs::tests::the_candidate_list_is_capped; crates/mustel-core/src/completion.rs::tests::ranking_puts_prefix_before_substring | coberta |
+| IF-209 | AUTOCOMPLETE | A | a palavra sob o cursor é o **identificador**, não o separador anterior; o trecho que o popup substitui é o mesmo que o motor leu, então aceitar não come o espaço nem gruda no texto anterior | `FROM ` e aceitar a sugestão | crates/mustel-core/src/completion.rs::tests::the_popup_word_boundary_is_the_complement_of_the_engine_one; crates/mustel-gui/tests/popup_probe.rs::the_word_is_the_identifier_under_the_cursor; crates/mustel-gui/tests/popup_probe.rs::the_table_list_opens_right_after_from | coberta |
+| IF-210 | AUTOCOMPLETE | A | o popup abre no começo de um token e a partir da **primeira** letra; `Ctrl+Space` abre em qualquer posição, lendo os modificadores do próprio evento de tecla | `FROM `, primeira letra, `Ctrl+Space` | crates/mustel-gui/src/sql_completion.rs::tests::it_opens_at_the_start_of_a_token_and_on_the_first_letter; crates/mustel-gui/src/sql_completion.rs::tests::it_only_opens_at_the_start_of_the_text_on_demand; crates/mustel-gui/tests/popup_probe.rs::ctrl_space_opens_the_list_without_any_typing | coberta |
 
 ## Resumo
 
-- **Total de linhas:** 128
-- **`coberta`:** 125
+- **Total de linhas:** 137
+- **`coberta`:** 134
 - **`pendente`:** 0
 - **`nao-coberta`:** 3 (IF-025 pool até o T34; IF-141 prompt por servidor; IF-163 superfície nova do Mustel)
+
+> Contagem conferida em 2026-10-23 (a revisão anterior dizia 128/125 e já estava desatualizada em 7
+> linhas: o autocomplete acrescentou IF-202..IF-208 e, nesta correção, IF-209 e IF-210).
 > As linhas `pendente` são as que o restante do plano fecha: T5/T6 (replay), T8 (texto), T9 (exit
 > codes), T10 (cofre), T11 (binário único), T13 (divergências), T14 (prompts). O plano só fecha com
 > zero `pendente`.

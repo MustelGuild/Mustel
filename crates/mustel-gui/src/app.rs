@@ -59,6 +59,8 @@ pub struct App {
     config_error: Option<String>,
     servers: servers_screen::State,
     query: query_screen::State,
+    /// Esquemas carregados para o autocomplete, por `(servidor, banco)`.
+    schemas: crate::schema_cache::SchemaCache,
 }
 
 impl App {
@@ -110,6 +112,7 @@ impl App {
             running: None,
             status: "Ready.".to_string(),
             config_error,
+            schemas: crate::schema_cache::SchemaCache::default(),
             servers: servers_screen::State::new(servers),
             query,
         })
@@ -173,6 +176,45 @@ impl App {
                             databases: report.databases,
                         },
                         Err(error) => JobResult::Failed(error.to_string()),
+                    };
+                    let _ = results.send(result);
+                });
+            }
+            Request::LoadSchema { server, database } => {
+                let Some(entry) = self
+                    .servers_snapshot()
+                    .into_iter()
+                    .find(|candidate| candidate.name == server)
+                else {
+                    self.status = format!("Server '{server}' not found.");
+                    return;
+                };
+
+                // Sem senha no cofre a janela **não** pergunta: avisa e não carrega.
+                let password = match query::stored_password(&entry.name) {
+                    Ok(password) => password,
+                    Err(error) => {
+                        self.status = error.to_string();
+                        return;
+                    }
+                };
+
+                let results = self.results.clone();
+                let target = server.clone();
+                let database_for_job = database.clone();
+                self.status = format!("Loading schema of '{database}' on '{server}'...");
+                self.spawn("load schema", ctx, move |_token| async move {
+                    let result = match query::schema(&entry, &password, &database_for_job).await {
+                        Ok(schema) => JobResult::Schema {
+                            server: target,
+                            database: database_for_job,
+                            schema: Ok(schema),
+                        },
+                        Err(error) => JobResult::Schema {
+                            server: target,
+                            database: database_for_job,
+                            schema: Err(error.to_string()),
+                        },
                     };
                     let _ = results.send(result);
                 });
@@ -341,6 +383,21 @@ impl App {
                 JobResult::QueryWithoutDatabases => {
                     "No accessible databases found across selected servers.".to_string()
                 }
+                JobResult::Schema {
+                    server,
+                    database,
+                    schema,
+                } => match schema {
+                    Ok(schema) => {
+                        self.schemas.insert(server, database, schema.clone());
+                        format!(
+                            "Schema of '{database}' loaded: {} relation(s), {} function(s).",
+                            schema.tables.len(),
+                            schema.functions.len()
+                        )
+                    }
+                    Err(error) => format!("Could not load the schema: {error}"),
+                },
                 JobResult::Failed(error) => error.clone(),
             };
 
@@ -398,7 +455,18 @@ impl eframe::App for App {
             let servers = self.servers_snapshot();
             let request = match self.screen {
                 Screen::Servers => self.servers.ui(ui),
-                Screen::Query => self.query.ui(ui, &servers),
+                Screen::Query => {
+                    // O esquema carregado vai como `Arc`: a tela guarda uma cópia para o desenho e o
+                    // cache continua dono do original.
+                    let schema = self
+                        .schemas
+                        .get(
+                            self.query.reference_server(),
+                            self.query.reference_database(),
+                        )
+                        .map(|schema| std::sync::Arc::new(schema.clone()));
+                    self.query.ui(ui, &servers, schema)
+                }
             };
 
             if let Some(request) = request {

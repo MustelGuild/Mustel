@@ -30,6 +30,8 @@ pub enum InputError {
     NoPassword(String),
     /// O cadastro não pôde ser lido.
     Config(String),
+    /// Falha do núcleo (conexão, leitura do catálogo) com a mensagem pronta.
+    Core(String),
 }
 
 impl std::fmt::Display for InputError {
@@ -39,7 +41,7 @@ impl std::fmt::Display for InputError {
                 formatter,
                 "No password stored for '{server}'. Use `mustel settings db-servers set-password`."
             ),
-            Self::Config(message) => write!(formatter, "{message}"),
+            Self::Config(message) | Self::Core(message) => write!(formatter, "{message}"),
         }
     }
 }
@@ -137,6 +139,27 @@ pub async fn run(
     token: &mustel_core::signal::CancellationToken,
 ) -> Result<query_run::QueryRunOutcome, CoreError> {
     query_run::run(request, events, token).await
+}
+
+/// Carrega o esquema de um banco do servidor, com a senha já resolvida.
+///
+/// A conexão é a mesma que o `query run` usaria, só que apontada para o banco de **referência** do
+/// autocomplete. Nenhuma regra nova: resolve o cadastro e chama o caso de uso do núcleo.
+pub async fn schema(
+    server: &ServerConfigEntry,
+    password: &str,
+    database: &str,
+) -> Result<mustel_core::usecases::schema::Schema, InputError> {
+    let run = server_run(server, password)?;
+    let mut settings = run.settings;
+    settings.database = Some(database.to_string());
+
+    let client = mustel_core::postgres::client::connect(&settings)
+        .await
+        .map_err(|error| InputError::Core(error.to_string()))?;
+    mustel_core::usecases::schema::load(&client)
+        .await
+        .map_err(|error| InputError::Core(error.to_string()))
 }
 
 #[cfg(test)]

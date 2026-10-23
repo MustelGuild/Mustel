@@ -32,6 +32,13 @@ pub enum Request {
     TestConnection(ServerConfigEntry),
     /// Cancela o job em andamento.
     CancelJob,
+    /// Carrega o esquema de um banco, para o autocomplete.
+    LoadSchema {
+        /// Servidor do cadastro.
+        server: String,
+        /// Banco de referência.
+        database: String,
+    },
     /// Executa a consulta nos servidores escolhidos.
     RunQuery {
         /// Servidores escolhidos, na ordem da tela.
@@ -78,6 +85,15 @@ pub enum JobResult {
     },
     /// A consulta não achou banco nenhum (o comando não falhou).
     QueryWithoutDatabases,
+    /// O esquema de referência foi carregado (para o autocomplete).
+    Schema {
+        /// Servidor de onde veio.
+        server: String,
+        /// Banco de onde veio.
+        database: String,
+        /// O esquema, ou a mensagem de erro pronta.
+        schema: Result<mustel_core::usecases::schema::Schema, String>,
+    },
     /// O job falhou, com a mensagem pronta do núcleo.
     Failed(String),
 }

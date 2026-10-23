@@ -968,3 +968,26 @@ O Docker Desktop também foi iniciado nesta rodada (o daemon estava parado) para
   build temporária começando na aba Servers (removida em seguida). Como o dono usa essa aba
   normalmente, tratei como limitação do robô de cliques, não do app — mas fica registrado para o caso
   de aparecer no uso real.
+- `[2026-10-23]` **Alvos da consulta na janela: nada marcado por padrão e `Select all` (pedido do dono).**
+  A lista **Servers** da tela de consulta deixou de pré-selecionar o primeiro servidor (era o
+  `sync_servers` imitando o CLI) e ganhou um checkbox **Select all**, que marca ou desmarca a lista
+  inteira e reflete o estado real (só aparece marcado quando todos estão).
+
+  **Por que a janela difere do CLI aqui:** o prompt do `query run` pré-seleciona todos porque é uma
+  pergunta única num console; na janela a lista está sempre visível e um `Run query` já habilitado é
+  fácil de disparar sem querer. O CLI não mudou — continua pré-selecionando, que é contrato do
+  legado.
+
+  **Consequência tratada:** a referência do autocomplete pegava o primeiro servidor **marcado**. Sem
+  marcação padrão, ela nasceria vazia e o autocomplete exigiria um clique extra só para começar.
+  Agora ela nasce no primeiro servidor do **cadastro**, independente dos alvos de execução — são
+  coisas diferentes (molde das sugestões × onde rodar). Aproveitei para ajustar a limpeza do IF-216:
+  se o servidor de referência sai do cadastro e sobra outro, a referência passa para quem sobrou, em
+  vez de ficar vazia.
+
+  Testes novos (IF-217): `nothing_is_selected_by_default` e
+  `the_autocomplete_reference_does_not_depend_on_the_selection`. O teste antigo
+  `a_single_server_starts_selected_like_the_cli` foi **removido** — ele fixava exatamente o
+  comportamento que o dono pediu para mudar. Verificado na janela: lista desmarcada, `Select all`
+  marcando/desmarcando os dois servidores e `Run query` habilitando só com alvo escolhido.
+  `cargo test --workspace` = **472 testes, 0 falhas**.

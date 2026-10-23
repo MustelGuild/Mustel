@@ -193,14 +193,11 @@ impl State {
 
     /// Ajusta a seleção quando a lista de servidores muda (mantém o que ainda existe).
     pub fn sync_servers(&mut self, servers: &[ServerConfigEntry]) {
+        // Nada é marcado por padrão: quem escolhe os alvos é quem vai executar. O CLI pré-seleciona
+        // todos (ou o único) porque lá a escolha é um prompt; aqui a lista está sempre visível e um
+        // "Run query" já marcado é fácil de disparar sem querer.
         self.selected
             .retain(|name| servers.iter().any(|server| &server.name == name));
-        if self.selected.is_empty() {
-            // Nada marcado e servidor único é o caso comum: já vem selecionado, como no CLI.
-            if let Some(only) = servers.first() {
-                self.selected.push(only.name.clone());
-            }
-        }
 
         // O servidor de referência pode ter sido removido (ou renomeado) no cadastro. Sem esta
         // limpeza o combo continuava exibindo o nome antigo, o `⟳` tentava carregar um servidor que
@@ -213,6 +210,15 @@ impl State {
             self.reference_database.clear();
             self.reference_loaded = None;
             self.reference_schema = None;
+        }
+
+        // A referência do autocomplete é independente dos alvos da execução: ela nasce no primeiro
+        // servidor do cadastro, não no primeiro marcado — senão o autocomplete só funcionaria depois
+        // de marcar um servidor para rodar a consulta.
+        if self.reference_server.is_empty()
+            && let Some(first) = servers.first()
+        {
+            self.reference_server = first.name.clone();
         }
     }
 
@@ -560,6 +566,19 @@ impl State {
 
         ui.separator();
         ui.label("Servers");
+
+        // "Todos": um atalho para marcar/desmarcar a lista inteira. Reflete o estado real (marcado
+        // só quando todos estão), então não mente quando o usuário mexe item a item.
+        let all_selected = !servers.is_empty() && self.selected.len() == servers.len();
+        let mut select_all = all_selected;
+        if ui.checkbox(&mut select_all, "Select all").changed() {
+            if select_all {
+                self.selected = servers.iter().map(|server| server.name.clone()).collect();
+            } else {
+                self.selected.clear();
+            }
+        }
+
         // Lista curta e rolável: o espaço vertical é da **tabela**, que é a saída do comando.
         egui::ScrollArea::vertical()
             .id_salt("query_servers")
@@ -1084,20 +1103,44 @@ mod tests {
         }
     }
 
+    /// Nenhum servidor vem marcado por padrão: quem escolhe os alvos é quem vai executar.
+    ///
+    /// Muda o contrato anterior ("servidor único já vem marcado, como no CLI"): na janela a lista
+    /// está sempre visível e o `Run query` já habilitado é fácil de disparar sem querer.
+    /// CONTRACT: IF-217
     #[test]
-    fn a_single_server_starts_selected_like_the_cli() {
+    fn nothing_is_selected_by_default() {
         let mut state = State::default();
 
         state.sync_servers(&[server("dev")]);
+        assert!(state.selected.is_empty(), "nem com um servidor só");
 
-        assert_eq!(state.selected, vec!["dev".to_string()]);
+        state.sync_servers(&[server("dev"), server("outro")]);
+        assert!(state.selected.is_empty(), "nem com vários");
     }
 
+    /// A referência do autocomplete nasce no primeiro servidor do cadastro, sem depender da seleção.
+    ///
+    /// CONTRACT: IF-217
+    #[test]
+    fn the_autocomplete_reference_does_not_depend_on_the_selection() {
+        let mut state = State::default();
+
+        state.sync_servers(&[server("dev"), server("outro")]);
+
+        assert_eq!(state.reference_server, "dev", "primeiro do cadastro");
+        assert!(
+            state.selected.is_empty(),
+            "e continua sem alvo marcado para rodar"
+        );
+    }
+
+    /// Marcar à mão continua valendo, e servidor que sai do cadastro sai da seleção.
     #[test]
     fn the_selection_drops_servers_that_went_away() {
         let mut state = State::default();
         state.sync_servers(&[server("dev"), server("outro")]);
-        state.selected.push("outro".to_string());
+        state.selected = vec!["dev".to_string(), "outro".to_string()];
 
         state.sync_servers(&[server("dev")]);
 
@@ -1108,6 +1151,9 @@ mod tests {
     ///
     /// Bug relatado: apagando todos os servidores, o combo continuava mostrando o nome do que já não
     /// existia, e o esquema velho seguia alimentando as sugestões.
+    ///
+    /// Sobrando outro servidor, a referência passa para ele: o autocomplete continua com um molde
+    /// válido, sem o usuário ter de reescolher.
     /// CONTRACT: IF-216
     #[test]
     fn removing_the_reference_server_clears_the_reference_state() {
@@ -1120,27 +1166,33 @@ mod tests {
             mustel_core::usecases::schema::Schema::default(),
         ));
 
-        // O servidor sai do cadastro.
+        // O servidor sai do cadastro, mas ainda há outro.
         state.sync_servers(&[server("outro")]);
 
-        assert!(
-            state.reference_server.is_empty(),
-            "o combo não guarda fantasma"
+        assert_eq!(
+            state.reference_server, "outro",
+            "a referência passa para quem sobrou"
         );
-        assert!(state.reference_database.is_empty());
+        assert!(
+            state.reference_database.is_empty(),
+            "o banco do servidor que saiu não vale para o novo"
+        );
         assert!(
             state.reference_loaded.is_none(),
             "o rótulo volta a 'não carregado'"
         );
         assert!(
             state.reference_schema.is_none(),
-            "as sugestões perdem o molde"
+            "as sugestões perdem o molde antigo"
         );
 
-        // Sem servidor nenhum também não sobra nada.
-        state.reference_server = "outro".to_string();
+        // Sem servidor nenhum, não sobra nada — é o caso do relato.
         state.sync_servers(&[]);
-        assert!(state.reference_server.is_empty(), "lista vazia limpa tudo");
+        assert!(
+            state.reference_server.is_empty(),
+            "o combo não guarda fantasma"
+        );
+        assert!(state.reference_database.is_empty());
     }
 
     #[test]

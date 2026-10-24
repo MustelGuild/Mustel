@@ -8,6 +8,9 @@
 //! quem chama não precisa carregar mais campos no próprio estado, e dois combos na mesma tela não
 //! compartilham busca.
 
+/// Âmbar do aviso: o mesmo tom do alerta de falha da sidebar.
+const WARNING_COLOR: egui::Color32 = egui::Color32::from_rgb(214, 158, 46);
+
 /// Uma linha do combo.
 pub struct Item<'a> {
     /// Texto mostrado (e usado como chave e como alvo da busca).
@@ -18,6 +21,11 @@ pub struct Item<'a> {
     pub note: Option<&'a str>,
     /// É o valor atual?
     pub selected: bool,
+    /// Aviso a destacar à direita, em âmbar (ex.: o servidor de origem sumiu).
+    ///
+    /// Separado do `note` de propósito: a nota é informação cinza (contagem), o aviso é problema —
+    /// e um problema não pode ser da mesma cor do detalhe.
+    pub warning: Option<&'a str>,
 }
 
 impl<'a> Item<'a> {
@@ -27,7 +35,14 @@ impl<'a> Item<'a> {
             text,
             note: None,
             selected,
+            warning: None,
         }
+    }
+
+    /// Marca o item com um aviso (mostrado em âmbar, fora da busca).
+    pub fn warn(mut self, warning: &'a str) -> Self {
+        self.warning = Some(warning);
+        self
     }
 
     /// Um item com detalhe à direita (contagem, por exemplo).
@@ -36,6 +51,7 @@ impl<'a> Item<'a> {
             text,
             note: Some(note),
             selected,
+            warning: None,
         }
     }
 }
@@ -150,12 +166,17 @@ pub fn search_combo_sized(
                             let response = ui.horizontal(|ui| {
                                 let clicked =
                                     ui.selectable_label(item.selected, item.text).clicked();
-                                if let Some(note) = item.note {
-                                    ui.with_layout(
-                                        egui::Layout::right_to_left(egui::Align::Center),
-                                        |ui| ui.weak(note),
-                                    );
-                                }
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        if let Some(note) = item.note {
+                                            ui.weak(note);
+                                        }
+                                        if let Some(warning) = item.warning {
+                                            ui.colored_label(WARNING_COLOR, warning);
+                                        }
+                                    },
+                                );
                                 clicked
                             });
                             if response.inner {

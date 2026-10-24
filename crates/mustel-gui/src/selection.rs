@@ -11,6 +11,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use mustel_core::config::ServerConfigEntry;
+use mustel_core::config::model::SelectionQuery;
 use mustel_core::query::discovery;
 use mustel_core::usecases::custom_databases::ServerSelection;
 use mustel_core::usecases::db_servers::CatalogDatabase;
@@ -64,6 +65,18 @@ pub fn catalog<const N: usize>(names: [&str; N]) -> Vec<CatalogDatabase> {
         .iter()
         .map(|name| CatalogDatabase::usable(*name))
         .collect()
+}
+
+/// O servidor de onde a query **lê** não está mais no cadastro?
+///
+/// O seletor é global e continua válido como cadastro — mas não roda sem a fonte. Quem detecta isso
+/// **antes** de disparar o job é a tela: mandar e receber erro só para dizer o que já se sabe
+/// gastaria uma conexão e assustaria o dono com um erro de rede.
+pub fn missing_source(query: &SelectionQuery, servers: &[ServerConfigEntry]) -> Option<String> {
+    let known = servers
+        .iter()
+        .any(|server| server.name.eq_ignore_ascii_case(&query.server));
+    (!known).then(|| query.server.clone())
 }
 
 /// O motivo, pronto para o tooltip, de a base não servir como alvo — ou `None` se servir.

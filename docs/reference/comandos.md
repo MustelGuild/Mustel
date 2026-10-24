@@ -30,7 +30,7 @@ padrão (quem escolhe é quem vai rodar) e o checkbox **Select all** marca ou de
 Sem ninguém marcado, `Run query` fica desabilitado. O prompt do CLI é diferente de propósito:
 `query run` sem `--all` pré-seleciona todos, porque lá a escolha é uma pergunta única.
 
-Na aba **Servers**, o cadastro novo pode começar de outro servidor: o combo **Template** copia host,
+Na aba **Connections › Servers**, o cadastro novo pode começar de outro servidor: o combo **Template** copia host,
 porta, usuário, bancos, descoberta automática, padrões de exclusão, SSL, timeout e paralelismo do
 servidor escolhido, e o resto fica editável. **Nome e senha não são copiados** — o nome é a
 identidade do servidor novo, e a senha mora no cofre com a chave do nome (copiá-la daria ao novo

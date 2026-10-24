@@ -890,3 +890,31 @@ Append-only.
   (IF-223, IF-224, IF-226, IF-227, IF-235): as decisões não mudaram, o nome do controle sim.
   Conferido: `documentation_links_resolve` verde, 22 páginas todas linkadas do `README`, nenhum link
   quebrado, 563 testes no workspace.
+
+- `[2026-10-24]` **Cadastro de seletores mudou para Connections › Query Selector (IF-242).** O dono
+  rejeitou a proposta de pendurar o cadastro dentro do servidor, com o argumento certo: o seletor é
+  **global**, pode ser aplicado a qualquer servidor — o que pertence a um servidor é só a *fonte*
+  (`Reads from`). A ideia dele: a sidebar da aba ganha duas sub-abas e a tela troca de contexto.
+  Decisões dele na conversa: a aba de cima virou **`Connections`** (para não ficar
+  `Servers › Servers`), o formulário do seletor vai para a **área principal** (editor SQL largo +
+  `Test` embaixo), a sub-aba sempre abre em `Servers` mas o **rascunho sobrevive** à troca de abas,
+  o card do seletor tem `[Edit] [Test] [Remove]` como o de servidor, e seletor cuja fonte sumiu
+  **não** é escondido: aparece com `⚠` na lista e no combo da aba Query.
+  Implementação: `screens/selectors.rs` (novo módulo) leva o estado e o desenho do cadastro, que
+  saíram de `settings.rs`; `servers.rs` ganhou `Context { Servers, QuerySelector }` e delega; a
+  seção `gui` passou a ser composta por `screens::compose_gui_prefs` (aparência + seletores), com o
+  app como dono da composição. **Bug de desenho pego no caminho:** a tela do cadastro não pode
+  devolver `SaveGuiPrefs` montado só com os seletores — isso apagaria a aparência (o inverso do
+  cuidado que já existia). Por isso criei `Request::SaveSelections`: a tela sinaliza que a lista
+  mudou, o app compõe e grava. `search_combo::Item` ganhou `warning` (âmbar, fora da busca), e
+  `selection::missing_source` detecta a fonte ausente — escolher um seletor quebrado mostra o
+  alerta com `Selection unchanged.` **sem** disparar job.
+  **Verificado na janela** com config temporária: a aba aparece como `Connections` com `Servers`
+  (ativo) e `Query Selector`; em `Servers` o card não tem contador de seletores; em
+  `Query Selector` a lista traz `[Add query]`/`2 selector(s)`, os cards com `[Edit] [Test]
+  [Remove]`, e o seletor cuja fonte sumiu mostra `⚠ source server 'Antigo' is gone` em âmbar.
+  A aba `Settings` ficou só com Appearance + Database list. Testes: 565 no workspace, com
+  `entering_the_tab_resets_the_context_but_keeps_the_draft`,
+  `a_selector_with_a_missing_source_warns_without_any_request` e
+  `composing_the_section_keeps_both_halves`; os testes do cadastro migraram de
+  `settings.rs` para `selectors.rs` no manifesto.

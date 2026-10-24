@@ -47,6 +47,12 @@ pub enum Request {
         /// Servidor do cadastro (`None` = todos).
         server: Option<String>,
     },
+    /// A lista de seletores mudou: o app compõe a seção `gui` (aparência + seletores + paginação)
+    /// e grava.
+    ///
+    /// A tela do cadastro devolve **este** pedido, e não um `SaveGuiPrefs` pronto: ela só conhece
+    /// os seletores, e gravar o que ela conhece apagaria a aparência.
+    SaveSelections,
     /// Roda uma query de seleção salva e marca as bases do escopo pedido (R1).
     ///
     /// Aborta a carga inteira quando um host não está no cadastro (D9) — o contrário do
@@ -167,7 +173,7 @@ pub enum JobResult {
         /// Erro agregado, pronto para a tela.
         error: String,
     },
-    /// O resultado do `Test` de uma query de seleção (aba Settings).
+    /// O resultado do `Test` de uma query de seleção (aba Connections › Query Selector).
     SelectionTested {
         /// Nome da query ensaiada.
         name: String,

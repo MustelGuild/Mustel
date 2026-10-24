@@ -86,6 +86,21 @@ impl Form {
     }
 }
 
+/// Qual dos dois cadastros a aba **Connections** está mostrando.
+///
+/// O seletor é global (pode ser aplicado a qualquer servidor), então ele não mora dentro de um
+/// servidor: mora ao lado, na segunda sub-aba. As duas listas trocam juntas — sidebar e área
+/// principal —, e o contexto **sempre** volta em `Servers` ao entrar na aba (o rascunho de um
+/// formulário, esse, sobrevive à troca de abas).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Context {
+    /// O cadastro de servidores.
+    #[default]
+    Servers,
+    /// O cadastro de seletores (queries que marcam bases em massa).
+    QuerySelector,
+}
+
 /// Estado da tela de servidores.
 #[derive(Debug, Default)]
 pub struct State {
@@ -101,6 +116,10 @@ pub struct State {
     error: Option<String>,
     /// Senha a guardar depois que o servidor for gravado (o `Save` manda os dois pedidos).
     pending_password: Option<String>,
+    /// Qual cadastro a aba está mostrando.
+    context: Context,
+    /// O cadastro de seletores (a segunda sub-aba).
+    selectors: crate::screens::selectors::State,
 }
 
 impl State {
@@ -117,9 +136,28 @@ impl State {
         &self.servers
     }
 
+    /// O cadastro de seletores (quem lê os seletores inteiros).
+    pub fn selectors(&self) -> &crate::screens::selectors::State {
+        &self.selectors
+    }
+
+    /// Estado com as queries de seleção que estavam gravadas.
+    pub fn with_selectors(mut self, prefs: Option<&mustel_core::config::model::GuiPrefs>) -> Self {
+        self.selectors = crate::screens::selectors::State::with_prefs(prefs);
+        self
+    }
+
+    /// Entrar na aba volta para o cadastro de servidores (o rascunho do formulário fica).
+    pub fn reset_context(&mut self) {
+        self.context = Context::Servers;
+    }
+
     /// Aplica o que voltou de um job.
     pub fn apply(&mut self, result: &crate::request::JobResult) {
         use crate::request::JobResult;
+
+        // O cadastro de seletores tem os próprios jobs (descoberta do `Database` e `Test`).
+        self.selectors.apply(result);
 
         match result {
             JobResult::Servers(servers) => {
@@ -173,6 +211,29 @@ impl State {
     /// preenche.
     pub fn sidebar_ui(&mut self, ui: &mut egui::Ui) -> Option<Request> {
         let mut request = None;
+
+        // As **duas sub-abas** deste cadastro. Ficam leves de propósito: a aba de cima já usa o
+        // estilo de pílula, e uma segunda fileira igual confundiria a hierarquia.
+        ui.horizontal(|ui| {
+            for (context, label) in [
+                (Context::Servers, "Servers"),
+                (Context::QuerySelector, "Query Selector"),
+            ] {
+                if ui
+                    .selectable_label(self.context == context, label)
+                    .clicked()
+                {
+                    self.context = context;
+                }
+            }
+        });
+        ui.separator();
+
+        // A sub-aba do seletor tem lista própria (e a área principal também troca).
+        if self.context == Context::QuerySelector {
+            let servers = self.servers.clone();
+            return self.selectors.sidebar_ui(ui, &servers);
+        }
 
         ui.horizontal(|ui| {
             if ui.button("Reload").clicked() {
@@ -240,6 +301,12 @@ impl State {
     /// A **área principal**: o formulário de cadastro/edição e o recado da última operação.
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Request> {
         let mut request = None;
+
+        // O cadastro de seletores desenha na área principal inteira (é onde o editor SQL cabe).
+        if self.context == Context::QuerySelector {
+            let servers = self.servers.clone();
+            return self.selectors.ui(ui, &servers);
+        }
 
         if let Some(message) = &self.message {
             ui.label(message);
@@ -502,6 +569,45 @@ mod tests {
         assert_eq!(form.databases, "a, b");
         assert_eq!(form.exclude_patterns, "x*");
         assert_eq!(form.to_entry().name, "dev");
+    }
+
+    /// Entrar na aba volta para `Servers`, e o rascunho do formulário **não** se perde.
+    /// CONTRACT: IF-242
+    #[test]
+    fn entering_the_tab_resets_the_context_but_keeps_the_draft() {
+        let prefs = mustel_core::config::model::GuiPrefs {
+            selections: vec![mustel_core::config::model::SelectionQuery {
+                name: "Produção".to_string(),
+                server: "Local".to_string(),
+                database: "configurador".to_string(),
+                sql: "select 1".to_string(),
+            }],
+            ..mustel_core::config::model::GuiPrefs::default()
+        };
+        let mut state = State::new(vec![ServerConfigEntry {
+            name: "Local".to_string(),
+            ..ServerConfigEntry::default()
+        }])
+        .with_selectors(Some(&prefs));
+
+        // Vai para a sub-aba do seletor e abre o formulário (o rascunho).
+        state.context = Context::QuerySelector;
+        assert_eq!(state.selectors().selections().len(), 1);
+        state.selectors.open_new_for_test(&state.servers.clone());
+        assert!(state.selectors().has_form(), "o rascunho está aberto");
+
+        // Sair e voltar (o app chama `reset_context`): contexto volta, rascunho fica.
+        state.reset_context();
+        assert_eq!(state.context, Context::Servers, "sempre começa em Servers");
+        assert!(
+            state.selectors().has_form(),
+            "o rascunho sobrevive à troca de aba"
+        );
+        assert_eq!(
+            state.selectors().selections().len(),
+            1,
+            "cadastro carregado"
+        );
     }
 
     #[test]

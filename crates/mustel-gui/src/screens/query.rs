@@ -454,9 +454,16 @@ impl State {
     ///
     /// Fica fora do desenho porque a decisão é testável sem janela; o `egui` só informa a linha
     /// clicada.
+    /// O que fazer quando o usuário escolhe uma linha do combo de seletor.
+    ///
+    /// `missing_source` é o servidor de onde a query escolhida lê, **quando ele não existe mais** —
+    /// quem sabe é o chamador, que tem a lista de seletores. Nesse caso o aviso vai para a tela sem
+    /// disparar job: mandar só para receber o erro gastaria uma conexão e mostraria um erro de rede
+    /// para um problema de cadastro.
     fn choose_selector(
         &mut self,
         chosen: Option<&str>,
+        missing_source: Option<&str>,
         scope: &crate::selection::ApplyScope,
         servers: &[ServerConfigEntry],
     ) -> Option<Request> {
@@ -465,6 +472,17 @@ impl State {
             self.selection_message = Some("selector forgotten · selection unchanged".to_string());
             return None;
         };
+
+        if let Some(missing) = missing_source {
+            self.apply_alert = Some(format!(
+                "Could not apply '{query}'.
+It reads from '{missing}', which is not registered.
+Add it back or edit the selector.
+Selection unchanged."
+            ));
+            return None;
+        }
+
         Some(Request::ApplySelection {
             query: query.to_string(),
             scope: scope.clone(),
@@ -988,16 +1006,35 @@ impl State {
                 .unwrap_or_default();
             let mut texts: Vec<String> = vec![NO_SELECTOR.to_string()];
             texts.extend(selections.iter().map(|query| query.name.clone()));
-            let items: Vec<crate::search_combo::Item<'_>> = texts
+            // O aviso de cada seletor, alinhado com `texts` (o `Item` guarda `&str`, então os
+            // rótulos precisam viver fora do laço).
+            let warnings: Vec<Option<String>> = texts
                 .iter()
                 .map(|text| {
+                    selections
+                        .iter()
+                        .find(|query| query.name.eq_ignore_ascii_case(text))
+                        .and_then(|query| crate::selection::missing_source(query, servers))
+                        .map(|missing| format!("⚠ reads from '{missing}' (missing)"))
+                })
+                .collect();
+            let items: Vec<crate::search_combo::Item<'_>> = texts
+                .iter()
+                .enumerate()
+                .map(|(index, text)| {
                     // `chosen` vazio corresponde justamente à primeira linha.
                     let selected = if text == NO_SELECTOR {
                         chosen.is_empty()
                     } else {
                         text == &chosen
                     };
-                    crate::search_combo::Item::new(text.as_str(), selected)
+                    let item = crate::search_combo::Item::new(text.as_str(), selected);
+                    // O seletor continua no cadastro, mas não roda sem a fonte: avisa na linha em
+                    // vez de escondê-lo (escondido, ninguém conserta).
+                    match &warnings[index] {
+                        Some(warning) => item.warn(warning),
+                        None => item,
+                    }
                 })
                 .collect();
             if let Some(index) = crate::search_combo::search_combo_sized(
@@ -1014,7 +1051,16 @@ impl State {
                 // A posição 0 é o `(none)`, independentemente do texto (um dono pode batizar uma
                 // query de `(none)`; a posição não se confunde).
                 let chosen = (index > 0).then(|| texts[index].as_str());
-                if let Some(pedido) = self.choose_selector(chosen, &scope, servers) {
+                let missing = chosen
+                    .and_then(|name| {
+                        selections
+                            .iter()
+                            .find(|query| query.name.eq_ignore_ascii_case(name))
+                    })
+                    .and_then(|saved| crate::selection::missing_source(saved, servers));
+                if let Some(pedido) =
+                    self.choose_selector(chosen, missing.as_deref(), &scope, servers)
+                {
                     request = Some(pedido);
                 }
             }
@@ -2002,6 +2048,7 @@ mod tests {
         assert_eq!(
             state.choose_selector(
                 Some("Homologacao"),
+                None,
                 &crate::selection::ApplyScope::Server("Produção".to_string()),
                 &servers
             ),
@@ -2014,7 +2061,12 @@ mod tests {
         // Sem filtro: aplica em todos.
         state.selection.set_server_filter(None);
         assert_eq!(
-            state.choose_selector(Some("Comum"), &crate::selection::ApplyScope::All, &servers),
+            state.choose_selector(
+                Some("Comum"),
+                None,
+                &crate::selection::ApplyScope::All,
+                &servers
+            ),
             Some(Request::ApplySelection {
                 query: "Comum".to_string(),
                 scope: crate::selection::ApplyScope::All,
@@ -2024,7 +2076,7 @@ mod tests {
         // `(none)`: nenhum pedido, o rótulo do escopo é esquecido e nada é desmarcado.
         let antes = state.selection.marked_count();
         assert_eq!(
-            state.choose_selector(None, &crate::selection::ApplyScope::All, &servers),
+            state.choose_selector(None, None, &crate::selection::ApplyScope::All, &servers),
             None
         );
         assert_eq!(state.selection.selector_for("Local"), None);
@@ -2037,6 +2089,48 @@ mod tests {
             "o recado diz que a seleção ficou: {:?}",
             state.selection_message
         );
+    }
+
+    /// Seletor que não roda mais: aviso na tela e **nenhum** job disparado.
+    ///
+    /// O servidor de onde a query lê sumiu do cadastro. Mandar o pedido só para receber o erro
+    /// gastaria uma conexão e mostraria um erro de rede para um problema de cadastro.
+    /// CONTRACT: IF-242
+    #[test]
+    fn a_selector_with_a_missing_source_warns_without_any_request() {
+        let mut state = State::default();
+        let servers = [server("Local")];
+        state.sync_servers(&servers);
+
+        let request = state.choose_selector(
+            Some("Homologacao"),
+            Some("Antigo"),
+            &crate::selection::ApplyScope::All,
+            &servers,
+        );
+
+        assert_eq!(request, None, "não dispara job");
+        let alert = state.apply_alert.clone().expect("alerta");
+        assert!(alert.contains("Could not apply 'Homologacao'"), "{alert}");
+        assert!(alert.contains("'Antigo'"), "nomeia a fonte: {alert}");
+        assert!(alert.contains("Selection unchanged."), "{alert}");
+
+        // E o teste do helper que alimenta o combo e a lista.
+        let query = mustel_core::config::model::SelectionQuery {
+            name: "Homologacao".to_string(),
+            server: "Antigo".to_string(),
+            database: "configurador".to_string(),
+            sql: "select 1".to_string(),
+        };
+        assert_eq!(
+            crate::selection::missing_source(&query, &servers).as_deref(),
+            Some("Antigo")
+        );
+        let alive = mustel_core::config::model::SelectionQuery {
+            server: "Local".to_string(),
+            ..query
+        };
+        assert_eq!(crate::selection::missing_source(&alive, &servers), None);
     }
 
     /// Falha ao aplicar **mantém** a seleção anterior e deixa o alerta na tela.

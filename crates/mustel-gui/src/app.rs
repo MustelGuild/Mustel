@@ -14,6 +14,7 @@
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
+use mustel_core::config::model::GuiPrefs;
 use mustel_core::config::model::SelectionQuery;
 use mustel_core::config::{ConfigStore, ServerConfigEntry};
 use mustel_core::events::Status;
@@ -147,7 +148,7 @@ impl App {
             config_error,
             schemas: crate::schema_cache::SchemaCache::default(),
             reference: crate::reference::Reference::default(),
-            servers: servers_screen::State::new(servers),
+            servers: servers_screen::State::new(servers).with_selectors(prefs.as_ref()),
             query,
             settings,
             sidebar_open: true,
@@ -161,11 +162,24 @@ impl App {
 
     /// A query de seleção salva com esse nome (sem diferenciar maiúsculas).
     fn selection_query(&self, name: &str) -> Option<SelectionQuery> {
-        self.settings
+        self.servers
+            .selectors()
             .selections()
             .iter()
             .find(|query| query.name.eq_ignore_ascii_case(name))
             .cloned()
+    }
+
+    /// A seção `gui` inteira, composta das duas telas donas de pedaços dela.
+    ///
+    /// Nenhuma tela conhece a seção toda: Settings tem aparência e paginação, Connections tem os
+    /// seletores. Gravar o que uma delas conhece apagaria o resto — foi por isso que o cadastro de
+    /// seletores deixou de devolver `SaveGuiPrefs` e passou a devolver `SaveSelections`.
+    fn gui_prefs(&self) -> GuiPrefs {
+        crate::screens::compose_gui_prefs(
+            self.settings.prefs(),
+            self.servers.selectors().selections(),
+        )
     }
 
     /// O que a sidebar desenha, conforme a aba.
@@ -179,7 +193,7 @@ impl App {
     ) -> Option<Request> {
         match self.screen {
             Screen::Query => {
-                let selections = self.settings.selections().to_vec();
+                let selections = self.servers.selectors().selections().to_vec();
                 self.query.sidebar_ui(ui, servers, &selections)
             }
             Screen::Servers => self.servers.sidebar_ui(ui),
@@ -201,6 +215,23 @@ impl App {
                     crate::fonts::min_window_size(chosen.scale),
                 ));
             }
+            // O cadastro de seletores mudou: compõe a seção `gui` inteira e grava pelo mesmo
+            // caminho da aparência.
+            Request::SaveSelections => {
+                let prefs = self.gui_prefs();
+                match ConfigStore::with_default_path() {
+                    Ok(store) => match gui_prefs::save(&store, Some(prefs)) {
+                        Ok(()) => {
+                            let selections = self.servers.selectors().selections().to_vec();
+                            self.query.retain_selection_queries(&selections);
+                            self.status = "Selectors saved.".to_string();
+                            ctx.request_repaint();
+                        }
+                        Err(error) => self.status = error.to_string(),
+                    },
+                    Err(error) => self.status = error.to_string(),
+                }
+            }
             // Gravar vai para o núcleo (mesmo caminho do cadastro).
             Request::SaveGuiPrefs(prefs) => {
                 // Aplica **e** grava: é o commit da aba Settings. Aplicar aqui é o que faz trocar de
@@ -217,7 +248,7 @@ impl App {
                         Ok(()) => {
                             // A query em uso pode ter sido removida (ou renomeada) na aba Settings:
                             // o combo da aba Query não pode continuar apontando para o nome antigo.
-                            let selections = self.settings.selections().to_vec();
+                            let selections = self.servers.selectors().selections().to_vec();
                             self.query.retain_selection_queries(&selections);
                             self.status = "Appearance saved.".to_string();
                             ctx.request_repaint();
@@ -732,11 +763,14 @@ impl eframe::App for App {
                     ui,
                     self.screen == Screen::Servers,
                     crate::tabs::Icon::Servers,
-                    "Servers",
+                    "Connections",
                 )
                 .clicked()
                 {
                     self.screen = Screen::Servers;
+                    // Sempre começa no cadastro de servidores; o rascunho de um formulário de
+                    // seletor sobrevive à troca de aba.
+                    self.servers.reset_context();
                 }
                 if crate::tabs::tab(
                     ui,
@@ -845,14 +879,11 @@ impl eframe::App for App {
                             .map(|schema| std::sync::Arc::new(schema.clone()));
                         // A paginação da lista vem da seção `gui` — o mesmo objeto que a aba Settings
                         // edita, então mexer lá vale no quadro seguinte.
-                        let page_size = crate::screens::query::page_size(&self.settings.prefs());
+                        let page_size = crate::screens::query::page_size(&self.gui_prefs());
                         self.query.set_page_size(page_size);
                         self.query.ui(ui, &servers, schema, &self.reference)
                     }
-                    Screen::Settings => {
-                        let servers = self.servers_snapshot();
-                        self.settings.ui(ui, &servers)
-                    }
+                    Screen::Settings => self.settings.ui(ui),
                 });
             request = main.inner.or(request);
 

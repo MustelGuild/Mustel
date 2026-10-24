@@ -52,7 +52,7 @@ existir em mais de um servidor.
 ```
 
 A sidebar tem **400 px** fixos, com **12 px de respiro** entre ela e o conteúdo à direita. O botão
-`◀` recolhe para uma barra `▶ N selected` na área principal; `▶` reabre. A aba **Servers** usa a
+`◀` recolhe para uma barra `▶ N selected` na área principal; `▶` reabre. A aba **Connections** usa a
 mesma sidebar — a lista do cadastro fica lá, em cards que ocupam a largura toda, e o formulário
 ocupa a área principal.
 
@@ -197,14 +197,23 @@ O alias `Server=` só vale **dentro** da connection string.
 - **`Run query` roda as bases marcadas**, explícitas: servidor sem base marcada fica de fora, e base
   barrada por padrão nem chega ao plano.
 
-## O formulário do cadastro
+## O cadastro do seletor
 
-Na aba **Settings**, o campo `Database` é onde a query de seleção **roda** — um banco do servidor
+O cadastro fica na aba **Connections**, na sub-aba **Query Selector** (ao lado de `Servers`). A
+sidebar lista os seletores (nome e de onde leem), cada um com `[Edit] [Test] [Remove]` — remover
+pede **dois** toques. O formulário abre na **área principal**, onde o editor SQL tem a largura toda.
+
+O seletor é **global**: ele pode ser aplicado a qualquer servidor do cadastro. O que é de um
+servidor é a **fonte** — o campo `Reads from`, que diz onde o SQL roda.
+
+### Os campos
+
+O campo `Database` é onde a query de seleção **roda** — um banco do servidor
 escolhido, lido com a senha do cofre. Ele funciona assim:
 
 | Elemento | O que faz |
 |---|---|
-| **Server** | escolher o servidor **já carrega** as bases dele; não precisa apertar nada |
+| **Reads from** | servidor + banco onde o SQL roda; escolher o servidor **já carrega** as bases dele |
 | **spinner + "Loading databases…"** | aparece enquanto a descoberta está em andamento |
 | **Database** | um dropdown no estilo dos combos de fonte: fica **vazio** sem escolha e mostra o nome depois |
 | **busca do dropdown** | filtra a lista sem diferenciar maiúsculas enquanto você digita |
@@ -220,6 +229,14 @@ porque a query precisa conectar ali. Já `postgres` aparece (é uma base comum).
 
 Falha na descoberta aparece no próprio formulário, em amarelo, com a mensagem do núcleo (servidor
 fora do ar, senha ausente no cofre). Antes disso o `⟳` ficava em silêncio e parecia não fazer nada.
+
+## Seletor sem fonte
+
+Se o servidor de onde o seletor lê sair do cadastro, o seletor **continua** no cadastro (ele é
+global), mas não roda. A linha dele mostra `⚠ source server '<nome>' is gone` em âmbar, e o combo
+`Query Selector` da aba Query mostra o mesmo aviso — escolhê-lo ali abre o alerta com
+`Selection unchanged.` **sem** tentar conectar. A correção é apontar o `Reads from` para um servidor
+que exista, ou cadastrar de volta o que sumiu.
 
 ## `Test` no cadastro
 

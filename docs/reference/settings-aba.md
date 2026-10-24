@@ -1,9 +1,11 @@
 # Referência: aba Settings (aparência)
 
-> Esta página cobre a parte de **aparência** da aba. As outras seções da mesma aba têm referência
-> própria: o cadastro de queries de seleção e o combo `Database` estão na
-> [referência da seleção de bases](selecao-de-bases.md#o-formulário-do-cadastro), e a paginação da
-> lista, em [`gui.selectionList`](selecao-de-bases.md#paginação-opcional).
+> A aba Settings tem duas seções: **Appearance** (esta página) e **Database list**, a paginação da
+> lista de bases, descrita em [`gui.selectionList`](selecao-de-bases.md#paginação-opcional).
+>
+> O cadastro de **seletores** **não** fica aqui: ele vive na aba **Connections**, na sub-aba
+> `Query Selector`, e está descrito na
+> [referência da seleção de bases](selecao-de-bases.md#o-cadastro-do-seletor).
 
 A aba **Settings** da janela guarda as preferências de aparência. Tudo o que ela edita fica na seção
 `gui` do `mustel.jsonc` — o mesmo arquivo do cadastro de servidores —, então dá para versionar,

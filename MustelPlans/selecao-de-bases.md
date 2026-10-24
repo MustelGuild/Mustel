@@ -824,3 +824,40 @@ Append-only.
   marcadas e o cabeçalho ficou `3 of 3` (com `Select all 205` intacto); a vassoura zerou o combo, o
   status perdeu o `· from 'todas'` e manteve `3 marked`, com o recado "selector forgotten on every
   server · selection unchanged". `IF-239` e `IF-240` no manifesto; workspace com 557 testes.
+- `[2026-10-24]` **Alinhamento da linha do `Query Selector` com a do `Server`.** O dono viu que o
+  combo do seletor era mais curto e o ícone saía do lugar: a linha dele reservava **dois** slots
+  (spinner + vassoura) e a do servidor um só, então o combo ficava 28 px mais estreito. Agora as
+  duas linhas saem de um `combo_width` só, e o botão lateral é desenhado numa caixa fixa
+  (`allocate_ui_with_layout` + `right_to_left`), o que prende a **borda direita** do botão na mesma
+  coluna mesmo com glifos de larguras diferentes. O spinner passou a ocupar o **slot da vassoura**
+  enquanto a aplicação roda, em vez de empurrá-la.
+  **Medido na janela** (varredura de tinta por linha, 1:1): antes, servidor `24..378` + `⟳ 387..410`
+  e seletor `24..350` + vassoura em outra coluna; depois, **os dois combos em `24..370` e os dois
+  botões em `383..406`**.
+  Teste novo: `the_selector_row_has_the_same_geometry_as_the_server_row` compara a **coluna dos
+  ícones** (os `▼` não servem de medida: o do servidor faz parte do rótulo `All servers (N)   ▼`, e
+  comparar texto centrado de rótulos de tamanhos diferentes não diz nada sobre a largura do botão —
+  a primeira versão do teste caiu nessa). Provei que pega a regressão: voltei o combo do seletor a
+  subtrair um slot de propósito e o teste falhou com `9977.5 vs 9949.5` (28 px), depois desfiz.
+  Workspace com 558 testes; `IF-240` ganhou a geometria na descrição.
+- `[2026-10-24]` **`Clear` virou `Reset` quando há seletor (IF-241).** Regra do dono: "o clear
+  sempre limpa nossa seleção manual — com seletor, limpa tudo e volta a aplicar o seletor".
+  Implementei guardando, por servidor, **o que o seletor marcou** (`selector_marks`, preenchido no
+  `apply`) e fazendo o botão devolver o **visível** (filtro × busca) a esse conjunto: o que foi
+  marcado à mão sai, o que foi desmarcado à mão volta. O escopo não mudou — só o alvo.
+  Duas decisões de produto tomadas com o dono em mente:
+  (a) o botão **muda de rótulo** (`Clear` sem seletor, `Reset` com seletor). Um `Clear` que
+  *remarca* bases seria armadilha; e o tooltip de cada estado diz o que vai acontecer.
+  (b) guardo o **resultado** em vez de reexecutar a query no clique: o botão fica instantâneo e sem
+  modo de falha. A consequência é que base criada depois da última aplicação não entra no `Reset` —
+  para isso se aplica o seletor de novo (ou `⟳`). Fica escrito na referência.
+  Detalhe coerente: esquecer o seletor (`(none)` ou a vassoura) apaga também o alvo do reset, então
+  o botão volta a ser um `Clear` — senão ele restauraria marcas de um seletor que não existe mais.
+  **Verificado na janela** com a config real (cópia): apliquei `todas` (3 marcadas), desmarquei
+  `configurador`/Local à mão e marquei `demo_001`/Local à mão (contagem seguia 3). Um clique em
+  `Reset` trouxe `configurador` de volta, tirou `demo_001` e mostrou `reset to 'todas' · 1 marked`,
+  com o status de volta a `3 marked · from 'todas'`.
+  Testes: `reset_brings_back_what_the_selector_marked`, `reset_without_a_selector_is_just_clear`,
+  `forgetting_the_selector_turns_reset_back_into_clear`,
+  `reset_touches_only_what_the_filter_and_search_show` e
+  `the_clear_button_becomes_reset_when_a_selector_is_applied`. Workspace com 563 testes.

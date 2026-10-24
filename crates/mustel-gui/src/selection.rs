@@ -109,6 +109,12 @@ pub struct SelectionState {
     /// query aplica só nele. A memória é do rótulo ("de onde veio"), não uma promessa de que a
     /// seleção atual saiu inteira dele — marcar à mão depois não apaga o rótulo.
     server_selectors: BTreeMap<String, String>,
+    /// O que o seletor de cada servidor marcou quando foi aplicado (servidor -> bases).
+    ///
+    /// É o alvo do `Reset`: desfazer o que foi marcado à mão é voltar a este conjunto. Guardar o
+    /// resultado (em vez de reexecutar a query no clique) deixa o botão instantâneo e sem modo de
+    /// falha — para trazer o que mudou no banco, aplica-se o seletor de novo.
+    selector_marks: BTreeMap<String, BTreeSet<String>>,
     /// Texto da busca.
     search: String,
     /// Servidor do filtro (`None` = todos).
@@ -282,6 +288,10 @@ impl SelectionState {
             }
             if !selected.is_empty() {
                 summary.marked += selected.len();
+                // O `Reset` volta a este conjunto: é o que o seletor marcou, antes de qualquer
+                // marcação à mão.
+                self.selector_marks
+                    .insert(server.server.clone(), selected.clone());
                 self.marked.insert(server.server.clone(), selected);
                 // O servidor passou a usar **este** seletor.
                 self.server_selectors
@@ -388,6 +398,8 @@ impl SelectionState {
         });
         self.marked.retain(|name, _| alive.contains(name.as_str()));
         self.server_selectors
+            .retain(|name, _| alive.contains(name.as_str()));
+        self.selector_marks
             .retain(|name, _| alive.contains(name.as_str()));
 
         // A query aplicada pode ter sido cadastrada para um servidor que não existe mais.
@@ -515,6 +527,8 @@ impl SelectionState {
     /// Independe do filtro — a vassoura é sobre "todos", não sobre o escopo da tela.
     pub fn forget_all_selectors(&mut self) {
         self.server_selectors.clear();
+        // Sem rótulo não há "o que o seletor marcou": o `Reset` volta a ser `Clear`.
+        self.selector_marks.clear();
     }
 
     /// Quantos servidores têm seletor guardado (para o botão só aparecer quando há o que limpar).
@@ -529,10 +543,12 @@ impl SelectionState {
         match self.server_filter.clone() {
             Some(name) => {
                 self.server_selectors.remove(&name);
+                self.selector_marks.remove(&name);
             }
             None => {
                 for server in servers {
                     self.server_selectors.remove(&server.name);
+                    self.selector_marks.remove(&server.name);
                 }
             }
         }
@@ -672,15 +688,43 @@ impl SelectionState {
         summary
     }
 
-    /// `Clear`: desmarca tudo o que está visível.
-    pub fn clear_visible(&mut self, servers: &[ServerConfigEntry]) -> usize {
+    /// `Clear`/`Reset`: devolve o que está visível (filtro × busca) ao que o **seletor** marcou.
+    ///
+    /// Sem seletor o alvo é o vazio, então o efeito é o `Clear` de sempre. Com seletor, o que foi
+    /// marcado à mão **sai** e o que foi desmarcado à mão **volta** — é desfazer a bagunça e ficar
+    /// com a decisão da query outra vez. O escopo não muda: o mesmo filtro × busca de antes.
+    ///
+    /// Devolve `(desmarcadas, remarcadas)` para a tela contar o que aconteceu.
+    pub fn reset_visible(&mut self, servers: &[ServerConfigEntry]) -> (usize, usize) {
         let rows = self.rows(servers);
         let mut cleared = 0;
+        let mut restored = 0;
         for row in &rows {
-            self.set_marked(&row.server, &row.database, false);
-            cleared += 1;
+            let target = self
+                .selector_marks
+                .get(&row.server)
+                .is_some_and(|marks| marks.contains(&row.database));
+            if row.marked == target {
+                continue;
+            }
+            self.set_marked(&row.server, &row.database, target);
+            if target {
+                restored += 1;
+            } else {
+                cleared += 1;
+            }
         }
-        cleared
+        (cleared, restored)
+    }
+
+    /// O escopo tem algum seletor aplicado? (o botão vira `Reset` e passa a ter o que restaurar)
+    pub fn has_selector_in_scope(&self, servers: &[ServerConfigEntry]) -> bool {
+        match &self.server_filter {
+            Some(name) => self.selector_for(name).is_some(),
+            None => servers
+                .iter()
+                .any(|server| self.selector_for(&server.name).is_some()),
+        }
     }
 
     /// Texto da busca (mudar a busca volta a lista ao primeiro pedaço).
@@ -991,7 +1035,7 @@ mod tests {
         assert_eq!(state.marked_in_filter(&servers), 1);
 
         // Desmarcando pela busca, o cabeçalho acompanha.
-        state.clear_visible(&servers);
+        state.reset_visible(&servers);
         assert_eq!(state.marked_in_filter(&servers), 0);
         assert_eq!(state.marked_count(), 3, "o resto continua marcado");
     }
@@ -1170,6 +1214,93 @@ mod tests {
             Some("todas"),
             "a linha `(none)` mexe só no escopo"
         );
+    }
+
+    /// `Reset` devolve a seleção ao que o **seletor** marcou, desfazendo o que foi feito à mão.
+    ///
+    /// A decisão do dono: "o clear sempre limpa nossa seleção manual"; com seletor aplicado, ele
+    /// limpa tudo **e** volta ao que a query marcou. Sem seletor é o `Clear` de sempre.
+    /// CONTRACT: IF-241
+    #[test]
+    fn reset_brings_back_what_the_selector_marked() {
+        let mut state = SelectionState::default();
+        let servers = servers();
+        state.sync_registry(&servers);
+        state.discover(&servers[0], catalog(["dev", "prod_a", "test_a"]));
+
+        // O seletor marca `dev`; depois a mão marca `prod_a` e tira `dev`.
+        state.apply(&[selection("Local", &["dev"])], &ApplyScope::All, "todas");
+        state.set_marked("Local", "prod_a", true);
+        state.set_marked("Local", "dev", false);
+        assert_eq!(state.marked_count(), 1, "só o `prod_a` está marcado");
+
+        let (cleared, restored) = state.reset_visible(&servers);
+        assert_eq!(cleared, 1, "o `prod_a` (manual) saiu");
+        assert_eq!(restored, 1, "o `dev` (do seletor) voltou");
+        assert!(state.is_selectable("Local", "dev"));
+        assert!(
+            state.marked_on("Local") == 1
+                && state
+                    .rows(&servers)
+                    .iter()
+                    .any(|row| row.database == "dev" && row.marked),
+            "a seleção é a do seletor outra vez"
+        );
+    }
+
+    /// Sem seletor, `Reset` é o `Clear` de sempre: desmarca e fica vazio.
+    /// CONTRACT: IF-241
+    #[test]
+    fn reset_without_a_selector_is_just_clear() {
+        let mut state = SelectionState::default();
+        let servers = servers();
+        state.sync_registry(&servers);
+        state.discover(&servers[0], catalog(["dev", "prod_a"]));
+        state.set_marked("Local", "dev", true);
+        state.set_marked("Local", "prod_a", true);
+
+        let (cleared, restored) = state.reset_visible(&servers);
+        assert_eq!((cleared, restored), (2, 0));
+        assert_eq!(state.marked_count(), 0);
+    }
+
+    /// Esquecer o seletor tira o alvo do `Reset`: ele volta a ser um `Clear`.
+    /// CONTRACT: IF-241
+    #[test]
+    fn forgetting_the_selector_turns_reset_back_into_clear() {
+        let mut state = SelectionState::default();
+        let servers = servers();
+        state.sync_registry(&servers);
+        state.discover(&servers[0], catalog(["dev", "prod_a"]));
+        state.apply(&[selection("Local", &["dev"])], &ApplyScope::All, "todas");
+        assert!(state.has_selector_in_scope(&servers));
+
+        state.forget_all_selectors();
+        assert!(!state.has_selector_in_scope(&servers));
+
+        // Sem alvo, o reset desmarca em vez de remarcar.
+        let (cleared, restored) = state.reset_visible(&servers);
+        assert_eq!((cleared, restored), (1, 0), "o `dev` sai");
+        assert_eq!(state.marked_count(), 0);
+    }
+
+    /// O `Reset` respeita filtro × busca: só mexe no que a lista está mostrando.
+    /// CONTRACT: IF-241
+    #[test]
+    fn reset_touches_only_what_the_filter_and_search_show() {
+        let mut state = SelectionState::default();
+        let servers = servers();
+        state.sync_registry(&servers);
+        state.discover(&servers[0], catalog(["dev", "prod_a"]));
+        state.apply(&[selection("Local", &["dev"])], &ApplyScope::All, "todas");
+        // Bagunça à mão fora do futuro recorte.
+        state.set_marked("Local", "prod_a", true);
+
+        state.set_search("prod_".to_string());
+        let (cleared, restored) = state.reset_visible(&servers);
+        assert_eq!(cleared, 1, "o `prod_a` visível sai");
+        assert_eq!(restored, 0, "o `dev` está fora da busca e não é tocado");
+        assert_eq!(state.marked_on("Local"), 1, "o `dev` continua marcado");
     }
 
     /// O escopo "todos" só tem nome quando **todos** concordam — e "nenhum" é um valor.
@@ -1509,7 +1640,7 @@ mod tests {
         );
         assert!(state.all_visible_marked(&servers));
 
-        state.clear_visible(&servers);
+        state.reset_visible(&servers);
         assert_eq!(state.marked_count(), 0);
         state.set_server_filter(Some("Produção".to_string()));
         let summary = state.select_all_visible(&servers);
@@ -1521,7 +1652,7 @@ mod tests {
         );
 
         state.set_server_filter(None);
-        state.clear_visible(&servers);
+        state.reset_visible(&servers);
         state.set_search("test".to_string());
         let summary = state.select_all_visible(&servers);
         assert_eq!(summary.marked, 1, "so test2");

@@ -228,6 +228,10 @@ const SELECTOR_NOTE_CHARS: usize = 20;
 /// Largura reservada para o botão colado no combo (o `⟳` do servidor, o `⟳` do progresso).
 const ICON_WIDTH: f32 = 28.0;
 
+/// Rótulo do botão que devolve a seleção ao que o seletor marcou (o `Clear` de sempre fica para
+/// quando não há seletor no escopo).
+const RESET: &str = "Reset";
+
 /// A vassoura do combo de seletor: esquece o seletor de **todos** os servidores.
 ///
 /// `🧹` não existe no Fira Code (a fonte embutida); `✕` já significa "dispensar" e `⌫` confunde
@@ -885,13 +889,15 @@ impl State {
         // Servidor primeiro: ele é o **escopo** de tudo o que vem depois (inclusive do `⟳`, que
         // descobre justamente o recorte escolhido).
         ui.label("Server");
-        // O combo ocupa a linha, menos o botão ao lado.
-        let server_combo_width = (ui.available_width() - ICON_WIDTH).max(160.0);
+        // **Uma geometria para as duas linhas** (Server e Query Selector): o combo e o botão ao
+        // lado ocupam exatamente o mesmo lugar nas duas, senão o combo do seletor fica mais curto e
+        // o ícone sai do alinhamento (foi o pedido do dono).
+        let icon_box = egui::vec2(ICON_WIDTH, ui.spacing().interact_size.y);
+        let combo_width =
+            (ui.available_width() - ICON_WIDTH - ui.spacing().item_spacing.x).max(160.0);
         // A lista aberta é mais larga que o botão: as linhas levam `seletor · bases` e a nota não
         // pode ser espremida (por isso os 400 px, mesmo numa sidebar de 400).
-        let popup_width = (server_combo_width + ICON_WIDTH).max(SERVER_POPUP_WIDTH);
-        // A linha do seletor tem até três botões depois do combo: spinner, vassoura.
-        let selector_combo_width = (ui.available_width() - 2.0 * ICON_WIDTH).max(160.0);
+        let popup_width = (combo_width + ICON_WIDTH).max(SERVER_POPUP_WIDTH);
         ui.horizontal(|ui| {
             // O botão mostra a contagem do escopo, igual ao "All servers (208)".
             let current = match self.selection.server_filter() {
@@ -943,7 +949,7 @@ impl State {
                 &items,
                 true,
                 crate::search_combo::Size {
-                    button: server_combo_width,
+                    button: combo_width,
                     popup: popup_width,
                 },
             ) {
@@ -952,16 +958,23 @@ impl State {
             }
 
             // `⟳` no lugar do antigo `Discover all`: a descoberta age no escopo do filtro, e ao
-            // lado do filtro isso fica visível sem um rótulo a mais.
-            if ui
-                .add_enabled(!running, egui::Button::new("⟳"))
-                .on_hover_text(format!("List the databases of {scope_name}"))
-                .clicked()
-            {
-                request = Some(Request::DiscoverDatabases {
-                    server: self.selection.server_filter().map(str::to_string),
-                });
-            }
+            // lado do filtro isso fica visível sem um rótulo a mais. O botão é alinhado à direita
+            // na caixa reservada, então ele cai sempre na mesma coluna.
+            ui.allocate_ui_with_layout(
+                icon_box,
+                egui::Layout::right_to_left(egui::Align::Center),
+                |ui| {
+                    if ui
+                        .add_enabled(!running, egui::Button::new("⟳"))
+                        .on_hover_text(format!("List the databases of {scope_name}"))
+                        .clicked()
+                    {
+                        request = Some(Request::DiscoverDatabases {
+                            server: self.selection.server_filter().map(str::to_string),
+                        });
+                    }
+                },
+            );
         });
 
         // Seletor do escopo. **Escolher aplica na hora** — não existe mais o botão `Apply Selector`.
@@ -994,7 +1007,7 @@ impl State {
                 &items,
                 self.applying.is_none() && !running,
                 crate::search_combo::Size {
-                    button: selector_combo_width,
+                    button: combo_width,
                     popup: popup_width,
                 },
             ) {
@@ -1006,27 +1019,34 @@ impl State {
                 }
             }
 
-            // O banco está respondendo: `⟳` cinza até chegar (aplicar ou rodar).
-            if let Some(query) = &self.applying {
-                ui.spinner().on_hover_text(format!("Applying '{query}'..."));
-            } else if running {
-                ui.spinner().on_hover_text("Running the query...");
-            }
-
-            // A vassoura esquece o seletor de **todos** os servidores (a linha `(none)` do combo só
-            // esquece o do escopo). Fica apagada quando não há seletor nenhum para limpar.
-            if ui
-                .add_enabled(
-                    self.selection.selectors_count() > 0 && self.applying.is_none() && !running,
-                    egui::Button::new(BROOM),
-                )
-                .on_hover_text("Forget the selector on every server (the selection stays)")
-                .clicked()
-            {
-                self.selection.forget_all_selectors();
-                self.selection_message =
-                    Some("selector forgotten on every server · selection unchanged".to_string());
-            }
+            // O **mesmo slot** do `⟳` do servidor: enquanto o banco responde, o spinner ocupa o
+            // lugar da vassoura (em vez de empurrá-la e desalinhar a linha).
+            ui.allocate_ui_with_layout(
+                icon_box,
+                egui::Layout::right_to_left(egui::Align::Center),
+                |ui| {
+                    let busy = self.applying.clone();
+                    if let Some(query) = busy {
+                        ui.spinner().on_hover_text(format!("Applying '{query}'..."));
+                    } else if running {
+                        ui.spinner().on_hover_text("Running the query...");
+                    } else if ui
+                        .add_enabled(
+                            self.selection.selectors_count() > 0,
+                            egui::Button::new(BROOM),
+                        )
+                        .on_hover_text("Forget the selector on every server (the selection stays)")
+                        .clicked()
+                    {
+                        // A vassoura esquece o seletor de **todos** os servidores (a linha `(none)`
+                        // do combo só esquece o do escopo).
+                        self.selection.forget_all_selectors();
+                        self.selection_message = Some(
+                            "selector forgotten on every server · selection unchanged".to_string(),
+                        );
+                    }
+                },
+            );
         });
 
         // Falha ao aplicar: a seleção anterior **continua marcada**, e o recado fica aqui até a
@@ -1082,16 +1102,30 @@ impl State {
                 // O "quantas marcadas" já está no status abaixo; aqui só o que ficou de fora.
                 self.selection_message = summary.describe_skips();
             }
+            // `Clear`/`Reset`: com seletor no escopo, o alvo não é o vazio — é o que a query tinha
+            // marcado. Por isso o rótulo muda: um botão chamado `Clear` que **remarca** bases seria
+            // uma armadilha.
+            let has_selector = self.selection.has_selector_in_scope(servers);
+            let label = if has_selector { RESET } else { "Clear" };
+            let tooltip = if has_selector {
+                "Discard what you marked by hand and bring back what the selector marked"
+            } else {
+                "Unmark every database in the current filter and search"
+            };
             if ui
                 .add_enabled(
-                    self.selection.marked_count() > 0,
-                    egui::Button::new("Clear"),
+                    has_selector || self.selection.marked_count() > 0,
+                    egui::Button::new(label),
                 )
-                .on_hover_text("Unmark every database in the current filter and search")
+                .on_hover_text(tooltip)
                 .clicked()
             {
-                let cleared = self.selection.clear_visible(servers);
-                self.selection_message = Some(format!("{cleared} cleared"));
+                let (cleared, restored) = self.selection.reset_visible(servers);
+                self.selection_message = Some(match self.selection.scope_origin(servers) {
+                    Some(origin) => format!("reset to '{origin}' · {restored} marked"),
+                    None if has_selector => format!("reset · {restored} marked"),
+                    None => format!("{cleared} cleared"),
+                });
             }
             // A busca ocupa a largura toda, então o "limpar" dela vive aqui — **rotulado**, para
             // não se confundir com o `Clear`, que desmarca bases.
@@ -2145,6 +2179,54 @@ mod tests {
         );
     }
 
+    /// O botão muda de **rótulo** quando há seletor no escopo: `Clear` que remarca seria armadilha.
+    /// CONTRACT: IF-241
+    #[test]
+    fn the_clear_button_becomes_reset_when_a_selector_is_applied() {
+        let ctx = egui::Context::default();
+        let servers = [server("Local")];
+        let mut state = State::default();
+        state.sync_servers(&servers);
+
+        let labels = |state: &mut State| -> Vec<String> {
+            let mut texts: Vec<(String, egui::Pos2)> = Vec::new();
+            for _ in 0..2 {
+                let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        ui.set_max_width(400.0);
+                        let _ = state.sidebar_ui(ui, &servers, &[]);
+                    });
+                });
+                texts.clear();
+                collect_pos(&output.shapes, &mut texts);
+                output.textures_delta.clear();
+            }
+            texts.into_iter().map(|(text, _)| text).collect()
+        };
+
+        // Sem seletor: `Clear`.
+        let painted = labels(&mut state);
+        assert!(painted.iter().any(|text| text == "Clear"), "{painted:?}");
+        assert!(!painted.iter().any(|text| text == RESET), "{painted:?}");
+
+        // Com seletor aplicado no escopo: `Reset`.
+        state.selection.apply(
+            &[mustel_core::usecases::custom_databases::ServerSelection {
+                server: "Local".to_string(),
+                databases: vec![mustel_core::usecases::custom_databases::DatabaseChoice {
+                    name: "dev".to_string(),
+                    blocked_by: None,
+                    warning: None,
+                }],
+            }],
+            &crate::selection::ApplyScope::All,
+            "todas",
+        );
+        let painted = labels(&mut state);
+        assert!(painted.iter().any(|text| text == RESET), "{painted:?}");
+        assert!(!painted.iter().any(|text| text == "Clear"), "{painted:?}");
+    }
+
     /// A escolha de bases saiu do formulário: ela é da **sidebar** (R1/R2 continuam valendo).
     /// O teste desenha a sidebar e o formulário separados e confere onde cada rótulo caiu — a
     /// divisão "servidores e bases à esquerda, execução à direita" é o desenho pedido pelo dono.
@@ -2391,6 +2473,86 @@ mod tests {
                     let content = text.galley.text().trim().to_string();
                     if !content.is_empty() {
                         out.push((content, text.pos.y));
+                    }
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for clipped in shapes {
+            walk(&clipped.shape, out);
+        }
+    }
+
+    /// Os dois botões laterais (o `⟳` do servidor e a vassoura do seletor) ficam **na mesma
+    /// coluna**, com os combos terminando no mesmo lugar.
+    ///
+    /// Pedido do dono: o combo do `Query Selector` estava mais curto que o do `Server` porque aquela
+    /// linha reservava dois slots (spinner + vassoura) e a outra só um, e o ícone saía deslocado. O
+    /// spinner agora ocupa o **mesmo** slot da vassoura, e as duas linhas usam um `combo_width` só.
+    ///
+    /// A prova aqui são os **ícones**: eles são alinhados à direita dentro da mesma caixa, então a
+    /// coluna em que caem é a medida direta do alinhamento. (Os triângulos `▼` não servem de medida:
+    /// o do combo de servidor faz parte do rótulo `All servers (N)   ▼`, e comparar texto
+    /// centrado de rótulos de tamanhos diferentes não diz nada sobre a largura do botão.)
+    /// CONTRACT: IF-240
+    #[test]
+    fn the_selector_row_has_the_same_geometry_as_the_server_row() {
+        let ctx = egui::Context::default();
+        let servers = [server("Local")];
+        let mut state = State::default();
+        state.sync_servers(&servers);
+
+        let mut texts: Vec<(String, egui::Pos2)> = Vec::new();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    // A largura da sidebar, como na janela: sem isso o `CentralPanel` headless tem
+                    // largura quase infinita e os números não querem dizer nada.
+                    ui.set_max_width(400.0);
+                    let _ = state.sidebar_ui(ui, &servers, &[]);
+                });
+            });
+            texts.clear();
+            collect_pos(&output.shapes, &mut texts);
+            output.textures_delta.clear();
+        }
+
+        let x_of = |needle: &str| -> f32 {
+            let found: Vec<f32> = texts
+                .iter()
+                .filter(|(text, _)| text == needle)
+                .map(|(_, pos)| pos.x)
+                .collect();
+            assert_eq!(found.len(), 1, "um só `{needle}` na sidebar: {texts:?}");
+            found[0]
+        };
+
+        let discover = x_of("⟳");
+        let broom = x_of(BROOM);
+        assert!(
+            (discover - broom).abs() <= 1.0,
+            "o `⟳` e a vassoura têm de ficar na mesma coluna: {discover} vs {broom}"
+        );
+        assert!(
+            discover > 300.0,
+            "e no fim da linha, não no meio: {discover}"
+        );
+    }
+
+    /// Junta `(texto, posição)` de todo `Shape::Text`, descendo nos grupos.
+    fn collect_pos(shapes: &[egui::epaint::ClippedShape], out: &mut Vec<(String, egui::Pos2)>) {
+        fn walk(shape: &egui::Shape, out: &mut Vec<(String, egui::Pos2)>) {
+            match shape {
+                egui::Shape::Text(text) => {
+                    let content = text.galley.text().trim().to_string();
+                    if !content.is_empty() {
+                        out.push((content, text.pos));
                     }
                 }
                 egui::Shape::Vec(shapes) => {

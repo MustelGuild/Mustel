@@ -89,7 +89,7 @@ O **filtro de servidor** define o escopo de tudo o que está na sidebar:
 | `Query Selector` | escolher um seletor **aplica na hora** e substitui a seleção | o filtro: um servidor, ou todos |
 | `⟳` ao lado do filtro | lista as bases do escopo (era o `Discover all`) | o filtro |
 | `Select all N` | marca **o que está visível** | filtro × busca |
-| `Clear` | desmarca o que está visível | filtro × busca |
+| `Clear` / `Reset` | **desfaz a seleção manual**: sem seletor desmarca o visível; com seletor devolve o visível ao que a query marcou | filtro × busca |
 | busca | cruza o nome da base **e** o do servidor | — |
 
 `Select all` e o combo têm papéis fixos: um marca tudo, o outro aplica a query — nenhum dos dois
@@ -97,6 +97,12 @@ muda de significado conforme o outro controle. Base barrada por `excludePatterns
 de senha **nunca** entram automaticamente, e o status diz quantas estão marcadas e de onde vieram:
 
 > `103 marked · from 'Producao'`
+
+O botão da direita muda de nome conforme o escopo: **`Clear`** quando não há seletor (desmarca o
+que está visível) e **`Reset`** quando há (desfaz o que foi marcado à mão e volta ao que a query
+marcou — marcado à mão sai, desmarcado à mão volta). É a leitura literal de "limpar a seleção
+manual": sem query, a seleção manual é tudo; com query, é a diferença em relação a ela. Esquecer o
+seletor (`(none)` ou a vassoura) devolve o botão ao estado `Clear`.
 
 O toggle **Show only marked**, na mesma linha do status, esconde as bases não marcadas — é
 **visão**, não ação: `Select all` e `Clear` continuam valendo para o filtro × busca inteiro, e o
@@ -129,7 +135,9 @@ rótulo é "de onde veio", não uma promessa de que a seleção ainda seja só a
 
 Ao lado do combo, o botão `∅` é a **vassoura**: esquece o seletor de **todos** os servidores de uma
 vez (não desmarca nada, e age mesmo com o filtro num servidor). Ele fica apagado quando não há
-seletor para limpar.
+seletor para limpar. A linha do seletor tem a mesma geometria da linha do servidor — mesma largura de
+combo e o botão lateral na mesma coluna —, e o indicador de progresso aparece **no lugar** da
+vassoura enquanto a aplicação roda, para nada pular de lugar.
 
 ### Falha ao aplicar
 

@@ -630,21 +630,39 @@ impl State {
         ui.horizontal(|ui| {
             ui.label("Databases");
 
-            // Combo das queries salvas na aba Settings (`— none` = seleção à mão).
-            let chosen = self.chosen_query.clone();
-            let label = chosen.clone().unwrap_or_else(|| "— none —".to_string());
-            egui::ComboBox::from_id_salt("selection_query")
-                .selected_text(label)
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.chosen_query, None, "— none —");
-                    for query in selections {
-                        ui.selectable_value(
-                            &mut self.chosen_query,
-                            Some(query.name.clone()),
-                            &query.name,
-                        );
-                    }
-                });
+            // Combo das queries salvas na aba Settings, com **busca** (o mesmo widget do campo
+            // `Database` e das fontes).
+            //
+            // A **primeira** linha é "nenhuma query": o botão fica em branco quando ela está
+            // escolhida, mas a linha da lista precisa de rótulo — sem texto, o egui pinta só o
+            // fundo azul da seleção e sobra um quadrado azul sem significado.
+            const NO_QUERY: &str = "(none)";
+            let chosen = self.chosen_query.clone().unwrap_or_default();
+            let mut texts: Vec<String> = vec![NO_QUERY.to_string()];
+            texts.extend(selections.iter().map(|query| query.name.clone()));
+            let items: Vec<crate::search_combo::Item<'_>> = texts
+                .iter()
+                .map(|text| crate::search_combo::Item {
+                    text: text.as_str(),
+                    // `chosen` vazio corresponde justamente à primeira linha.
+                    selected: if text == NO_QUERY {
+                        chosen.is_empty()
+                    } else {
+                        text == &chosen
+                    },
+                })
+                .collect();
+            if let Some(index) =
+                crate::search_combo::search_combo(ui, "selection_query", &chosen, &items, true)
+            {
+                // A posição 0 é o "nenhuma", independentemente do texto (um dono pode batizar
+                // uma query de `(none)`; a posição não se confunde).
+                self.chosen_query = if index == 0 {
+                    None
+                } else {
+                    Some(texts[index].clone())
+                };
+            }
 
             // `⟳ Apply` substitui a seleção do escopo (R1). Sem query escolhida não há o que
             // aplicar: o botão fica desabilitado em vez de adivinhar.

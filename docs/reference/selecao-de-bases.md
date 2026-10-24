@@ -31,7 +31,7 @@ dev: database  [search …]  ‹ 1 2 … ›
 
 | Controle | O que faz |
 |---|---|
-| **Custom select** | escolhe a query salva; `— none —` desliga o `⟳ Apply` e deixa a seleção à mão |
+| **Custom select** | escolhe a query salva, com **busca**; a primeira linha é `(none)` (botão em branco) e desliga o `⟳ Apply` |
 | **⟳ Apply to all** | roda a query e **substitui** a seleção de **todos** os servidores |
 | **⟳ Apply** (na linha) | substitui a seleção **daquele** servidor |
 | **⟳ Discover all** | lista as bases de todos os servidores, em melhor esforço |
@@ -83,14 +83,13 @@ escolhido, lido com a senha do cofre. Ele funciona assim:
 |---|---|
 | **Server** | escolher o servidor **já carrega** as bases dele; não precisa apertar nada |
 | **spinner + "Loading databases…"** | aparece enquanto a descoberta está em andamento |
-| **Database** | um dropdown no estilo dos combos de fonte: mostra `-` sem escolha e o nome depois |
+| **Database** | um dropdown no estilo dos combos de fonte: fica **vazio** sem escolha e mostra o nome depois |
 | **busca do dropdown** | filtra a lista sem diferenciar maiúsculas enquanto você digita |
-| **Use "…"** | dentro do dropdown, aceita como nome o texto digitado que não casa com nenhuma base |
 | **⟳** | refaz a descoberta (útil quando alguém criou uma base depois do último carregamento) |
 
-Não há campo de digitação solto no formulário: o nome entra pelo dropdown. A entrada `Use "…"`
-preserva o caso da base que a descoberta ainda não viu (o servidor do dono costuma usar
-`fetchAllDatabases`, e a lista pode estar incompleta).
+Não há campo de digitação solto no formulário: o nome entra pelo dropdown. A lista vem da
+descoberta (`⟳`) e do `databases` do cadastro — se a base não aparecer, rode o `⟳` de novo: o
+cadastro do dono costuma usar `fetchAllDatabases`, e a lista só fica completa depois de descobrir.
 
 Escolher `postgres` ou `template0` é permitido — a exclusão por `excludePatterns` vale na aba
 **Query**, na hora de marcar, e não impede apontar onde a query roda.

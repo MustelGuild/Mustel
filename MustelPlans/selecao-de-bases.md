@@ -558,3 +558,26 @@ Append-only.
   ausência do campo de digitação. **Verificado na janela:** o formulário mostra `-  ▼`; abrir traz
   busca + `configurador/dev/postgres/test2`; escolher `test2` deixa o botão com `test2 ▼`; e o
   `Save` gravou `"database": "test2"` no arquivo.
+- `[2026-10-23]` **Combo com busca virou um widget único, e o vazio deixou de mostrar `-`.** O dono
+  pediu três coisas de uma vez: sem escolha o campo fica **vazio** (mais consistente que `-`), o
+  mesmo dropdown com busca aparece **nas fontes** e **na escolha da query de seleção** da aba Query,
+  e sai o comportamento de transformar o texto digitado em opção (`Use 'aasdas'`). Feito em
+  `crates/mustel-gui/src/search_combo.rs`, um widget que recebe `id`, texto do botão e `&[Item]` e
+  devolve o índice escolhido — os três chamadores (fontes, base da query, query salva) só montam a
+  lista. O estado do popup (aberto/fechado e busca) vive na memória do `egui` por `id`, então dois
+  combos na mesma tela não compartilham a busca e `SelectionForm` perdeu os campos `db_filter` e
+  `db_open`. O `ComboBox` do `egui` saiu dos dois lugares onde era usado.
+  **Verificado na janela:** `Database` aparece **em branco** com `▼`; a fonte abre com `Search…` e a
+  lista (Fira Code embutida, Agency FB, Algerian, …); o combo de queries da aba Query abre com
+  `Search…`, entrada vazia + `Producao`/`Homologacao`, e digitar `hom` filtrou para `Homologacao`.
+  Em nenhum dos três aparece `Use '…'`. Testes novos no widget: botão vazio/nome escolhido, busca
+  filtrando sem maiúsculas, dica de busca com filtro vazio, e busca não compartilhada entre combos.
+- `[2026-10-23]` **"Quadrado azul" no combo de queries (aba Query).** O dono viu um retângulo azul sem
+  texto como primeira linha do dropdown. Era a entrada "nenhuma query" com texto vazio: escolhida,
+  o egui pinta o fundo da seleção e, sem rótulo, sobra um quadrado. Duas correções: a primeira linha
+  passou a ser **`(none)`** (o **botão** continua vazio quando nada está escolhido, que é o desenho
+  que o dono pediu), e o widget agora **não desenha item sem texto** — assim nenhum outro chamador
+  repete o defeito. O mapeamento "voltar para nenhuma" é por **posição** (índice 0), não por texto,
+  então uma query batizada de `(none)` não confunde. Verificado na janela: a lista mostra `(none)`
+  destacado, `Producao` e `Homologacao`, e nenhum quadrado sem rótulo.
+  Teste novo: `an_item_without_text_is_not_drawn`.

@@ -31,6 +31,7 @@ pub mod request;
 pub mod runtime;
 pub mod schema_cache;
 pub mod screens;
+pub mod search_combo;
 pub mod selection;
 pub mod smooth_scroll;
 pub mod sql_completion;

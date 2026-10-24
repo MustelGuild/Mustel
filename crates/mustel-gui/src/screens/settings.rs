@@ -66,14 +66,6 @@ struct SelectionForm {
     database: String,
     /// O SQL.
     sql: String,
-    /// Texto de busca do dropdown de base (só da tela, não é gravado).
-    db_filter: String,
-    /// O dropdown de base está aberto?
-    ///
-    /// O estado é da tela, não da memória do `egui`: popup aberto por memória some no quadro
-    /// seguinte se ninguém o mantiver aberto, e consultar a memória *antes* de reabrir fazia o
-    /// popup nunca aparecer (era o "botão que não faz nada").
-    db_open: bool,
     /// Erro de validação do formulário (nome vazio ou repetido).
     error: Option<String>,
 }
@@ -98,8 +90,6 @@ impl SelectionForm {
             server: query.server.clone(),
             database: query.database.clone(),
             sql: query.sql.clone(),
-            db_filter: String::new(),
-            db_open: false,
             error: None,
         }
     }
@@ -521,15 +511,22 @@ impl State {
                         //
                         // Escolher só mexe no formulário; quem grava é o `Save`.
                         let databases = self.ready_databases(&form.server).unwrap_or_default();
-                        let _ = database_combo(
+                        let items: Vec<crate::search_combo::Item<'_>> = databases
+                            .iter()
+                            .map(|database| crate::search_combo::Item {
+                                text: database.as_str(),
+                                selected: database == &form.database,
+                            })
+                            .collect();
+                        if let Some(index) = crate::search_combo::search_combo(
                             ui,
                             "selection_query_database",
-                            &mut form.database,
-                            &databases,
-                            &mut form.db_filter,
-                            &mut form.db_open,
+                            &form.database,
+                            &items,
                             !form.server.is_empty(),
-                        );
+                        ) {
+                            form.database = databases[index].clone();
+                        }
 
                         let can_discover = !form.server.is_empty();
                         let loading = self.is_loading(&form.server);
@@ -659,179 +656,51 @@ impl State {
             embedded,
             which,
         } = combo;
+
+        let current = match which {
+            Family::Interface => self.chosen.interface.clone(),
+            Family::Editor => self.chosen.editor.clone(),
+        };
+        // O botão mostra a escolha; sem escolha mostra o nome da embutida (é o que vale).
+        let shown = current.clone().unwrap_or_else(|| embedded.to_string());
+
+        // A lista: a embutida, a Fira Code garantida e as instaladas. A **mesma** busca vale para
+        // as três listas (fontes, bases e queries salvas).
+        let mut texts: Vec<String> = vec![embedded.to_string()];
+        if !families.iter().any(|name| name == "Fira Code") {
+            texts.push("Fira Code".to_string());
+        }
+        texts.extend(families.iter().cloned());
+
+        let items: Vec<crate::search_combo::Item<'_>> = texts
+            .iter()
+            .map(|text| crate::search_combo::Item {
+                text: text.as_str(),
+                selected: text == &shown,
+            })
+            .collect();
+
         let mut changed = false;
         ui.horizontal(|ui| {
             ui.label(label);
-            let current = match which {
-                Family::Interface => self.chosen.interface.clone(),
-                Family::Editor => self.chosen.editor.clone(),
-            };
-            let selected = current.clone().unwrap_or_else(|| embedded.to_string());
-
-            egui::ComboBox::from_id_salt(id)
-                .selected_text(selected)
-                .show_ui(ui, |ui| {
-                    // "Embutida" limpa a escolha.
-                    if ui.selectable_label(current.is_none(), embedded).clicked() {
-                        match which {
-                            Family::Interface => self.chosen.interface = None,
-                            Family::Editor => self.chosen.editor = None,
-                        }
-                        *apply_now = true;
-                        changed = true;
-                    }
-
-                    // A Fira Code aparece mesmo quando já está instalada: é a opção garantida.
-                    if !families.iter().any(|name| name == "Fira Code")
-                        && ui
-                            .selectable_label(current.as_deref() == Some("Fira Code"), "Fira Code")
-                            .clicked()
-                    {
-                        match which {
-                            Family::Interface => {
-                                self.chosen.interface = Some("Fira Code".to_string())
-                            }
-                            Family::Editor => self.chosen.editor = Some("Fira Code".to_string()),
-                        }
-                        *apply_now = true;
-                        changed = true;
-                    }
-
-                    for family in families {
-                        if ui
-                            .selectable_label(current.as_deref() == Some(family.as_str()), family)
-                            .clicked()
-                        {
-                            match which {
-                                Family::Interface => self.chosen.interface = Some(family.clone()),
-                                Family::Editor => self.chosen.editor = Some(family.clone()),
-                            }
-                            *apply_now = true;
-                            changed = true;
-                        }
-                    }
-                });
+            if let Some(index) = crate::search_combo::search_combo(ui, id, &shown, &items, true) {
+                let picked = &texts[index];
+                let value = if picked == embedded {
+                    None
+                } else {
+                    Some(picked.clone())
+                };
+                match which {
+                    Family::Interface => self.chosen.interface = value,
+                    Family::Editor => self.chosen.editor = value,
+                }
+                *apply_now = true;
+                changed = true;
+            }
         });
 
         changed
     }
-}
-
-/// O campo `Database` como **dropdown**: um botão no estilo dos combos de fonte (`valor ▼`) que
-/// abre a lista das bases com **campo de busca**.
-///
-/// Nada escolhido mostra `-`. Escolher de uma lista longa é o uso real: o servidor do dono tem
-/// dezenas de bases e o nome exato ninguém lembra. A busca filtra sem diferenciar maiúsculas e,
-/// quando o texto digitado não casa com nenhuma base, oferece o próprio texto (`Use "…"`) — é a
-/// porta para a base que a descoberta ainda não viu, sem devolver um campo de texto ao formulário.
-///
-/// Devolve `true` quando o valor mudou.
-fn database_combo(
-    ui: &mut egui::Ui,
-    id: &str,
-    value: &mut String,
-    options: &[String],
-    filter: &mut String,
-    open: &mut bool,
-    enabled: bool,
-) -> bool {
-    let mut changed = false;
-
-    // Mesmo formato dos combos de fonte: um botão com o valor à esquerda e o triângulo à direita.
-    // Nada escolhido mostra `-`, que é o estado inicial de uma query nova.
-    let label = if value.trim().is_empty() {
-        "-".to_string()
-    } else {
-        value.clone()
-    };
-    let button = ui
-        .add_enabled(
-            enabled,
-            egui::Button::new(format!("{label}   ▼")).min_size(egui::vec2(200.0, 0.0)),
-        )
-        .on_hover_text("Pick the database where the query runs")
-        .on_disabled_hover_text("Pick a server first");
-    if button.clicked() {
-        *open = !*open;
-        // Abrir limpa a busca anterior: o dono quer ver a lista, não a última procura.
-        filter.clear();
-    }
-
-    if *open {
-        // `IgnoreClicks` + fechamento decidido aqui: com `CloseOnClickOutside` o popup fecharia no
-        // mesmo quadro em que abre (o clique do botão fica fora do popup).
-        let inner = egui::Popup::from_response(&button)
-            .open(true)
-            .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
-            .width(260.0)
-            .show(|ui| {
-                ui.add(
-                    egui::TextEdit::singleline(filter)
-                        .id_salt(id)
-                        .hint_text("Search…")
-                        .desired_width(f32::INFINITY),
-                );
-
-                let needle = filter.trim().to_lowercase();
-
-                egui::ScrollArea::vertical()
-                    .max_height(220.0)
-                    .show(ui, |ui| {
-                        // Texto livre: sem isso, a base fora da lista (ou com a descoberta incompleta)
-                        // não teria como ser escolhida pelo dropdown.
-                        let typed = filter.trim();
-                        if !typed.is_empty()
-                            && !options.iter().any(|option| option == typed)
-                            && ui.button(format!("Use '{typed}'")).clicked()
-                        {
-                            *value = typed.to_string();
-                            changed = true;
-                            *open = false;
-                        }
-
-                        let mut any = false;
-                        for option in options {
-                            if !needle.is_empty() && !option.to_lowercase().contains(&needle) {
-                                continue;
-                            }
-                            any = true;
-                            let selected = option.as_str() == value.as_str();
-                            if ui.selectable_label(selected, option.as_str()).clicked() {
-                                *value = option.to_string();
-                                changed = true;
-                                *open = false;
-                            }
-                        }
-
-                        if !any && typed.is_empty() {
-                            ui.weak(if options.is_empty() {
-                                "No database listed for this server yet — press ⟳ or type a name."
-                            } else {
-                                "No database matches the search."
-                            });
-                        }
-                    });
-            });
-
-        // Fecha com `Esc` ou com um clique fora do popup — o clique que **abriu** não conta.
-        let escape = ui.input(|input| input.key_pressed(egui::Key::Escape));
-        let clicked_outside = !button.clicked()
-            && ui.input(|input| input.pointer.any_pressed())
-            && ui
-                .input(|input| input.pointer.interact_pos())
-                .is_some_and(|position| {
-                    inner
-                        .as_ref()
-                        .is_some_and(|inner| !inner.response.rect.contains(position))
-                        && !button.rect.contains(position)
-                });
-
-        if escape || clicked_outside {
-            *open = false;
-        }
-    }
-
-    changed
 }
 
 /// Qual pedido a aba emite com o que o usuário fez neste quadro.
@@ -1108,160 +977,6 @@ mod tests {
         assert!(
             texts.iter().any(|text| text == "CONTEUDO"),
             "o conteúdo do popup foi pintado: {texts:?}"
-        );
-    }
-
-    /// O combo mostra `-` sem escolha e o nome depois de escolher (formato dos combos de fonte).
-    /// CONTRACT: IF-232
-    #[test]
-    fn the_database_combo_shows_a_dash_until_something_is_picked() {
-        let ctx = egui::Context::default();
-        let options = vec!["configurador".to_string(), "dev".to_string()];
-
-        let painted = |value: &str, open: bool| {
-            let mut value = value.to_string();
-            let mut filter = String::new();
-            let mut open = open;
-            let mut texts: Vec<String> = Vec::new();
-            for _ in 0..2 {
-                let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
-                    egui::CentralPanel::default().show(ctx, |ui| {
-                        let _ = database_combo(
-                            ui,
-                            "selection_query_database",
-                            &mut value,
-                            &options,
-                            &mut filter,
-                            &mut open,
-                            true,
-                        );
-                    });
-                });
-                texts.clear();
-                collect_text(&output.shapes, &mut texts);
-                output.textures_delta.clear();
-            }
-            texts
-        };
-
-        // Sem escolha: o botão traz `-`, e nao um campo vazio esperando digitação.
-        let texts = painted("", false);
-        assert!(
-            texts.iter().any(|text| text.contains('-')),
-            "o botão mostra `-`: {texts:?}"
-        );
-        assert!(
-            !texts
-                .iter()
-                .any(|text| text.contains("where the query runs")),
-            "não há mais campo de digitação manual: {texts:?}"
-        );
-
-        // Com escolha: o nome aparece no próprio botão.
-        let texts = painted("dev", false);
-        assert!(
-            texts.iter().any(|text| text.contains("dev")),
-            "o botão mostra o nome escolhido: {texts:?}"
-        );
-    }
-
-    /// O dropdown de base **renderiza** a busca e as opções quando aberto.
-    ///
-    /// O teste desenha o picker com o popup já aberto na memória do `egui` — o caminho que, na
-    /// janela, parecia não fazer nada — e confere que a busca e as bases foram pintadas.
-    /// CONTRACT: IF-232
-    #[test]
-    fn the_database_picker_shows_a_search_box_and_the_options() {
-        let ctx = egui::Context::default();
-        let popup_id = egui::Id::unique(("selection_query_database", "popup"));
-        let mut value = String::new();
-        let mut filter = String::new();
-        let mut open = true;
-        let options = vec![
-            "configurador".to_string(),
-            "dev".to_string(),
-            "test2".to_string(),
-        ];
-
-        let mut texts: Vec<String> = Vec::new();
-        let mut saw_open = false;
-        // Dois quadros: no primeiro o `Area` do popup roda em *sizing pass* e ainda não pinta.
-        for _ in 0..2 {
-            let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    let _ = database_combo(
-                        ui,
-                        "selection_query_database",
-                        &mut value,
-                        &options,
-                        &mut filter,
-                        &mut open,
-                        true,
-                    );
-                    egui::Popup::open_id(ui.ctx(), popup_id);
-                    saw_open = egui::Popup::is_id_open(ui.ctx(), popup_id);
-                });
-            });
-            texts.clear();
-            collect_text(&output.shapes, &mut texts);
-            output.textures_delta.clear();
-        }
-
-        assert!(saw_open, "a memória registra o popup aberto");
-        assert!(
-            texts.iter().any(|text| text == "Search…"),
-            "o popup tem campo de busca: {texts:?}"
-        );
-        for option in &options {
-            assert!(
-                texts.iter().any(|text| text == option),
-                "a opção {option} aparece: {texts:?}"
-            );
-        }
-    }
-
-    /// A busca do dropdown filtra sem diferenciar maiúsculas e oferece o texto livre.
-    /// CONTRACT: IF-232
-    #[test]
-    fn the_database_picker_filters_and_offers_the_typed_name() {
-        let ctx = egui::Context::default();
-        let mut value = String::new();
-        let mut filter = "CONF".to_string();
-        let mut open = true;
-        let options = vec!["configurador".to_string(), "dev".to_string()];
-
-        let mut texts: Vec<String> = Vec::new();
-        // Dois quadros: no primeiro o `Area` do popup roda em *sizing pass* e ainda não pinta.
-        for _ in 0..2 {
-            let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    database_combo(
-                        ui,
-                        "selection_query_database",
-                        &mut value,
-                        &options,
-                        &mut filter,
-                        &mut open,
-                        true,
-                    );
-                });
-            });
-            texts.clear();
-            collect_text(&output.shapes, &mut texts);
-            output.textures_delta.clear();
-        }
-
-        assert!(
-            texts.iter().any(|text| text == "configurador"),
-            "a base que casa com a busca aparece: {texts:?}"
-        );
-        assert!(
-            !texts.iter().any(|text| text == "dev"),
-            "a que não casa fica fora: {texts:?}"
-        );
-        assert!(
-            texts.iter().any(|text| text.contains("Use 'CONF'")),
-            "o texto digitado pode ser usado como nome: {texts:?}"
         );
     }
 

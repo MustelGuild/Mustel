@@ -28,7 +28,9 @@ configurado, e `Restore defaults` a remove de novo.
 | `fontScale` | multiplicador de **todos** os tamanhos de texto | `1.0` |
 
 Os dois combos listam: a opção **embutida**, a **Fira Code** (mesmo que não esteja instalada) e as
-famílias **instaladas no sistema**. A lista do sistema é montada uma vez, quando a aba abre.
+famílias **instaladas no sistema**. A lista do sistema é montada uma vez, quando a aba abre — e os
+dois combos têm **campo de busca** (o mesmo widget do campo `Database` da query de seleção), porque
+uma máquina típica tem centenas de famílias e achar o nome rolando a lista é o que dói.
 
 ## Faixa do tamanho
 

@@ -237,11 +237,12 @@
 | IF-233 | T8 | B | nas abas **Query** e **Servers**, servidores e escolha de bases ficam numa **sidebar** à esquerda (300 px, arrastável 240–420, recolhível para uma barra com `▶`), e a área principal fica com a execução: na Query o SQL, a saída, `Run query` e os resultados; em Servers o formulário. A **referência do autocomplete continua acima do editor**, fora da sidebar, e a aba Settings não tem sidebar | janela, abas Query/Servers | crates/mustel-gui/src/screens/query.rs::tests::the_database_choice_lives_in_the_sidebar_and_the_sql_in_the_main_area; crates/mustel-gui/src/screens/query.rs::tests::the_reference_row_stays_in_the_main_area | coberta |
 | IF-234 | D11 | B | a lista de bases da aba Query é paginada **só se** ligada em `gui.selectionList.paginate`, com `pageSize` (10–500, padrão 50); desligada (padrão) desenha tudo, e a chave só aparece no arquivo quando foge do padrão; filtro e busca sempre enxergam a lista inteira | `mustel.jsonc` e aba Settings → Database list | crates/mustel-core/src/config/model.rs::tests::the_selection_list_prefs_round_trip; crates/mustel-gui/src/screens/settings.rs::tests::the_state_keeps_every_saved_preference; crates/mustel-gui/src/screens/settings.rs::tests::changing_the_pagination_keeps_the_rest | coberta |
 | IF-235 | R6 | B | ao abrir a aba **Query** a descoberta de bases é pedida para **todos** os servidores do cadastro (melhor esforço, um fora do ar não impede os outros), **uma vez** — não a cada quadro — e volta a valer quando entra servidor novo; depois disso, só o `⟳ Discover` e a troca do servidor de referência pedem de novo | lista de bases da aba Query logo após abrir | crates/mustel-gui/src/screens/query.rs::tests::opening_the_tab_discovers_every_server_once; crates/mustel-gui/src/screens/query.rs::tests::a_new_server_triggers_the_automatic_discovery_again | coberta |
+| IF-236 | R2 | B | o combo de **servidor** mostra o total de bases de cada servidor ao lado do nome (`Local 104`), e `0` quando aquele servidor ainda não foi descoberto; a contagem é só de exibição — não entra na busca nem no valor do filtro | combo "Server" da aba Query | crates/mustel-gui/src/search_combo.rs::tests::the_note_is_drawn_next_to_the_name; crates/mustel-gui/src/search_combo.rs::tests::the_note_is_shown_but_not_searchable | coberta |
 
 ## Resumo
 
-- **Total de linhas:** 162
-- **`coberta`:** 159
+- **Total de linhas:** 163
+- **`coberta`:** 160
 - **`pendente`:** 0
 - **`nao-coberta`:** 3 (IF-025 pool até o T34; IF-141 prompt por servidor; IF-163 superfície nova do Mustel)
 

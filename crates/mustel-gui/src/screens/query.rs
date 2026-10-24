@@ -787,14 +787,14 @@ impl State {
             texts.extend(selections.iter().map(|query| query.name.clone()));
             let items: Vec<crate::search_combo::Item<'_>> = texts
                 .iter()
-                .map(|text| crate::search_combo::Item {
-                    text: text.as_str(),
+                .map(|text| {
                     // `chosen` vazio corresponde justamente à primeira linha.
-                    selected: if text == NO_QUERY {
+                    let selected = if text == NO_QUERY {
                         chosen.is_empty()
                     } else {
                         text == &chosen
-                    },
+                    };
+                    crate::search_combo::Item::new(text.as_str(), selected)
                 })
                 .collect();
             if let Some(index) =
@@ -817,27 +817,39 @@ impl State {
         // deixa "marcar tudo do servidor 1" ser: filtra o servidor 1, aperta `Select all`.
         ui.horizontal(|ui| {
             ui.label("Server");
-            let current = self
-                .selection
-                .server_filter()
-                .map(str::to_string)
-                .unwrap_or_else(|| {
-                    format!("All servers ({})", self.selection.known_count(servers))
-                });
+            // O botão mostra a contagem do escopo, igual ao "All servers (208)".
+            let current = match self.selection.server_filter() {
+                Some(name) => format!("{name} ({})", self.selection.known_on(name)),
+                None => format!("All servers ({})", self.selection.known_count(servers)),
+            };
             let mut texts: Vec<String> = vec!["All servers".to_string()];
             texts.extend(servers.iter().map(|server| server.name.clone()));
+            // A contagem é **detalhe** (`note`), não parte do nome: fica fora da busca e não
+            // contamina o valor. `(0)` é o sinal de que aquele servidor ainda não foi descoberto.
+            let counts: Vec<String> =
+                std::iter::once(self.selection.known_count(servers).to_string())
+                    .chain(
+                        servers
+                            .iter()
+                            .map(|server| self.selection.known_on(&server.name).to_string()),
+                    )
+                    .collect();
             let items: Vec<crate::search_combo::Item<'_>> = texts
                 .iter()
                 .enumerate()
-                .map(|(index, text)| crate::search_combo::Item {
-                    text: text.as_str(),
-                    selected: if index == 0 {
+                .map(|(index, text)| {
+                    let selected = if index == 0 {
                         self.selection.server_filter().is_none()
                     } else {
                         self.selection
                             .server_filter()
                             .is_some_and(|filter| filter.eq_ignore_ascii_case(text))
-                    },
+                    };
+                    crate::search_combo::Item::with_note(
+                        text.as_str(),
+                        counts[index].as_str(),
+                        selected,
+                    )
                 })
                 .collect();
             if let Some(index) = crate::search_combo::search_combo(

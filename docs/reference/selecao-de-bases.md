@@ -52,6 +52,10 @@ A sidebar tem **300 px** fixos, com **12 px de respiro** entre ela e o conteúdo
 mesma sidebar — a lista do cadastro fica lá, em cards que ocupam a largura toda, e o formulário
 ocupa a área principal.
 
+O combo de **Server** mostra o total de bases de cada servidor ao lado do nome (`Local 104`,
+`Local 2 0`) — o `0` é o sinal de que aquele servidor ainda não foi descoberto. A contagem é só de
+exibição: buscar "104" não encontra servidor nenhum, porque a busca é sobre o nome.
+
 ### Escopo dos botões
 
 O **filtro de servidor** define o escopo de tudo:

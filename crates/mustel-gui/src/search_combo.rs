@@ -10,10 +10,34 @@
 
 /// Uma linha do combo.
 pub struct Item<'a> {
-    /// Texto mostrado (e usado como chave).
+    /// Texto mostrado (e usado como chave e como alvo da busca).
     pub text: &'a str,
+    /// Detalhe só de exibição, à direita do texto (ex.: a contagem de bases do servidor).
+    ///
+    /// Fica **fora** da busca: procurar "104" não pode achar um servidor por causa do número.
+    pub note: Option<&'a str>,
     /// É o valor atual?
     pub selected: bool,
+}
+
+impl<'a> Item<'a> {
+    /// Um item sem detalhe.
+    pub fn new(text: &'a str, selected: bool) -> Self {
+        Self {
+            text,
+            note: None,
+            selected,
+        }
+    }
+
+    /// Um item com detalhe à direita (contagem, por exemplo).
+    pub fn with_note(text: &'a str, note: &'a str, selected: bool) -> Self {
+        Self {
+            text,
+            note: Some(note),
+            selected,
+        }
+    }
 }
 
 #[derive(Default, Clone)]
@@ -89,7 +113,19 @@ pub fn search_combo(
                                 continue;
                             }
                             any = true;
-                            if ui.selectable_label(item.selected, item.text).clicked() {
+                            // O detalhe vai à direita, fraco: não é parte do nome nem da busca.
+                            let response = ui.horizontal(|ui| {
+                                let clicked =
+                                    ui.selectable_label(item.selected, item.text).clicked();
+                                if let Some(note) = item.note {
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| ui.weak(note),
+                                    );
+                                }
+                                clicked
+                            });
+                            if response.inner {
                                 chosen = Some(index);
                                 state.open = false;
                             }
@@ -154,10 +190,7 @@ mod tests {
     fn items<'a>(texts: &'a [&'a str], selected: Option<&str>) -> Vec<Item<'a>> {
         texts
             .iter()
-            .map(|text| Item {
-                text,
-                selected: Some(*text) == selected,
-            })
+            .map(|text| Item::new(text, Some(*text) == selected))
             .collect()
     }
 
@@ -285,6 +318,96 @@ mod tests {
             assert!(
                 texts.iter().any(|text| text == option),
                 "lista {option}: {texts:?}"
+            );
+        }
+    }
+
+    /// O detalhe (`note`) aparece na linha mas **não** entra na busca nem vira valor.
+    ///
+    /// É o que permite mostrar `Local (104)` sem que procurar "104" ache o servidor — e sem
+    /// contaminar o nome usado como filtro.
+    /// CONTRACT: IF-236
+    #[test]
+    fn the_note_is_shown_but_not_searchable() {
+        let ctx = egui::Context::default();
+        let options = ["Local", "Local 2"];
+        let notes = ["104", "0"];
+        let state_id = egui::Id::unique(("search_combo", "test_combo"));
+
+        let mut texts: Vec<String> = Vec::new();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                ctx.data_mut(|data| {
+                    data.insert_temp(
+                        state_id,
+                        State {
+                            open: true,
+                            filter: "104".to_string(),
+                        },
+                    )
+                });
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let items: Vec<Item<'_>> = options
+                        .iter()
+                        .zip(notes)
+                        .map(|(text, note)| Item::with_note(text, note, false))
+                        .collect();
+                    let _ = search_combo(ui, "test_combo", "", &items, true);
+                });
+            });
+            texts.clear();
+            collect_text(&output.shapes, &mut texts);
+            output.textures_delta.clear();
+        }
+
+        assert!(
+            !texts.iter().any(|text| text == "Local"),
+            "o numero nao pode ser alvo de busca: {texts:?}"
+        );
+        assert!(
+            texts
+                .iter()
+                .any(|text| text == "Nothing matches the search."),
+            "busca por numero nao acha nada: {texts:?}"
+        );
+    }
+
+    /// Sem filtro, o detalhe é desenhado ao lado do nome.
+    /// CONTRACT: IF-236
+    #[test]
+    fn the_note_is_drawn_next_to_the_name() {
+        let ctx = egui::Context::default();
+        let state_id = egui::Id::unique(("search_combo", "test_combo"));
+
+        let mut texts: Vec<String> = Vec::new();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                ctx.data_mut(|data| {
+                    data.insert_temp(
+                        state_id,
+                        State {
+                            open: true,
+                            filter: String::new(),
+                        },
+                    )
+                });
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let items = [
+                        Item::with_note("Local", "104", false),
+                        Item::with_note("Local 2", "0", false),
+                    ];
+                    let _ = search_combo(ui, "test_combo", "", &items, true);
+                });
+            });
+            texts.clear();
+            collect_text(&output.shapes, &mut texts);
+            output.textures_delta.clear();
+        }
+
+        for expected in ["Local", "104", "Local 2", "0"] {
+            assert!(
+                texts.iter().any(|text| text == expected),
+                "{expected} aparece: {texts:?}"
             );
         }
     }

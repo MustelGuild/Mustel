@@ -577,9 +577,11 @@ impl State {
                         let databases = self.ready_databases(&form.server).unwrap_or_default();
                         let items: Vec<crate::search_combo::Item<'_>> = databases
                             .iter()
-                            .map(|database| crate::search_combo::Item {
-                                text: database.as_str(),
-                                selected: database == &form.database,
+                            .map(|database| {
+                                crate::search_combo::Item::new(
+                                    database.as_str(),
+                                    database == &form.database,
+                                )
                             })
                             .collect();
                         if let Some(index) = crate::search_combo::search_combo(
@@ -738,10 +740,7 @@ impl State {
 
         let items: Vec<crate::search_combo::Item<'_>> = texts
             .iter()
-            .map(|text| crate::search_combo::Item {
-                text: text.as_str(),
-                selected: text == &shown,
-            })
+            .map(|text| crate::search_combo::Item::new(text.as_str(), text == &shown))
             .collect();
 
         let mut changed = false;

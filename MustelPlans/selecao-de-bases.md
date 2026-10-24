@@ -686,3 +686,15 @@ Append-only.
   primeiro). Testes: `opening_the_tab_discovers_every_server_once`,
   `a_new_server_triggers_the_automatic_discovery_again` e o da referência renomeado para
   `the_reference_row_asks_for_an_unknown_server_after_opening`. `IF-211` teve a citação atualizada.
+- `[2026-10-23]` **Contagem de bases por servidor no combo de filtro (IF-236).** O dono pediu o total
+  ao lado de cada servidor, como já existia em "All servers (208)", e sugeriu que `0` aparecesse
+  quando não houve descoberta — achei a parte mais útil da ideia: hoje só se descobre que falta
+  descobrir clicando no servidor.
+  Implementado separando **nome** de **detalhe** no widget: `Item::with_note(texto, nota, selecionado)`
+  desenha a nota à direita, em cinza, e a nota **não** entra na busca nem vira valor do filtro
+  (embutir `(104)` no texto faria "104" achar servidor por acaso). O botão também mostra a contagem
+  do escopo atual (`Local (104)`).
+  **Verificado na janela** com três servidores (dois descobertos, um inalcançável): o combo listou
+  `All servers 208`, `Local 104`, `Local 2 104`, `Remoto 0`; digitar `104` na busca devolveu
+  "Nothing matches the search.". Testes: `the_note_is_drawn_next_to_the_name` e
+  `the_note_is_shown_but_not_searchable`.

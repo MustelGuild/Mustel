@@ -16,5 +16,32 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 all = "warn"
 
+# Versão e tag de release pelo `cargo-release` (D28).
+#
+# O fluxo é: `cargo release patch --execute` → incrementa `workspace.package.version`, atualiza o
+# `Cargo.lock` e as dependências internas, commita e cria a tag local `v<versao>`. O push da tag e
+# o disparo do workflow são atos do dono; a publicação no crates.io é passo separado porque é
+# irreversível.
+[workspace.metadata.release]
+# Uma versão para o workspace inteiro: os crates declaram `version.workspace = true`.
+shared-version = true
+# A tag precisa casar com o nome do artefato — é o que o workflow confere antes de publicar.
+tag-name = "v{{version}}"
+tag-message = "Mustel {{version}}"
+pre-release-commit-message = "Bump Mustel to {{version}}"
+# Uma release só sai do branch principal.
+allow-branch = ["main"]
+# Path deps (mustel-core, mustel-gui) acompanham a versão compartilhada.
+dependent-version = "upgrade"
+# Não publica no crates.io: `cargo publish` é irreversível e exige token, então é passo explícito
+# (ver docs/how-to/publicar-release.md).
+publish = false
+# Não empurra para o remoto: push é ação do dono (guard rails do AGENTS.md).
+push = false
+# A verificação é o gate: `cargo release` verificaria com `cargo publish --dry-run`, que falha
+# enquanto as dependências internas não estiverem publicadas — o que só acontece no primeiro
+# release.
+verify = false
+
 # Dependências compartilhadas: declaradas pelo crate que as usa.
 # `mustel-testkit` não é publicado (publish = false).

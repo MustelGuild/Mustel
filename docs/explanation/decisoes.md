@@ -63,7 +63,7 @@ código implementa e que o número representa:
 | `D12` | Driver Postgres | **`tokio-postgres`** (`sqlx` descartado) | `Row`/`Column`/`Type` para mapear tipos arbitrários em CSV; `sqlx` empurra para tipos conhecidos em compilação, e `query run` executa SQL livre — detalhe em [Por que `tokio-postgres`](por-que-tokio-postgres.md) |
 | `D13` | Convenções do repositório | CLI em **inglês**; plano/docs/conversa em **pt-BR**; commits em inglês | Regra vigente no `AGENTS.md` |
 | `D14` | Mutações de Git | Exigem autorização explícita do dono | Guard rails do `AGENTS.md` |
-| `D15` | Versão inicial | `1.0.0`; tags `v1.x.y` dirigem o release | Mustel é software novo |
+| `D15` | Versão inicial | `1.0.0`; tags `v1.x.y` dirigem o release. O incremento é do **`cargo-release`** (`A6`), não manual | Mustel é software novo |
 | `D16` | Oráculo | Binário .NET em `legacy/` é a fonte de verdade; baseline versionado em `fixtures/baseline/` | Onde docs e código divergem, vale o **código observado** |
 | `D17` | Canais de distribuição | **GitHub Releases** (executável por plataforma, publicado pelo workflow) + **crates.io** (`cargo install mustel`); **sem winget** | Usuário (2026-10-24): "não iremos publicar no winget, no futuro apenas no cargo e no executável na página de release". O `mustel-core`/`mustel-gui` continuam publicados porque são **dependências** do `mustel` — o comando que o usuário roda é só `cargo install mustel` |
 | `D18` | Repositório GitHub | Permanecer em `liphvf/FurLab` durante a migração, renomear depois | Renomear no meio misturaria duas mudanças; **consumado em 2026-10-24** (`MustelGuild/Mustel`) |
@@ -134,6 +134,7 @@ reutiliza a numeração dos planos antigos — é uma quarta família, nascida d
 | `A3` | Paleta escura | `Visuals` **nativo** do egui, sem paleta própria | Não existe paleta própria nem no claro; "identidade visual" é outra feature |
 | `A4` | Cores de estado | `danger`/`warning` delegam a `visuals.error_fg_color`/`warn_fg_color`; `alert` tem par claro/escuro com contraste ≥ 4.5:1 | Erro e aviso eram `Color32::RED`/`YELLOW` fixos, escolhidos para fundo claro — no escuro perdiam contraste. **Efeito visível no tema claro:** o âmbar do alerta escureceu de `(214,158,46)` (~2,4:1) para `(146,105,10)` (~4,65:1), que é o mínimo de leitura; o tom antigo já falhava antes desta feature |
 | `A5` | Escopo e atalho | Tema só da janela; **sem** atalho de teclado | CLI e tabelas ANSI são contrato de paridade; o controle da aba basta |
+| `A6` | Incremento de versão | **`cargo-release`** (`shared-version`, tag `v<versao>`, sem publish/push automáticos) | A versão mora em um lugar só (`workspace.package.version`); a ferramenta evita bump esquecido e mantém a tag casada com o artefato que o workflow confere |
 
 A referência da aba está em [`reference/settings-aba.md`](../reference/settings-aba.md); a linha de
 contrato é `IF-243`.

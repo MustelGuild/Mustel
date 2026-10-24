@@ -71,6 +71,9 @@ MUSTEL_PG_TEST_URL=postgres://postgres:dev@localhost:55432/mustel_test cargo tes
 
 # Diagnóstico de paridade (não é gate)
 cargo run -p mustel-testkit --bin oracle-compare -- --report --scope query,database,settings
+
+# Release (ver docs/how-to/publicar-release.md)
+cargo release patch --dry-run   # mostra o bump; --execute faz bump + commit + tag v<versao>
 ```
 
 ## Verificar a GUI na janela

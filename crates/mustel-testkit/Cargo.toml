@@ -9,6 +9,10 @@ authors.workspace = true
 description = "Harness de paridade do Mustel: fixtures, oráculo (.NET) e comparação"
 publish = false
 
+# Fora do ciclo de release: não vai ao crates.io e não é um pacote a versionar/publicar.
+[package.metadata.release]
+release = false
+
 [lints]
 workspace = true
 

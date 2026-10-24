@@ -162,7 +162,9 @@ impl State {
                 server, databases, ..
             } => {
                 let state = match databases {
-                    Ok(databases) => Discovery::Ready(databases.clone()),
+                    // O combo `Database` escolhe **onde a query roda**: só entra o que dá para
+                    // conectar (`template0` recusa conexão).
+                    Ok(catalog) => Discovery::Ready(crate::query::usable_names(catalog)),
                     Err(error) => Discovery::Failed(error.clone()),
                 };
                 self.discovered.insert(server.clone(), state);
@@ -1011,7 +1013,7 @@ mod tests {
         // Sucesso posterior substitui a falha (o `⟳` serve para tentar de novo).
         state.apply(&crate::request::JobResult::Databases {
             server: "Local".to_string(),
-            databases: Ok(vec!["dev".to_string(), "test2".to_string()]),
+            databases: Ok(crate::selection::catalog(["dev", "test2"])),
             has_password: true,
         });
         assert_eq!(
@@ -1028,7 +1030,7 @@ mod tests {
         state.ensure_discovered("Local");
         state.apply(&crate::request::JobResult::Databases {
             server: "Local".to_string(),
-            databases: Ok(vec!["dev".to_string()]),
+            databases: Ok(crate::selection::catalog(["dev"])),
             has_password: true,
         });
 

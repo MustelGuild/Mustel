@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use mustel_core::config::ServerConfigEntry;
 use mustel_core::query::discovery;
 use mustel_core::usecases::custom_databases::ServerSelection;
+use mustel_core::usecases::db_servers::CatalogDatabase;
 
 /// Até onde o `⟳ Apply` vale.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,8 +29,56 @@ pub enum ApplyScope {
 pub struct Info {
     /// `Some(padrão)` quando um `excludePatterns` do servidor barrou a base.
     pub blocked_by: Option<String>,
+    /// O **próprio servidor** disse que ela não serve como alvo (`template` ou
+    /// `datallowconn = false`), com o motivo pronto para o tooltip.
+    ///
+    /// Não é padrão do cadastro: é um fato do catálogo (`pg_database`). Fica separado para o motivo
+    /// mostrado ser o certo, e para um seletor que nomeie a base não "desbloquear" o que o
+    /// servidor já recusou.
+    pub unusable: Option<String>,
     /// Aviso não bloqueante (usuário da string sem senha, por exemplo).
     pub warning: Option<String>,
+}
+
+impl Info {
+    /// A base está barrada (padrão do cadastro **ou** recusa do servidor)?
+    pub fn is_blocked(&self) -> bool {
+        self.blocked_by.is_some() || self.unusable.is_some()
+    }
+
+    /// O motivo a mostrar no tooltip da linha desabilitada.
+    pub fn reason(&self) -> Option<&str> {
+        match (&self.blocked_by, &self.unusable) {
+            (Some(pattern), _) => Some(pattern),
+            (None, Some(unusable)) => Some(unusable),
+            (None, None) => None,
+        }
+    }
+}
+
+/// Converte nomes em catálogo **utilizável** (não é template, aceita conexão).
+///
+/// Atalho para quem só tem nomes — teste e tela falam de "bases", não de flags do catálogo.
+pub fn catalog<const N: usize>(names: [&str; N]) -> Vec<CatalogDatabase> {
+    names
+        .iter()
+        .map(|name| CatalogDatabase::usable(*name))
+        .collect()
+}
+
+/// O motivo, pronto para o tooltip, de a base não servir como alvo — ou `None` se servir.
+///
+/// Vem do catálogo, não de heurística de nome: `template0` não aceita conexão (`datallowconn =
+/// false`) e `template1` é template; rodar ou restaurar neles não é o que se quer.
+fn unusable_reason(database: &CatalogDatabase) -> Option<String> {
+    match (database.template, database.allow_connections) {
+        (false, true) => None,
+        (true, false) => Some("template database (datallowconn = false)".to_string()),
+        (true, true) => Some("template database".to_string()),
+        (false, false) => {
+            Some("database does not allow connections (datallowconn = false)".to_string())
+        }
+    }
 }
 
 /// Uma linha da lista: o servidor e uma base dele.
@@ -119,6 +168,15 @@ impl SelectionState {
         self.marked.values().map(BTreeSet::len).sum()
     }
 
+    /// Quantas das bases **listadas** (filtro × busca) estão marcadas.
+    ///
+    /// É o "N de M" do cabeçalho da lista, e por isso os dois números saem do mesmo conjunto: o
+    /// marcado do escopo inteiro sobre um total filtrado produzia `3 of 1` assim que uma busca
+    /// deixava uma linha só.
+    pub fn marked_in_filter(&self, servers: &[ServerConfigEntry]) -> usize {
+        self.rows(servers).iter().filter(|row| row.marked).count()
+    }
+
     /// Quantas bases estão marcadas num servidor.
     pub fn marked_on(&self, server: &str) -> usize {
         self.marked.get(server).map_or(0, BTreeSet::len)
@@ -134,7 +192,7 @@ impl SelectionState {
         self.universe
             .get(server)
             .and_then(|databases| databases.get(database))
-            .is_some_and(|info| info.blocked_by.is_none())
+            .is_some_and(|info| !info.is_blocked())
     }
 
     /// Marca ou desmarca uma base, preservando o resto da seleção (R1).
@@ -188,19 +246,29 @@ impl SelectionState {
             let entry = self.universe.entry(server.server.clone()).or_default();
             let mut selected = BTreeSet::new();
             for database in &server.databases {
+                // A recusa do **servidor** (template, `datallowconn = false`) é um fato do catálogo,
+                // e a query não sabe dele: preservar o que a descoberta estabeleceu impede que um
+                // seletor que nomeia `template0` o torne selecionável.
+                let unusable = entry
+                    .get(&database.name)
+                    .and_then(|info| info.unusable.clone());
                 entry.insert(
                     database.name.clone(),
                     Info {
                         blocked_by: database.blocked_by.clone(),
+                        unusable,
                         warning: database.warning.clone(),
                     },
                 );
-                // Barrada por padrão **e** com aviso de credencial não entram sozinhas (R9, R4b):
-                // o `Apply` marca o que está pronto para rodar, e o que não está aparece na lista
-                // com o motivo — em vez de virar um erro só na hora de executar.
-                if database.blocked_by.is_some() {
+                // Barrada por padrão **ou** recusada pelo servidor, e com aviso de credencial, não
+                // entram sozinhas (R9, R4b): o `Apply` marca o que está pronto para rodar, e o que
+                // não está aparece na lista com o motivo — em vez de virar um erro só na hora de
+                // executar. Olhar o `Info` **depois** de montar é o que impede o `template0` de ser
+                // marcado (a query não sabe da recusa do servidor, mas o universo sabe).
+                let info = entry.get(&database.name).cloned().unwrap_or_default();
+                if info.is_blocked() {
                     summary.excluded += 1;
-                } else if database.warning.is_some() {
+                } else if info.warning.is_some() {
                     summary.no_password += 1;
                 } else {
                     selected.insert(database.name.clone());
@@ -221,39 +289,50 @@ impl SelectionState {
         summary
     }
 
-    /// O `⟳ Discover`: preenche o universo do servidor com o que `pg_database` devolveu (R6).
+    /// O `⟳ Discover`: preenche o universo do servidor com o que o catálogo devolveu (R6).
+    ///
+    /// Entra **tudo**, inclusive `template0` e bases com `datallowconn = false`: elas aparecem
+    /// apagadas com o motivo, e é isso que faz a contagem do servidor ser o que ele tem — se a
+    /// descoberta escondesse o `template0`, um seletor que o nomeasse mudaria a contagem de 104 para
+    /// 105 (bug relatado pelo dono).
     ///
     /// Bases que só a query de seleção conhecia continuam marcadas — descobrir **não** desmarca.
     /// Devolve as bases que estavam marcadas e sumiram, para a tela avisar (R7).
     pub fn discover(
         &mut self,
         server: &ServerConfigEntry,
-        databases: &[String],
+        catalog: impl AsRef<[CatalogDatabase]>,
     ) -> Vec<(String, String)> {
+        let catalog = catalog.as_ref();
         let entry = self.universe.entry(server.name.clone()).or_default();
 
-        // O padrão do cadastro vale para todo o universo, inclusive para o que veio daqui.
-        for database in databases {
+        // O padrão do cadastro vale para todo o universo, inclusive para o que veio daqui. Também
+        // vale o que o servidor diz de si mesmo (template/`datallowconn`).
+        for database in catalog {
             let blocked_by = server
                 .exclude_patterns
                 .iter()
-                .find(|pattern| discovery::matches_pattern(database, pattern))
+                .find(|pattern| discovery::matches_pattern(&database.name, pattern))
                 .cloned();
             entry.insert(
-                database.clone(),
+                database.name.clone(),
                 Info {
                     blocked_by,
+                    unusable: unusable_reason(database),
                     ..Info::default()
                 },
             );
         }
 
-        let known: BTreeSet<&String> = databases.iter().collect();
+        let known: BTreeSet<&str> = catalog
+            .iter()
+            .map(|database| database.name.as_str())
+            .collect();
         let mut lost = Vec::new();
         if let Some(marked) = self.marked.get_mut(&server.name) {
             let gone: Vec<String> = marked
                 .iter()
-                .filter(|database| !known.contains(database))
+                .filter(|database| !known.contains(database.as_str()))
                 .cloned()
                 .collect();
             for database in gone {
@@ -495,7 +574,7 @@ impl SelectionState {
     fn selectable_visible(&self, servers: &[ServerConfigEntry]) -> Vec<(String, String)> {
         self.rows(servers)
             .into_iter()
-            .filter(|row| row.info.blocked_by.is_none() && row.info.warning.is_none())
+            .filter(|row| !row.info.is_blocked() && row.info.warning.is_none())
             .map(|row| (row.server, row.database))
             .collect()
     }
@@ -532,7 +611,7 @@ impl SelectionState {
         let rows = self.rows(servers);
         let mut summary = MarkSummary::default();
         for row in &rows {
-            if row.info.blocked_by.is_some() {
+            if row.info.is_blocked() {
                 summary.excluded += 1;
                 continue;
             }
@@ -599,6 +678,14 @@ impl SelectionState {
 mod tests {
     use super::*;
     use mustel_core::usecases::custom_databases::DatabaseChoice;
+
+    /// Converte uma lista de nomes já montada (dinâmica) em catálogo utilizável.
+    fn catalog_from(names: &[String]) -> Vec<CatalogDatabase> {
+        names
+            .iter()
+            .map(|name| CatalogDatabase::usable(name.clone()))
+            .collect()
+    }
 
     fn server(name: &str) -> ServerConfigEntry {
         ServerConfigEntry {
@@ -772,6 +859,172 @@ mod tests {
         assert_eq!(state.scope_origin(&servers).as_deref(), Some("Comum"));
     }
 
+    /// Base que **só o seletor** conhece entra no universo: aparece (barrada, se casar com o padrão)
+    /// e **conta** no total do servidor, mas nunca é marcada.
+    ///
+    /// Foi o caso real do dono: a `todas` devolvia `template0`, que o `pg_database` daquele servidor
+    /// não tem; ao aplicar, o `Local` foi de 104 para 105. Decisão dele: manter visível, apagado e
+    /// contando — o que o seletor nomeou não pode desaparecer em silêncio.
+    /// CONTRACT: IF-237
+    #[test]
+    fn a_database_only_the_selector_knows_is_listed_blocked_and_counted() {
+        let mut state = SelectionState::default();
+        let servers = servers();
+        state.sync_registry(&servers);
+        state.discover(&servers[0], catalog(["dev"]));
+        assert_eq!(state.known_on("Local"), 1);
+
+        let summary = state.apply(
+            &[ServerSelection {
+                server: "Local".to_string(),
+                databases: vec![
+                    choice("dev"),
+                    DatabaseChoice {
+                        // Nome que a descoberta não viu e que casa com `template*`.
+                        name: "template0".to_string(),
+                        blocked_by: Some("template*".to_string()),
+                        warning: None,
+                    },
+                ],
+            }],
+            &ApplyScope::All,
+            "todas",
+        );
+
+        assert_eq!(
+            state.known_on("Local"),
+            2,
+            "o nome que só o seletor conhece entra na contagem"
+        );
+        assert_eq!(summary.marked, 1, "só o `dev` foi marcado");
+        assert_eq!(
+            summary.excluded, 1,
+            "o `template0` foi contado como barrado"
+        );
+        assert_eq!(state.marked_on("Local"), 1);
+        assert!(
+            !state.is_selectable("Local", "template0"),
+            "aparece barrado: não pode ser selecionado"
+        );
+        state.set_marked("Local", "template0", true);
+        assert_eq!(
+            state.marked_on("Local"),
+            1,
+            "marcar à mão também é recusado"
+        );
+
+        // E está na lista, com o padrão que o barrou (para o tooltip da tela).
+        let row = state
+            .rows(&servers)
+            .into_iter()
+            .find(|row| row.database == "template0")
+            .expect("a linha existe");
+        assert_eq!(row.info.blocked_by.as_deref(), Some("template*"));
+        assert!(!row.marked);
+    }
+
+    /// O "N de M" do cabeçalho da lista sai **do mesmo conjunto** (filtro × busca).
+    ///
+    /// Bug visto na janela: marcadas 3 no escopo e uma busca que deixa uma linha mostravam
+    /// `3 of 1`.
+    /// CONTRACT: IF-237
+    #[test]
+    fn the_list_header_counts_marked_inside_the_filter() {
+        let mut state = SelectionState::default();
+        let servers = servers();
+        state.sync_registry(&servers);
+        state.discover(&servers[0], catalog(["dev", "prod_a", "test_a"]));
+        state.discover(&servers[1], catalog(["dev"]));
+        state.select_all_visible(&servers);
+        assert_eq!(state.marked_count(), 4);
+        assert_eq!(state.marked_in_filter(&servers), 4);
+
+        // A busca deixa uma linha: o cabeçalho passa a falar de uma linha só.
+        state.set_search("prod_".to_string());
+        assert_eq!(state.marked_in_filter(&servers), 1);
+
+        // Desmarcando pela busca, o cabeçalho acompanha.
+        state.clear_visible(&servers);
+        assert_eq!(state.marked_in_filter(&servers), 0);
+        assert_eq!(state.marked_count(), 3, "o resto continua marcado");
+    }
+
+    /// A descoberta traz o **catálogo inteiro**: template entra na conta, apagado, e aplicar um
+    /// seletor que o nomeia **não** mexe no total.
+    ///
+    /// É o bug relatado pelo dono pela segunda vez: a descoberta escondia o `template0`, então a
+    /// `todas` que o nomeava fazia o `Local` ir de 104 para 105. Agora ele já está na lista desde a
+    /// descoberta, com o motivo do **próprio servidor** (não é `excludePatterns`), e a aplicação
+    /// preserva essa recusa.
+    /// CONTRACT: IF-236
+    #[test]
+    fn the_catalog_brings_templates_and_the_count_does_not_move() {
+        let mut state = SelectionState::default();
+        let servers = servers();
+        state.sync_registry(&servers);
+
+        // Descoberta: `dev` + `postgres` (barrado pelo padrão) + `template0` (recusa do servidor).
+        state.discover(
+            &servers[0],
+            vec![
+                CatalogDatabase::usable("dev"),
+                CatalogDatabase::usable("postgres"),
+                CatalogDatabase {
+                    name: "template0".to_string(),
+                    template: true,
+                    allow_connections: false,
+                },
+            ],
+        );
+        assert_eq!(
+            state.known_on("Local"),
+            3,
+            "o template conta como base do servidor"
+        );
+        assert!(
+            !state.is_selectable("Local", "template0"),
+            "template não pode ser selecionado"
+        );
+
+        // Aplicar um seletor que nomeia o template: nem muda a conta, nem o desbloqueia.
+        let summary = state.apply(
+            &[ServerSelection {
+                server: "Local".to_string(),
+                databases: vec![
+                    mustel_core::usecases::custom_databases::DatabaseChoice {
+                        name: "dev".to_string(),
+                        blocked_by: None,
+                        warning: None,
+                    },
+                    mustel_core::usecases::custom_databases::DatabaseChoice {
+                        name: "template0".to_string(),
+                        // A query **não** sabe da recusa do servidor: vem sem bloqueio.
+                        blocked_by: None,
+                        warning: None,
+                    },
+                ],
+            }],
+            &ApplyScope::All,
+            "todas",
+        );
+
+        assert_eq!(
+            state.known_on("Local"),
+            3,
+            "a contagem do servidor não muda ao aplicar"
+        );
+        assert!(
+            !state.is_selectable("Local", "template0"),
+            "a recusa do servidor sobrevive à aplicação"
+        );
+        assert!(!state.is_selectable("Local", "postgres"));
+        assert_eq!(summary.marked, 1, "só o `dev`");
+        assert_eq!(
+            summary.excluded, 1,
+            "o `template0` é contado como barrado, mesmo sem padrão"
+        );
+    }
+
     /// O escopo "todos" só tem nome quando **todos** concordam — e "nenhum" é um valor.
     ///
     /// Bug relatado pelo dono: com o filtro em `Local` e o seletor aplicado só nele, a linha
@@ -908,7 +1161,7 @@ mod tests {
         let servers = servers();
         state.sync_registry(&servers);
         let many: Vec<String> = (0..80).map(|index| format!("base_{index:02}")).collect();
-        state.discover(&servers[0], &many);
+        state.discover(&servers[0], catalog_from(&many));
 
         state.set_marked("Local", "base_00", true);
         state.set_marked("Local", "base_70", true);
@@ -962,12 +1215,12 @@ mod tests {
         let mut state = SelectionState::default();
         let servers = servers();
         state.sync_registry(&servers);
-        state.discover(&servers[0], &["dev".to_string(), "prod_a".to_string()]);
+        state.discover(&servers[0], catalog(["dev", "prod_a"]));
         state.set_marked("Local", "dev", true);
         state.set_marked("Local", "prod_a", true);
 
         // A base `prod_a` sumiu do servidor.
-        let lost = state.discover(&servers[0], &["dev".to_string()]);
+        let lost = state.discover(&servers[0], catalog(["dev"]));
         assert_eq!(
             lost,
             vec![("Local".to_string(), "prod_a".to_string())],
@@ -983,14 +1236,7 @@ mod tests {
         let mut state = SelectionState::default();
         let servers = servers();
         state.sync_registry(&servers);
-        state.discover(
-            &servers[0],
-            &[
-                "dev".to_string(),
-                "postgres".to_string(),
-                "template_zero".to_string(),
-            ],
-        );
+        state.discover(&servers[0], catalog(["dev", "postgres", "template_zero"]));
 
         assert!(!state.is_selectable("Local", "postgres"));
         assert!(!state.is_selectable("Local", "template_zero"));
@@ -1052,8 +1298,8 @@ mod tests {
         let mut state = SelectionState::default();
         let servers = servers();
         state.sync_registry(&servers);
-        state.discover(&servers[0], &["dev".to_string(), "alpha".to_string()]);
-        state.discover(&servers[1], &["dev".to_string(), "zulu".to_string()]);
+        state.discover(&servers[0], catalog(["dev", "alpha"]));
+        state.discover(&servers[1], catalog(["dev", "zulu"]));
 
         let rows = state.rows(&servers);
         let names: Vec<&str> = rows.iter().map(|row| row.database.as_str()).collect();
@@ -1079,7 +1325,7 @@ mod tests {
         let mut state = SelectionState::default();
         let servers = servers();
         state.sync_registry(&servers);
-        state.discover(&servers[0], &["dev".to_string(), "test2".to_string()]);
+        state.discover(&servers[0], catalog(["dev", "test2"]));
 
         state.set_search("LOCAL".to_string());
         assert_eq!(state.rows(&servers).len(), 2, "nome do servidor casa");
@@ -1097,14 +1343,9 @@ mod tests {
         state.sync_registry(&servers);
         state.discover(
             &servers[0],
-            &[
-                "dev".to_string(),
-                "test2".to_string(),
-                "postgres".to_string(),
-                "template0".to_string(),
-            ],
+            catalog(["dev", "test2", "postgres", "template0"]),
         );
-        state.discover(&servers[1], &["dev".to_string()]);
+        state.discover(&servers[1], catalog(["dev"]));
 
         assert_eq!(state.selectable_count(&servers), 3);
         let summary = state.select_all_visible(&servers);
@@ -1178,7 +1419,7 @@ mod tests {
         let servers = servers();
         state.sync_registry(&servers);
         let many: Vec<String> = (0..120).map(|index| format!("base_{index:03}")).collect();
-        state.discover(&servers[0], &many);
+        state.discover(&servers[0], catalog_from(&many));
 
         assert_eq!(state.visible_rows(&servers, None).len(), 120);
         assert_eq!(state.hidden(&servers, None), 0);
@@ -1208,7 +1449,7 @@ mod tests {
         let mut state = SelectionState::default();
         state.sync_registry(&servers);
         let many: Vec<String> = (0..1000).map(|index| format!("db_{index:04}")).collect();
-        state.discover(&servers[0], &many);
+        state.discover(&servers[0], catalog_from(&many));
 
         let started = std::time::Instant::now();
         for _ in 0..100 {

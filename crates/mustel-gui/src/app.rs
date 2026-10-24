@@ -618,16 +618,24 @@ impl App {
                     databases,
                     has_password,
                 } => {
+                    // A referência do autocomplete lista onde a query de seleção **roda**: só o que
+                    // dá para conectar (template e `datallowconn = false` ficam de fora). A
+                    // sidebar usa o catálogo inteiro, por outro caminho.
                     self.reference.finish(
                         server,
                         crate::reference::Known {
-                            databases: databases.clone(),
+                            databases: databases
+                                .as_ref()
+                                .map(|catalog| crate::query::usable_names(catalog))
+                                .map_err(Clone::clone),
                             has_password: *has_password,
                         },
                     );
 
                     match databases {
-                        Ok(names) => format!("'{server}' has {} database(s).", names.len()),
+                        Ok(catalog) => {
+                            format!("'{server}' has {} database(s).", catalog.len())
+                        }
                         Err(error) => {
                             format!("Could not list the databases of '{server}': {error}")
                         }

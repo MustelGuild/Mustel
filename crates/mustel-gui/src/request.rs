@@ -136,8 +136,13 @@ pub enum JobResult {
     Databases {
         /// Servidor descoberto.
         server: String,
-        /// Bancos do servidor, ou o motivo de não ter dado para listar.
-        databases: Result<Vec<String>, String>,
+        /// Bancos do servidor (**todo** o catálogo, inclusive templates), ou o motivo de não ter
+        /// dado para listar.
+        ///
+        /// Vai o catálogo inteiro porque cada tela usa um recorte: a aba Query conta e mostra o que
+        /// o servidor tem (para a contagem não mudar quando um seletor nomeia uma base que a
+        /// descoberta escondia), e os combos de execução filtram pelo que dá para conectar.
+        databases: Result<Vec<mustel_core::usecases::db_servers::CatalogDatabase>, String>,
         /// O cofre tinha senha para o servidor?
         has_password: bool,
     },

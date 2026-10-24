@@ -62,6 +62,19 @@ O combo de **Server** mostra o total de bases de cada servidor ao lado do nome (
 `Local 2 0`) — o `0` é o sinal de que aquele servidor ainda não foi descoberto. A contagem é só de
 exibição: buscar "104" não encontra servidor nenhum, porque a busca é sobre o nome.
 
+O total é o que o **catálogo do servidor** tem: a descoberta lista `pg_database` inteiro, inclusive
+`template0` e `template1`. Os templates aparecem na lista **apagados**, com o motivo no tooltip
+(`template database`, ou `datallowconn = false`), e **contam** no total — mas nunca podem ser
+marcados. Assim a contagem é estável: aplicar um seletor não a muda.
+
+O recorte de **execução** é outro: `query`, `backup --all` e o combo `Database` onde a seleção
+roda continuam usando as listas filtradas (sem template e sem `datallowconn = false`). Só a
+contagem e a lista da sidebar são do catálogo inteiro.
+
+Base que **só um seletor** conhece (um tenant apontando para uma base que o servidor não tem) também
+entra no universo, para não ser barrada em silêncio: aparece na lista e no total do escopo, sem
+alterar o catálogo do servidor na próxima descoberta.
+
 O mesmo combo mostra **qual seletor** marcou cada servidor e quantas bases ele tem
 (`Producao · 104`), com o nome do seletor truncado em **20 caracteres**
 (`Homologacao-Tenant… · 104`); servidor sem seletor aparece `· 104`, e `· 0` é o sinal de

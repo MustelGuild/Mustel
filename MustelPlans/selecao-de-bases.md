@@ -759,3 +759,46 @@ Append-only.
   (`filter_map` ignorando quem não tem seletor) de propósito, rodei o teste novo e vi falhar com
   `left: Some("todas") right: None`; desfiz. Teste novo:
   `the_all_servers_scope_is_named_only_when_every_server_agrees`; workspace com 551 testes.
+- `[2026-10-24]` **"Por que a contagem do Local foi de 104 para 105?" — decisão do dono: manter,
+  apagado e contando.** Medi com um probe temporário (removido depois, `grep TEMPOR` vazio) numa
+  cópia do cadastro dele: a `todas` (`select * from tenants where ambiente = 'prod'`) devolve
+  `dev`, `configurador`, `postgres` e **`template0`**, e o `pg_database` daquele servidor não tem
+  `template0` (104 bases, sem templates). Como aplicar **cadastra** no universo o que a query
+  nomeia (é a mesma ideia do `⟳ Discover`), o `template0` entrou e a contagem foi para 105. No
+  `Local 2` nada cresceu: as bases que a query devolvia para ele já eram conhecidas.
+  Eu havia proposto contar só o que veio do servidor; o dono recusou e fixou a regra: **fica
+  visível, apagado (não selecionável) e entra na contagem** — "nada que o seletor nomeou
+  desaparece em silêncio". Verificado na janela: `template0` na lista com o checkbox apagado, o
+  clique nele **não** marca (`3 marked` continuou 3), `2 skipped (excluded by excludePatterns)` o
+  contabiliza, e o total mostra 105. O `blocked_by` já vinha calculado pelo core contra os padrões
+  do servidor resolvido (`custom_databases.rs`), então não houve mudança de código para isso; o que
+  entrou foi o teste `a_database_only_the_selector_knows_is_listed_blocked_and_counted` fixando a
+  regra, e o texto da `IF-236` passou a dizer que o número é o **conhecido** (cadastro + descoberta
+  + seletores).
+  **Bug vizinho, achado na mesma captura: `3 of 1`.** O cabeçalho da lista usava o marcado do
+  **escopo** com o total **filtrado** (busca × filtro); com uma busca que deixava uma linha, os
+  dois números falavam de conjuntos diferentes. Agora os dois saem de `marked_in_filter` (o mesmo
+  conjunto da lista) e a captura mostra `0 of 1` com `3 marked · from 'todas'` na linha de cima.
+  Teste: `the_list_header_counts_marked_inside_the_filter`. Workspace com 553 testes.
+- `[2026-10-24]` **Contagem 104 → 105, agora na raiz: a descoberta passou a listar o catálogo
+  inteiro (IF-236).** O dono rejeitou a correção anterior com razão: eu tinha ajustado a *tela*, mas
+  a **descoberta** continuava escondendo o `template0` (as duas queries do núcleo filtravam
+  `datistemplate = false`), então qualquer seletor que o nomeasse mudava a contagem de 104 para 105.
+  Correção: `postgres::client::list_catalog_databases` (`datname, datistemplate, datallowconn` de
+  `pg_database`, ordenado) e `TestReport.catalog` no núcleo. `test_connection` passou a derivar
+  `databases` **do mesmo catálogo** (`!template`, mesma ordem), então a mensagem do `settings
+  db-servers test` não mudou — nenhuma linha do oráculo se mexeu.
+  Na GUI, `JobResult::Databases` leva o catálogo e cada consumidor faz o seu recorte: a sidebar usa
+  tudo (conta e mostra), e os combos de **execução** (`Database` da aba Settings e a referência do
+  autocomplete) usam `query::usable_names` (nem template, nem `datallowconn = false`). As queries
+  de execução do núcleo (`query`, `backup --all`) **não** foram tocadas.
+  `Info` ganhou `unusable` (motivo do **servidor**, separado do `blocked_by` que é padrão do
+  cadastro): a linha aparece apagada com o motivo certo, `is_blocked()` cobre os dois, e `apply`
+  **preserva** o `unusable` — a query não sabe da recusa do servidor. O laço de marcação do `apply`
+  passou a decidir pelo `Info` já montado; antes ele olhava só o `blocked_by` da query, e o teste
+  novo pegou o caso real: `template0` entrava em `marked` (marcado e **não selecionável**) e iria
+  para o `Run query`.
+  **Verificado na janela** com a config real (cópia): o total foi de **208 para 212** (4 templates,
+  2 por servidor), `Select all` continuou 206, a lista mostrou `template0`/`template1` × `Local`/
+  `Local 2` apagados (`0 of 4`), e aplicar a `todas` agora deixa o total em **212** — antes ia a 213.
+  Teste novo: `the_catalog_brings_templates_and_the_count_does_not_move`; workspace com 554 testes.

@@ -1103,31 +1103,36 @@ impl State {
         let page_size = self.page_size;
         let rows = self.selection.visible_rows(servers, page_size);
         let hidden = self.selection.hidden(servers, page_size);
-        let scope_total = rows.len() + hidden;
+        let list_total = rows.len() + hidden;
+        // O cabeçalho da **lista** conta a lista: os dois números têm de sair do mesmo conjunto
+        // (filtro × busca). Antes o marcado vinha do escopo inteiro e o total da busca, e uma
+        // busca de uma linha virava `3 of 1`.
+        let list_marked = self.selection.marked_in_filter(servers);
 
         egui::ScrollArea::vertical()
             .id_salt("query_databases")
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                ui.weak(format!("{scope_marked} of {scope_total}"));
+                ui.weak(format!("{list_marked} of {list_total}"));
                 if rows.is_empty() {
                     ui.weak("no database here - press Discover");
                 }
 
                 for row in &rows {
-                    // Base barrada por `excludePatterns`: aparece desabilitada, com o padrao no
-                    // tooltip - a exclusao nao pode ser silenciosa (R9).
+                    // Base que **não pode** ser alvo (padrão do cadastro ou recusa do próprio
+                    // servidor, como `template0`): aparece desabilitada, com o motivo no tooltip —
+                    // a exclusão não pode ser silenciosa (R9).
                     let mut checked = row.marked;
                     ui.horizontal(|ui| {
-                        let response = match &row.info.blocked_by {
-                            Some(pattern) => {
+                        let response = match row.info.reason() {
+                            Some(reason) => {
                                 let inside = ui
                                     .add_enabled_ui(false, |ui| {
                                         ui.checkbox(&mut checked, &row.database)
                                     })
                                     .inner;
                                 inside.on_disabled_hover_text(format!(
-                                    "Excluded by the server's excludePatterns: {pattern}"
+                                    "Not usable as a target: {reason}"
                                 ))
                             }
                             None => ui.checkbox(&mut checked, &row.database),
@@ -1616,10 +1621,10 @@ mod tests {
         state.sync_servers(&[server("dev"), server("outro")]);
         state
             .selection
-            .discover(&server("dev"), &["a".to_string(), "b".to_string()]);
+            .discover(&server("dev"), crate::selection::catalog(["a", "b"]));
         state
             .selection
-            .discover(&server("outro"), &["c".to_string()]);
+            .discover(&server("outro"), crate::selection::catalog(["c"]));
         state.selection.set_marked("dev", "a", true);
         state.selection.set_marked("outro", "c", true);
         assert_eq!(state.selection.marked_count(), 2);

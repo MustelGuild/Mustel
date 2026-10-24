@@ -13,9 +13,15 @@
 use crate::config::{ConfigStore, ServerConfigEntry};
 use crate::credentials::{CredentialStore, SystemKeyring};
 use crate::error::CoreError;
-use crate::postgres::client::{connect, list_databases};
+use crate::postgres::client::{connect, list_catalog_databases};
 use crate::postgres::settings::ConnectionSettings;
 use crate::validation::{is_valid_host, is_valid_username};
+
+/// Uma base do catálogo do servidor (nome + o que o `pg_database` diz dela).
+///
+/// Reexportado da camada do driver para quem consome o caso de uso (a GUI) não precisar alcançar
+/// `postgres::client`.
+pub use crate::postgres::client::CatalogDatabase;
 
 /// Servidores cadastrados, na ordem do arquivo.
 pub fn list(store: &ConfigStore) -> Result<Vec<ServerConfigEntry>, CoreError> {
@@ -162,8 +168,16 @@ pub fn set_password(store: &ConfigStore, name: &str, password: &str) -> Result<(
 /// O que o teste de conexão descobriu.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestReport {
-    /// Bancos acessíveis, como o `list_databases` devolve.
+    /// Bancos acessíveis, como o `list_databases` devolve (sem templates, ordenado por nome).
+    ///
+    /// É a lista da mensagem do `settings db-servers test`, com a redação do legado.
     pub databases: Vec<String>,
+    /// **Todo** o catálogo, inclusive o que `databases` deixa de fora: templates e bases com
+    /// `datallowconn = false`.
+    ///
+    /// A tela usa esta lista para contar o que o servidor tem — ver
+    /// [`list_catalog_databases`](crate::postgres::client::list_catalog_databases).
+    pub catalog: Vec<CatalogDatabase>,
 }
 
 /// Testa a conexão de um servidor cadastrado, com a senha já resolvida pelo frontend.
@@ -189,11 +203,18 @@ pub async fn test_connection(
     let client = connect(&settings)
         .await
         .map_err(|error| wrap_connection_error(&error))?;
-    let databases = list_databases(&client)
+    // Uma consulta só: `databases` é o catálogo filtrado do mesmo jeito que a query do legado
+    // (`datistemplate = false`, por nome), então a mensagem do `test` continua idêntica.
+    let catalog = list_catalog_databases(&client)
         .await
         .map_err(|error| wrap_connection_error(&error))?;
+    let databases: Vec<String> = catalog
+        .iter()
+        .filter(|database| !database.template)
+        .map(|database| database.name.clone())
+        .collect();
 
-    Ok(TestReport { databases })
+    Ok(TestReport { databases, catalog })
 }
 
 /// Aplica o embrulho do legado: `Authentication failed:` vs `Connection failed:` → exit 40.

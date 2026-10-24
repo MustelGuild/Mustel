@@ -40,6 +40,75 @@ pub async fn connect(settings: &ConnectionSettings) -> Result<tokio_postgres::Cl
     Ok(client)
 }
 
+/// Uma base do servidor, como o catálogo `pg_database` a descreve.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogDatabase {
+    /// Nome da base.
+    pub name: String,
+    /// É um template (`template0`, `template1`)?
+    pub template: bool,
+    /// Aceita conexão (`datallowconn`)? `template0` não aceita.
+    pub allow_connections: bool,
+}
+
+impl CatalogDatabase {
+    /// Uma base comum: não é template e aceita conexão.
+    ///
+    /// Atalho para testes e para quem só quer representar um nome utilizável.
+    pub fn usable(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            template: false,
+            allow_connections: true,
+        }
+    }
+
+    /// Serve como alvo de execução (não é template e aceita conexão)?
+    pub fn is_usable(&self) -> bool {
+        !self.template && self.allow_connections
+    }
+}
+
+impl From<&str> for CatalogDatabase {
+    fn from(name: &str) -> Self {
+        Self::usable(name)
+    }
+}
+
+impl From<String> for CatalogDatabase {
+    fn from(name: String) -> Self {
+        Self::usable(name)
+    }
+}
+
+/// Lista **todas** as bases do catálogo, inclusive os templates.
+///
+/// Separada de [`list_databases`] (que o `settings db-servers test` usa, com a redação do legado)
+/// e de [`list_databases_for_discovery`] (a lista de **execução**, sem template nem
+/// `datallowconn = false`). Esta serve para a tela **contar e mostrar** o que o servidor tem: se a
+/// descoberta escondesse o `template0`, qualquer seletor que o nomeasse mudaria a contagem de
+/// bases do servidor.
+pub async fn list_catalog_databases(
+    client: &tokio_postgres::Client,
+) -> Result<Vec<CatalogDatabase>, CoreError> {
+    let rows = client
+        .query(
+            "SELECT datname, datistemplate, datallowconn FROM pg_database ORDER BY datname;",
+            &[],
+        )
+        .await
+        .map_err(map_error)?;
+
+    Ok(rows
+        .iter()
+        .map(|row| CatalogDatabase {
+            name: row.get::<_, String>(0),
+            template: row.get::<_, bool>(1),
+            allow_connections: row.get::<_, bool>(2),
+        })
+        .collect())
+}
+
 /// Lista os bancos acessíveis, com a **mesma query** que o legado usa.
 ///
 /// O FurLab faz isso executando o `psql` externo; aqui a consulta vai pelo driver (D12), o que

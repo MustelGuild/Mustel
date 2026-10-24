@@ -20,6 +20,7 @@ use mustel_core::error::CoreError;
 use mustel_core::postgres::settings::ConnectionSettings;
 use mustel_core::query::plan::ServerRun;
 use mustel_core::usecases::custom_databases::{self, LoadedSelection, ServerSelection};
+use mustel_core::usecases::db_servers::CatalogDatabase;
 use mustel_core::usecases::query_run::{self, QueryRunRequest};
 
 /// Timeout de comando padrão (o mesmo `--command-timeout` do legado).
@@ -160,19 +161,33 @@ pub async fn run(
     query_run::run(request, events, token).await
 }
 
-/// Bancos que o servidor tem, para a linha "Referência do autocomplete".
+/// Bancos que o servidor tem, para a linha "Referência do autocomplete" e a sidebar.
 ///
 /// Usa o mesmo caso de uso do `settings db-servers test` (`pg_database`, ordenado por nome), então a
-/// lista é a que o servidor realmente tem — inclusive quando o cadastro usa `fetchAllDatabases` e não
-/// guarda nome nenhum.
+/// lista é a que o servidor realmente tem — inclusive quando o cadastro usa `fetchAllDatabases` e
+/// não guarda nome nenhum. Vai o **catálogo** (com `template` e `datallowconn`), não só os nomes: é
+/// o que deixa a lista mostrar o `template0` apagado em vez de escondê-lo e depois ser surpreendida
+/// por um seletor que o nomeia.
 pub async fn databases(
     server: &ServerConfigEntry,
     password: &str,
-) -> Result<Vec<String>, InputError> {
+) -> Result<Vec<CatalogDatabase>, InputError> {
     mustel_core::usecases::db_servers::test_connection(server, password)
         .await
-        .map(|report| report.databases)
+        .map(|report| report.catalog)
         .map_err(|error| InputError::Core(error.to_string()))
+}
+
+/// Os nomes do catálogo que servem para **conectar** (nem template, nem `datallowconn = false`).
+///
+/// É o recorte dos combos de execução: oferecer `template0` onde a query vai rodar só produziria
+/// erro na hora de usar.
+pub fn usable_names(catalog: &[CatalogDatabase]) -> Vec<String> {
+    catalog
+        .iter()
+        .filter(|database| database.is_usable())
+        .map(|database| database.name.clone())
+        .collect()
 }
 
 /// O que uma query de seleção produziu, em números — nunca o conteúdo da connection string (D12).
@@ -363,12 +378,7 @@ mod tests {
         state.sync_registry(&registry);
         state.discover(
             &registry[0],
-            &[
-                "dev".to_string(),
-                "prod_a".to_string(),
-                "postgres".to_string(),
-                "template_zero".to_string(),
-            ],
+            crate::selection::catalog(["dev", "prod_a", "postgres", "template_zero"]),
         );
         state.set_marked("Local", "dev", true);
         state.set_marked("Local", "prod_a", true);

@@ -25,43 +25,65 @@ Enquanto a lista está vazia, a chave **não existe** no arquivo.
 Servidores e escolha de bases ficam numa **sidebar** à esquerda; a área principal é da execução
 (SQL, saída, `Run query` e resultados). A referência do autocomplete continua **em cima do editor**.
 
+A lista é **plana e alfabética**: cada linha é uma base, e o **servidor é um filtro** — não há
+agrupamento nem colapso. O nome do servidor aparece em cada linha, porque o mesmo nome de base pode
+existir em mais de um servidor.
+
 ```text
-┌────────────────────────────┬───────────────────────────────────────────────┐
-│ ◀  5 selected              │ Referência do autocomplete: [Local] [conf…] ⟳  │
-│                            │ SQL                                           │
-│ Databases [Producao ▼]     │ ┌───────────────────────────────────────────┐ │
-│ [⟳ Apply to all] [⟳ Disc.] │ │ SELECT 1 AS valor                         │ │
-│                            │ └───────────────────────────────────────────┘ │
-│ [ Search database…      ]  │                                               │
-│ ‹ 1/2 ›                    │ Output directory [ ./results ] [📂] [🗂]      │
-│                            │                                               │
-│ Local 127.0.0.1:5432       │ [ Run query ]                                 │
-│ [⟳ Apply] [⟳ Discover] 3/5 │                                               │
-│   ☑ configurador           │ Results                                       │
-│   ☑ dev                    │ ┌───────────────────────────────────────────┐ │
-│   ☐ postgres   (cinza)     │ │ Server │ Database │ valor                   │ │
-│   ☐ template0  (cinza)     │ └───────────────────────────────────────────┘ │
-│   ☑ test2                  │                                               │
-│ ▸ Local 2 127.0.0.1:5432   │                                               │
-└────────────────────────────┴───────────────────────────────────────────────┘
+┌──────────────────────────────────────┬──────────────────────────────────────────┐
+│ ◀  5 selected                        │ Referência do autocomplete: [Local] [conf…] ⟳ │
+│                                      │ SQL                                      │
+│ Databases [ Producao             ▼ ] │ ┌──────────────────────────────────────┐ │
+│ Server    [ Local · 3 of 104     ▼ ] │ │ SELECT 1 AS valor                    │ │
+│ [⟳ Apply to Local] [⟳ Discover Local]│ └──────────────────────────────────────┘ │
+│ [Select all 103] [Clear]             │ Output directory [ ./results ] [📂] [🗂]  │
+│ [ Search database…                ] ✕│ [ Run query ]                             │
+│ 5 marked                             │                                          │
+│ 3 of 104                             │ Results                                  │
+│ ☑ configurador                 Local │ ┌──────────────────────────────────────┐ │
+│ ☑ dev                          Local │ │ Server │ Database │ valor                │ │
+│ ☐ postgres            Local (cinza)  │ └──────────────────────────────────────┘ │
+│ ☐ demo_001                   Local 2 │                                          │
+└──────────────────────────────────────┴──────────────────────────────────────────┘
 ```
 
 A sidebar tem **300 px** fixos, com **12 px de respiro** entre ela e o conteúdo à direita. O botão
-`◀` recolhe para uma barra `▶ N selected` na área principal; `▶` reabre. A aba **Servers** usa a mesma sidebar — a lista do cadastro fica lá, em cards que ocupam
-a largura toda, e o formulário ocupa a área principal.
+`◀` recolhe para uma barra `▶ N selected` na área principal; `▶` reabre. A aba **Servers** usa a
+mesma sidebar — a lista do cadastro fica lá, em cards que ocupam a largura toda, e o formulário
+ocupa a área principal.
 
-| Controle | O que faz |
+### Escopo dos botões
+
+O **filtro de servidor** define o escopo de tudo:
+
+| Ação | Escopo |
 |---|---|
-| **Custom select** | escolhe a query salva, com **busca**; a primeira linha é `(none)` (botão em branco) e desliga o `⟳ Apply` |
-| **⟳ Apply to all** | roda a query e **substitui** a seleção de **todos** os servidores |
-| **⟳ Apply** (na linha) | substitui a seleção **daquele** servidor |
-| **⟳ Discover all** | lista as bases de todos os servidores, em melhor esforço |
-| **⟳ Discover** (na linha) | lista as bases daquele servidor |
-| checkbox | marca/desmarca a base; desmarcar depois do `Apply` é livre |
-| busca | filtra por nome de base ou de servidor |
-| `‹ ›` | paginação (25 bases por página) |
+| `⟳ Apply to …` | roda a query salva e **substitui** a seleção do escopo (um servidor, ou todos) |
+| `⟳ Discover …` | lista as bases do escopo |
+| `Select all N` | marca **o que está visível**: filtro × busca |
+| `Clear` | desmarca o que está visível |
+| busca | cruza o nome da base **e** o do servidor |
 
-A seleção é guardada por **nome** de server e de base: paginar, buscar ou desmarcar não perde nada.
+`Select all` e `Apply` têm papéis fixos: um marca tudo, o outro aplica a query — nenhum dos dois muda
+de significado conforme o outro controle. Base barrada por `excludePatterns` e base com aviso de senha
+**nunca** entram automaticamente, e o status conta o que ficou de fora:
+
+> `206 marked · 2 skipped (excluded by excludePatterns) · 1 skipped (no password)`
+
+### Paginação (opcional)
+
+Desligada por padrão: a lista desenha todas as bases do filtro. Quem tem milhares liga em
+**Settings → Database list**, que define também o tamanho da página (10–500). Ligada, aparece um
+`Load N more (M left)` no fim da lista. A busca **ignora** a paginação — resultado de busca é sempre
+completo.
+
+```jsonc
+"gui": {
+  "selectionList": { "paginate": true, "pageSize": 50 }
+}
+```
+
+A chave só aparece no arquivo quando foge do padrão (desligado, 50).
 
 ## Colunas aceitas pela query
 

@@ -828,6 +828,10 @@ impl eframe::App for App {
                                 self.query.reference_database(),
                             )
                             .map(|schema| std::sync::Arc::new(schema.clone()));
+                        // A paginação da lista vem da seção `gui` — o mesmo objeto que a aba Settings
+                        // edita, então mexer lá vale no quadro seguinte.
+                        let page_size = crate::screens::query::page_size(&self.settings.prefs());
+                        self.query.set_page_size(page_size);
                         self.query.ui(ui, &servers, schema, &self.reference)
                     }
                     Screen::Settings => {

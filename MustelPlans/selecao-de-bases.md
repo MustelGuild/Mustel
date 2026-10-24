@@ -633,3 +633,56 @@ Append-only.
   rótulo e o valor vivem em `CONTENT_GAP`, na mesma constante de layout da `SIDEBAR_WIDTH`.
   Verificado na janela nas três abas: Query e Servers com o texto afastado da divisória; Settings
   inalterada, começando na borda.
+- `[2026-10-23]` **Fim da paginação global: um bloco por servidor, recolhível, com "carregar mais".**
+  O dono relatou o problema real: com 104 bases no `Local`, as 5 páginas eram todas dele e os outros
+  servidores só apareciam no fim — "não temos como ver todos os servidores". A paginação era **global
+  sobre a lista achatada** de (servidor, base): a ferramenta errada para uma árvore.
+  Desenho aprovado e implementado: cada servidor é um **bloco sempre presente**, com triângulo
+  `▾`/`▸` para recolher; as bases aparecem em pedaços de **50** ([`CHUNK`]) com um botão
+  "Load N more (M left)" no fim do bloco. Com a busca ativa o pedaço **não vale** — resultado de busca
+  tem de estar completo, senão achar a base vira loteria — e servidores sem casamento saem da lista.
+  O "carregar mais" é só de **desenho**: a descoberta já traz todos os nomes numa consulta, então o
+  botão não vai ao banco.
+  **Estresse (a pergunta do dono):** com **1000 bases** num servidor, montar a lista custa **46 µs
+  por quadro** (medido; o orçamento de 60 fps é 16 ms) — a lista pinta 50 e conhece 1000, então
+  paginar não era necessário por performance. O teste virou permanente
+  (`a_thousand_databases_stay_cheap_to_render`, teto de 4 ms por quadro para pegar regressão).
+  **Verificado na janela** com 104 bases + 3 servidores: `Local` mostra 50 e "0 of 104"; recolhê-lo
+  traz `Local 2` e `Producao-SP` para a vista na hora; buscar `demo_04` mostra `0 of 10` com
+  `demo_040..049` (além do pedaço) e o `✕` para limpar. **Não verificado por clique**: o botão
+  "Load more" em si — o scroll sintético nesta janela não funciona de forma confiável; o
+  comportamento está coberto por `servers_are_blocks_that_collapse_and_load_more`.
+- `[2026-10-23]` **Lista plana com filtro de servidor, `Select all` e paginação configurável (IF-234).**
+  O dono propôs trocar os blocos por servidor por uma **lista plana alfabética** com o servidor como
+  **filtro** — aprovado com três decisões: **B** (dois botões de papel fixo: `⟳ Apply` aplica a
+  query, `☑ Select all` marca o visível; nenhum muda de significado), **sufixo do servidor sempre** e
+  **paginação desligada por padrão**, ligável em Settings.
+  Implementado: `SelectionState` perdeu blocos/colapso e ganhou `rows` (plana, alfabética, desempate
+  pelo servidor), `server_filter`, `visible_rows`/`hidden`/`reveal_more`, `select_all_visible` /
+  `clear_visible` (escopo = filtro × busca, pulando barradas e as de senha ausente) e
+  `MarkSummary::describe` para o status. A paginação virou `gui.selectionList { paginate, pageSize }`
+  (10–500, padrão 50, fora do padrão é o único caso em que a chave aparece no arquivo) com a seção
+  **Database list** na aba Settings.
+  **Bug encontrado e corrigido na verificação:** `State::with_prefs` copiava fonte e queries e
+  esquecia `selection_list`, então a opção ligada no arquivo não valia na tela (o app reportava
+  `page_size=None` com `paginate: true` no JSON). Coberto por
+  `the_state_keeps_every_saved_preference`.
+  **Verificado na janela** com 104 bases em cada um de 2 servidores: lista plana com
+  `configurador (Local)` e `configurador (Local 2)` em linhas consecutivas e o servidor à direita;
+  `Select all 206` marcou tudo (206 de 208) e o status mostrou
+  "206 marked · 2 skipped (excluded by excludePatterns)"; `All marked` no lugar do botão; com a
+  paginação ligada, o app passou a reportar `page_size=Some(50)`. **Não verificado por clique**: o
+  botão `Load more` e o combo de filtro trocando de servidor (scroll e cliques nesta janela são
+  instáveis) — ambos cobertos por teste.
+- `[2026-10-23]` **Descoberta automática de todos os servidores ao abrir a aba (IF-235).** O dono
+  notou que só o **primeiro** servidor era descoberto ao abrir a tela: o único gatilho era a linha de
+  referência do autocomplete, que conhece um servidor só. Agora a abertura pede
+  `DiscoverDatabases { server: None }` — todos, em melhor esforço por servidor, como o `⟳ Discover
+  all` —, uma vez por abertura (`auto_discovered`), e volta a valer quando entra servidor novo no
+  cadastro (`sync_servers` compara a lista). A referência continua pedindo a dela quando o dono
+  **troca** o servidor de referência depois da abertura.
+  **Verificado na janela** com dois servidores e nada clicado: a lista abriu com
+  `All servers (208)` e `configurador` aparecendo para `Local` **e** `Local 2` (antes eram 104, só do
+  primeiro). Testes: `opening_the_tab_discovers_every_server_once`,
+  `a_new_server_triggers_the_automatic_discovery_again` e o da referência renomeado para
+  `the_reference_row_asks_for_an_unknown_server_after_opening`. `IF-211` teve a citação atualizada.

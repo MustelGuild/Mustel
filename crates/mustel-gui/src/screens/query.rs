@@ -93,6 +93,15 @@ pub struct State {
     registry: Vec<ServerConfigEntry>,
     /// Query de seleção escolhida no combo (`None` = seleção à mão).
     chosen_query: Option<String>,
+    /// Recado da última ação na sidebar (quantas marcou, quantas pulou).
+    selection_message: Option<String>,
+    /// Tamanho da página quando a paginação está ligada (`None` = desenha tudo).
+    page_size: Option<usize>,
+    /// Já pediu a descoberta de **todos** os servidores ao abrir a aba?
+    ///
+    /// Sem isto a tela dispara um pedido por quadro; com isto, um por abertura (ou por mudança no
+    /// cadastro).
+    auto_discovered: bool,
     /// Servidor escolhido como **referência do autocomplete**.
     reference_server: String,
     /// Banco de referência do autocomplete.
@@ -136,6 +145,9 @@ impl Default for State {
             selection: crate::selection::SelectionState::default(),
             registry: Vec::new(),
             chosen_query: None,
+            selection_message: None,
+            page_size: None,
+            auto_discovered: false,
             reference_server: String::new(),
             reference_database: String::new(),
             reference_loaded: None,
@@ -192,6 +204,17 @@ pub fn results_height(total: f32, has_results: bool) -> f32 {
     (total * RESULTS_PANEL_SHARE).max(MIN_TABLE_HEIGHT)
 }
 
+/// Tamanho de página da lista, quando a paginação está ligada (`None` = desenha tudo).
+///
+/// A decisão mora na configuração (`gui.selectionList`), não na tela: assim o dono liga/desliga em
+/// Settings e vale para a próxima abertura também.
+pub fn page_size(prefs: &mustel_core::config::model::GuiPrefs) -> Option<usize> {
+    prefs
+        .selection_list
+        .paginate
+        .then(|| prefs.selection_list.clamped_page_size())
+}
+
 impl State {
     /// Estado com o diretório padrão do cadastro.
     pub fn with_output_directory(output_directory: String) -> Self {
@@ -218,6 +241,16 @@ impl State {
 
     /// Ajusta a seleção quando a lista de servidores muda (mantém o que ainda existe).
     pub fn sync_servers(&mut self, servers: &[ServerConfigEntry]) {
+        // Servidor novo no cadastro ganha descoberta na próxima vez que a aba abrir.
+        if self.registry.len() != servers.len()
+            || self
+                .registry
+                .iter()
+                .zip(servers)
+                .any(|(old, new)| old.name != new.name)
+        {
+            self.auto_discovered = false;
+        }
         self.registry = servers.to_vec();
         // A seleção de bases é por **nome**: servidor que saiu do cadastro leva as bases dele junto
         // (a lista não pode mostrar alvo que não existe mais).
@@ -719,6 +752,11 @@ impl State {
         self.selection.marked_count()
     }
 
+    /// Aplica a paginação configurada (chamada pelo app a cada quadro).
+    pub fn set_page_size(&mut self, page_size: Option<usize>) {
+        self.page_size = page_size;
+    }
+
     /// A **sidebar** da aba Query: de onde vêm as bases e quais vão rodar.
     ///
     /// Tudo o que é servidor e escolha de base mora aqui, para a área principal ficar com o que é da
@@ -773,154 +811,209 @@ impl State {
 
             // `⟳ Apply` substitui a seleção do escopo (R1). Sem query escolhida não há o que
             // aplicar: o botão fica desabilitado em vez de adivinhar.
-            let can_apply = self.chosen_query.is_some() && !running;
+        });
+
+        // Filtro de servidor: a lista e **plana e alfabetica**; o servidor e um filtro. E o que
+        // deixa "marcar tudo do servidor 1" ser: filtra o servidor 1, aperta `Select all`.
+        ui.horizontal(|ui| {
+            ui.label("Server");
+            let current = self
+                .selection
+                .server_filter()
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    format!("All servers ({})", self.selection.known_count(servers))
+                });
+            let mut texts: Vec<String> = vec!["All servers".to_string()];
+            texts.extend(servers.iter().map(|server| server.name.clone()));
+            let items: Vec<crate::search_combo::Item<'_>> = texts
+                .iter()
+                .enumerate()
+                .map(|(index, text)| crate::search_combo::Item {
+                    text: text.as_str(),
+                    selected: if index == 0 {
+                        self.selection.server_filter().is_none()
+                    } else {
+                        self.selection
+                            .server_filter()
+                            .is_some_and(|filter| filter.eq_ignore_ascii_case(text))
+                    },
+                })
+                .collect();
+            if let Some(index) = crate::search_combo::search_combo(
+                ui,
+                "selection_server_filter",
+                &current,
+                &items,
+                true,
+            ) {
+                self.selection
+                    .set_server_filter((index > 0).then(|| texts[index].clone()));
+            }
+        });
+
+        // O **escopo** dos botoes e o filtro: um servidor, ou todos.
+        let scope_name = self
+            .selection
+            .server_filter()
+            .map(str::to_string)
+            .unwrap_or_else(|| "all".to_string());
+        let scope = match self.selection.server_filter() {
+            Some(name) => crate::selection::ApplyScope::Server(name.to_string()),
+            None => crate::selection::ApplyScope::All,
+        };
+
+        ui.horizontal(|ui| {
             if ui
-                .add_enabled(can_apply, egui::Button::new("⟳ Apply to all"))
-                .on_hover_text("Mark the databases the saved query returns, on every server")
+                .add_enabled(
+                    self.chosen_query.is_some() && !running,
+                    egui::Button::new(format!("⟳ Apply to {scope_name}")),
+                )
+                .on_hover_text("Mark the databases the saved query returns, in this scope")
                 .clicked()
                 && let Some(query) = &self.chosen_query
             {
                 request = Some(Request::ApplySelection {
                     query: query.clone(),
-                    scope: crate::selection::ApplyScope::All,
+                    scope,
                 });
             }
 
-            // `⟳ Discover` enche o universo (R6), em melhor esforço por servidor.
             if ui
-                .add_enabled(!running, egui::Button::new("⟳ Discover all"))
-                .on_hover_text("List the databases of every registered server")
+                .add_enabled(
+                    !running,
+                    egui::Button::new(format!("⟳ Discover {scope_name}")),
+                )
+                .on_hover_text("List the databases of this scope")
                 .clicked()
             {
-                request = Some(Request::DiscoverDatabases { server: None });
+                request = Some(Request::DiscoverDatabases {
+                    server: self.selection.server_filter().map(str::to_string),
+                });
             }
-
-            ui.weak(format!("{} selected", self.selection.marked_count()));
         });
 
-        // Busca e paginação: a seleção é guardada por nome, então filtrar/virar página não perde
-        // nada (R7).
+        // `Select all` / `Clear`: papeis fixos, escopo = filtro x busca. Nunca dependem de haver
+        // query escolhida (era a opcao A, recusada por acoplar dois controles).
+        let selectable = self.selection.selectable_count(servers);
+        let all_marked = self.selection.all_visible_marked(servers);
+        ui.horizontal(|ui| {
+            let label = if all_marked {
+                "All marked".to_string()
+            } else {
+                format!("Select all {selectable}")
+            };
+            if ui
+                .add_enabled(selectable > 0, egui::Button::new(label))
+                .on_hover_text("Mark every database in the current filter and search")
+                .clicked()
+            {
+                let summary = self.selection.select_all_visible(servers);
+                self.selection_message = Some(summary.describe());
+            }
+            if ui
+                .add_enabled(
+                    self.selection.marked_count() > 0,
+                    egui::Button::new("Clear"),
+                )
+                .on_hover_text("Unmark every database in the current filter and search")
+                .clicked()
+            {
+                let cleared = self.selection.clear_visible(servers);
+                self.selection_message = Some(format!("{cleared} cleared"));
+            }
+        });
+
+        // Busca: cruza o nome da base e o do servidor. A selecao e guardada por nome, entao filtrar
+        // nao perde nada (R7).
         ui.horizontal(|ui| {
             let mut search = self.selection.search().to_string();
             if ui
                 .add(
                     egui::TextEdit::singleline(&mut search)
-                        .hint_text("Search database…")
-                        .desired_width(200.0),
+                        .hint_text("Search database...")
+                        .desired_width(180.0),
                 )
                 .changed()
             {
                 self.selection.set_search(search);
             }
-
-            let page = self.selection.page(servers);
-            let pages = self.selection.page_count(servers);
-            if ui.add_enabled(page > 0, egui::Button::new("‹")).clicked() {
-                self.selection.turn_page(servers, false);
-            }
-            ui.label(format!("{} / {}", page + 1, pages));
-            if ui
-                .add_enabled(page + 1 < pages, egui::Button::new("›"))
-                .clicked()
-            {
-                self.selection.turn_page(servers, true);
+            if !self.selection.search().is_empty() && ui.small_button("x").clicked() {
+                self.selection.set_search(String::new());
             }
         });
 
-        // A lista: cabeçalho por servidor (com os botões dele) e as bases embaixo.
-        // A lista ocupa o que sobrar da sidebar: é o conteúdo principal dela.
+        if let Some(message) = &self.selection_message {
+            ui.weak(message);
+        }
+
+        // A lista plana.
+        let page_size = self.page_size;
+        let rows = self.selection.visible_rows(servers, page_size);
+        let hidden = self.selection.hidden(servers, page_size);
+        let scope_marked = match self.selection.server_filter() {
+            Some(name) => self.selection.marked_on(name),
+            None => self.selection.marked_count(),
+        };
+        let scope_total = rows.len() + hidden;
+
         egui::ScrollArea::vertical()
             .id_salt("query_databases")
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                let mut current: Option<String> = None;
-                for row in self.selection.page_rows(servers) {
-                    if current.as_deref() != Some(row.server.as_str()) {
-                        let Some(server) = servers.iter().find(|server| server.name == row.server)
-                        else {
-                            continue;
-                        };
-                        ui.add_space(4.0);
-                        // Cabeçalho em **duas linhas**: na largura da sidebar (240–420 px) o nome do
-                        // servidor com os dois botões e o contador não cabia — o "N of M" saía
-                        // cortado na borda.
-                        ui.horizontal(|ui| {
-                            ui.strong(&server.name);
-                            ui.weak(format!("{}:{}", server.host, server.port));
-                        });
-                        ui.horizontal(|ui| {
-                            if ui
-                                .add_enabled(
-                                    self.chosen_query.is_some() && !running,
-                                    egui::Button::new("⟳ Apply"),
-                                )
-                                .on_hover_text("Mark what the saved query returns for this server")
-                                .clicked()
-                                && let Some(query) = &self.chosen_query
-                            {
-                                request = Some(Request::ApplySelection {
-                                    query: query.clone(),
-                                    scope: crate::selection::ApplyScope::Server(
-                                        server.name.clone(),
-                                    ),
-                                });
-                            }
+                ui.weak(format!("{scope_marked} of {scope_total}"));
+                if rows.is_empty() {
+                    ui.weak("no database here - press Discover");
+                }
 
-                            if ui
-                                .add_enabled(!running, egui::Button::new("⟳ Discover"))
-                                .clicked()
-                            {
-                                request = Some(Request::DiscoverDatabases {
-                                    server: Some(server.name.clone()),
-                                });
-                            }
-
-                            ui.weak(format!(
-                                "{} of {}",
-                                self.selection.marked_on(&server.name),
-                                self.selection.known_on(&server.name)
-                            ));
-                        });
-                        current = Some(row.server.clone());
-                    }
-
-                    // Base barrada por `excludePatterns`: aparece **desabilitada**, com o padrão no
-                    // tooltip — a exclusão não pode ser silenciosa (R9).
-                    //
-                    // Nome vazio é servidor sem base conhecida: mostra a dica e deixa o `⟳ Discover`
-                    // do cabeçalho como única ação.
-                    if row.database.is_empty() {
-                        ui.weak("no database listed yet");
-                        continue;
-                    }
-
+                for row in &rows {
+                    // Base barrada por `excludePatterns`: aparece desabilitada, com o padrao no
+                    // tooltip - a exclusao nao pode ser silenciosa (R9).
                     let mut checked = row.marked;
-                    let response = match &row.info.blocked_by {
-                        Some(pattern) => {
-                            // Base barrada: aparece **desabilitada**, com o padrão no tooltip — a
-                            // exclusão não pode ser silenciosa (R9).
-                            let inside = ui
-                                .add_enabled_ui(false, |ui| {
-                                    ui.checkbox(&mut checked, &row.database)
-                                })
-                                .inner;
-                            inside.on_disabled_hover_text(format!(
-                                "Excluded by the server's excludePatterns: {pattern}"
-                            ))
-                        }
-                        None => ui.checkbox(&mut checked, &row.database),
-                    };
+                    ui.horizontal(|ui| {
+                        let response = match &row.info.blocked_by {
+                            Some(pattern) => {
+                                let inside = ui
+                                    .add_enabled_ui(false, |ui| {
+                                        ui.checkbox(&mut checked, &row.database)
+                                    })
+                                    .inner;
+                                inside.on_disabled_hover_text(format!(
+                                    "Excluded by the server's excludePatterns: {pattern}"
+                                ))
+                            }
+                            None => ui.checkbox(&mut checked, &row.database),
+                        };
 
-                    // Aviso de credencial (D8): a linha não é marcada sozinha, e o motivo aparece
-                    // no tooltip — senão o dono veria uma base a menos sem saber por quê.
-                    let response = match &row.info.warning {
-                        Some(warning) => response.on_hover_text(warning),
-                        None => response,
-                    };
-                    if response.changed() {
-                        self.selection
-                            .set_marked(&row.server, &row.database, checked);
-                    }
+                        // Aviso de credencial (D8): a linha nao e marcada sozinha, e o motivo
+                        // aparece no tooltip.
+                        let response = match &row.info.warning {
+                            Some(warning) => response.on_hover_text(warning),
+                            None => response,
+                        };
+
+                        // O servidor aparece **sempre**, mesmo filtrado: o mesmo nome de base existe
+                        // em mais de um servidor, e a linha precisa dizer de qual e.
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.weak(&row.server);
+                        });
+
+                        if response.changed() {
+                            self.selection
+                                .set_marked(&row.server, &row.database, checked);
+                        }
+                    });
+                }
+
+                // "Carregar mais": revela o proximo pedaco do que ja esta em memoria - nada vai ao
+                // banco, entao e instantaneo.
+                if hidden > 0
+                    && let Some(size) = page_size
+                    && ui
+                        .button(format!("Load {} more ({} left)", size.min(hidden), hidden))
+                        .clicked()
+                {
+                    self.selection.reveal_more(size, servers);
                 }
             });
 
@@ -979,8 +1072,17 @@ impl State {
             .inner;
         let mut request = area.inner;
 
+        // **Ao abrir a aba, descobre as bases de todos os servidores** (não só do primeiro): a lista
+        // nasce completa em vez de vazia nos demais. É melhor esforço por servidor — um fora do ar
+        // não impede os outros.
+        if request.is_none() && !self.auto_discovered && !servers.is_empty() {
+            self.auto_discovered = true;
+            request = Some(Request::DiscoverDatabases { server: None });
+        }
+
         // A linha de referência precisa dos bancos do servidor escolhido: pede a descoberta uma vez
-        // por servidor (o app guarda a resposta e a tela não repete o pedido a cada quadro).
+        // por servidor (o app guarda a resposta e a tela não repete o pedido a cada quadro). Vale
+        // quando o dono **troca** a referência depois da abertura.
         if request.is_none() && reference.unknown(self.reference_server()) {
             request = Some(Request::DiscoverDatabases {
                 server: Some(self.reference_server().to_string()),
@@ -1648,7 +1750,7 @@ mod tests {
 
         // Rótulos que só a escolha de bases tem. (`dev` fica de fora: ele também aparece na linha
         // de referência do autocomplete, que continua na área principal de propósito.)
-        for expected in ["Databases", "Search database…", "⟳ Discover all", ":5432"] {
+        for expected in ["Databases", "Search database...", "Select all 0", "Server"] {
             assert!(
                 sidebar.iter().any(|(text, _)| text == expected),
                 "a sidebar tem {expected:?}: {sidebar:?}"
@@ -1695,20 +1797,88 @@ mod tests {
         );
     }
 
-    /// A linha de referência pede a descoberta do servidor que ainda não foi descoberto.
+    /// **Ao abrir a aba**, a descoberta é pedida para **todos** os servidores — não só o primeiro.
     ///
-    /// CONTRACT: IF-211
+    /// Antes, só o servidor da referência do autocomplete era descoberto, e a lista nascia vazia nos
+    /// demais até alguém apertar o `⟳ Discover`. O pedido é `server: None` (todos, em melhor esforço:
+    /// um servidor fora do ar não impede os outros) e acontece **uma vez**, não a cada quadro.
+    /// CONTRACT: IF-235
     #[test]
-    fn the_reference_row_asks_for_the_databases_of_an_unknown_server() {
+    fn opening_the_tab_discovers_every_server_once() {
         let ctx = egui::Context::default();
         let mut state = State::default();
-        state.sync_servers(&[server("local")]);
+        let servers = [server("local"), server("outro")];
+        state.sync_servers(&servers);
         let reference = crate::reference::Reference::default();
 
         let mut request = None;
         let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                request = state.ui(ui, &[server("local")], None, &reference);
+                request = state.ui(ui, &servers, None, &reference);
+            });
+        });
+        output.textures_delta.clear();
+
+        assert_eq!(
+            request,
+            Some(Request::DiscoverDatabases { server: None }),
+            "a abertura pede a descoberta de todos"
+        );
+
+        // Segundo quadro: não repete o pedido.
+        let mut request = None;
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                request = state.ui(ui, &servers, None, &reference);
+            });
+        });
+        output.textures_delta.clear();
+        assert_eq!(
+            request,
+            Some(Request::DiscoverDatabases {
+                server: Some("local".to_string())
+            }),
+            "no quadro seguinte quem pede é a referência do autocomplete, não a abertura"
+        );
+    }
+
+    /// Servidor **novo** no cadastro volta a disparar a descoberta automática.
+    /// CONTRACT: IF-235
+    #[test]
+    fn a_new_server_triggers_the_automatic_discovery_again() {
+        let mut state = State::default();
+        state.sync_servers(&[server("local")]);
+        // Simula a abertura da aba.
+        state.auto_discovered = true;
+
+        state.sync_servers(&[server("local")]);
+        assert!(state.auto_discovered, "cadastro igual não reinicia");
+
+        state.sync_servers(&[server("local"), server("outro")]);
+        assert!(
+            !state.auto_discovered,
+            "servidor novo reinicia a descoberta"
+        );
+    }
+
+    /// A linha de referência pede a descoberta quando o **servidor de referência muda** depois da
+    /// abertura (a descoberta automática já cobriu a abertura).
+    ///
+    /// CONTRACT: IF-211
+    #[test]
+    fn the_reference_row_asks_for_an_unknown_server_after_opening() {
+        let ctx = egui::Context::default();
+        let mut state = State::default();
+        state.sync_servers(&[server("local"), server("outro")]);
+        // A aba já abriu: a descoberta automática não vale mais.
+        state.auto_discovered = true;
+        state.reference_server = "outro".to_string();
+        let reference = crate::reference::Reference::default();
+
+        let mut request = None;
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                request = state.ui(ui, &[server("local"), server("outro")], None, &reference);
             });
         });
         output.textures_delta.clear();
@@ -1716,24 +1886,24 @@ mod tests {
         assert_eq!(
             request,
             Some(Request::DiscoverDatabases {
-                server: Some("local".to_string())
+                server: Some("outro".to_string())
             }),
-            "sem descoberta, a linha pede os bancos do servidor"
+            "trocar a referência pede os bancos do servidor novo"
         );
 
         // Já descoberto: não pede de novo.
         let mut known = crate::reference::Reference::default();
         known.finish(
-            "local",
+            "outro",
             crate::reference::Known {
-                databases: Ok(vec!["dev".to_string(), "test2".to_string()]),
+                databases: Ok(vec!["dev".to_string()]),
                 has_password: true,
             },
         );
         let mut request = None;
         let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                request = state.ui(ui, &[server("local")], None, &known);
+                request = state.ui(ui, &[server("local"), server("outro")], None, &known);
             });
         });
         output.textures_delta.clear();

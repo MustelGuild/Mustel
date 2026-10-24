@@ -14,12 +14,6 @@ use mustel_core::config::ServerConfigEntry;
 use mustel_core::query::discovery;
 use mustel_core::usecases::custom_databases::ServerSelection;
 
-/// Quantas bases cada página mostra.
-///
-/// O número é o mesmo das telas de 640 px de largura mínima: 25 linhas de 18 px cabem com o
-/// paginador sem empurrar o `Run query` para fora.
-pub const PAGE_SIZE: usize = 25;
-
 /// Até onde o `⟳ Apply` vale.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApplyScope {
@@ -62,8 +56,38 @@ pub struct SelectionState {
     query: Option<String>,
     /// Texto da busca.
     search: String,
-    /// Página atual (0-based).
-    page: usize,
+    /// Servidor do filtro (`None` = todos).
+    server_filter: Option<String>,
+    /// Quantas linhas da lista plana já foram reveladas quando a paginação está ligada.
+    revealed: usize,
+}
+
+/// O que o `Select all` fez, para a tela poder contar o que ficou de fora.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MarkSummary {
+    /// Bases marcadas.
+    pub marked: usize,
+    /// Bases barradas por `excludePatterns` (não entram nunca).
+    pub excluded: usize,
+    /// Bases com aviso de credencial (R4b: não entram sozinhas).
+    pub no_password: usize,
+}
+
+impl MarkSummary {
+    /// Texto do status: o que entrou e, quando houver, o que foi pulado e por quê.
+    pub fn describe(&self) -> String {
+        let mut text = format!("{} marked", self.marked);
+        if self.excluded > 0 {
+            text.push_str(&format!(
+                " · {} skipped (excluded by excludePatterns)",
+                self.excluded
+            ));
+        }
+        if self.no_password > 0 {
+            text.push_str(&format!(" · {} skipped (no password)", self.no_password));
+        }
+        text
+    }
 }
 
 impl SelectionState {
@@ -158,7 +182,8 @@ impl SelectionState {
         }
 
         self.query = Some(query.to_string());
-        self.page = 0;
+        // A carga muda o universo: o "carregar mais" volta ao começo para o resultado aparecer.
+        self.revealed = 0;
     }
 
     /// O `⟳ Discover`: preenche o universo do servidor com o que `pg_database` devolveu (R6).
@@ -247,90 +272,179 @@ impl SelectionState {
         removed
     }
 
-    /// As linhas da página atual, já filtradas pela busca.
+    /// A lista **plana** de bases, na ordem que a tela desenha.
     ///
-    /// A ordem é a do cadastro (servidor) e a alfabética dentro dele — estável entre quadros, que
-    /// é o que faz a paginação não "pular" sozinha.
+    /// Sem agrupar por servidor: o servidor é um **filtro** ([`Self::set_server_filter`]) e cada
+    /// linha carrega o nome dele (o mesmo nome de base pode existir em mais de um servidor). A ordem
+    /// é alfabética pela base, com o servidor desempatando — é o que deixa a lista previsível.
     ///
-    /// Servidor do cadastro **sem base conhecida** também vira linha (com nome de base vazio): sem
-    /// isso ele não apareceria na lista e o `⟳ Discover` da própria linha seria inalcançável (R2).
+    /// Durante a busca, o resultado é **completo**: o pedaço da paginação não vale, senão achar a
+    /// base procurada vira loteria.
     pub fn rows(&self, servers: &[ServerConfigEntry]) -> Vec<Row> {
         let needle = self.search.trim().to_lowercase();
         let mut rows = Vec::new();
 
         for server in servers {
-            let server_matches = needle.is_empty() || server.name.to_lowercase().contains(&needle);
-            let mut emitted = 0usize;
-
-            if let Some(databases) = self.universe.get(&server.name) {
-                for (database, info) in databases {
-                    let matches = needle.is_empty()
-                        || database.to_lowercase().contains(&needle)
-                        || server.name.to_lowercase().contains(&needle);
-                    if !matches {
-                        continue;
-                    }
-                    rows.push(Row {
-                        server: server.name.clone(),
-                        database: database.clone(),
-                        info: info.clone(),
-                        marked: self
-                            .marked
-                            .get(&server.name)
-                            .is_some_and(|marked| marked.contains(database)),
-                    });
-                    emitted += 1;
-                }
+            if let Some(filter) = &self.server_filter
+                && !server.name.eq_ignore_ascii_case(filter)
+            {
+                continue;
             }
+            let Some(databases) = self.universe.get(&server.name) else {
+                continue;
+            };
+            let marked = self.marked.get(&server.name);
+            let server_matches = !needle.is_empty() && server.name.to_lowercase().contains(&needle);
 
-            if emitted == 0 && server_matches {
+            for (database, info) in databases {
+                if !needle.is_empty()
+                    && !server_matches
+                    && !database.to_lowercase().contains(&needle)
+                {
+                    continue;
+                }
                 rows.push(Row {
                     server: server.name.clone(),
-                    database: String::new(),
-                    info: Info::default(),
-                    marked: false,
+                    database: database.clone(),
+                    info: info.clone(),
+                    marked: marked.is_some_and(|marked| marked.contains(database)),
                 });
             }
         }
 
+        rows.sort_by(|left, right| {
+            left.database
+                .to_lowercase()
+                .cmp(&right.database.to_lowercase())
+                .then_with(|| left.server.to_lowercase().cmp(&right.server.to_lowercase()))
+        });
         rows
     }
 
-    /// Quantas páginas a lista tem com a busca atual.
-    pub fn page_count(&self, servers: &[ServerConfigEntry]) -> usize {
-        self.rows(servers).len().div_ceil(PAGE_SIZE).max(1)
-    }
-
-    /// A página atual, já presa ao intervalo válido.
-    pub fn page(&self, servers: &[ServerConfigEntry]) -> usize {
-        self.page.min(self.page_count(servers).saturating_sub(1))
-    }
-
-    /// As linhas da página atual.
-    pub fn page_rows(&self, servers: &[ServerConfigEntry]) -> Vec<Row> {
+    /// As linhas que a tela desenha, respeitando a paginação.
+    ///
+    /// `page_size = None` (o padrão) desenha tudo. Com busca ativa, também desenha tudo.
+    pub fn visible_rows(
+        &self,
+        servers: &[ServerConfigEntry],
+        page_size: Option<usize>,
+    ) -> Vec<Row> {
         let rows = self.rows(servers);
-        let page = self.page(servers);
-        rows.into_iter()
-            .skip(page * PAGE_SIZE)
-            .take(PAGE_SIZE)
+        match page_size {
+            Some(size) if self.search.trim().is_empty() => {
+                let limit = self.revealed.max(size);
+                rows.into_iter().take(limit).collect()
+            }
+            _ => rows,
+        }
+    }
+
+    /// Quantas bases ainda não foram reveladas (o que o "carregar mais" traz).
+    pub fn hidden(&self, servers: &[ServerConfigEntry], page_size: Option<usize>) -> usize {
+        let Some(size) = page_size else {
+            return 0;
+        };
+        if !self.search.trim().is_empty() {
+            return 0;
+        }
+        let total = self.rows(servers).len();
+        total.saturating_sub(self.revealed.max(size))
+    }
+
+    /// Revela mais um pedaço da lista plana.
+    ///
+    /// O ponto de partida é o que já está **visível** (o primeiro pedaço é a página), não o contador
+    /// — senão o primeiro "carregar mais" não acrescentaria nada.
+    pub fn reveal_more(&mut self, page_size: usize, servers: &[ServerConfigEntry]) {
+        self.revealed = self.visible_rows(servers, Some(page_size)).len() + page_size;
+    }
+
+    /// Servidor do filtro (`None` = todos).
+    pub fn server_filter(&self) -> Option<&str> {
+        self.server_filter.as_deref()
+    }
+
+    /// Troca o filtro de servidor. Um filtro novo volta a lista ao primeiro pedaço.
+    pub fn set_server_filter(&mut self, server: Option<String>) {
+        if self.server_filter != server {
+            self.server_filter = server;
+            self.revealed = 0;
+        }
+    }
+
+    /// As bases **visíveis e marcáveis** (nem barradas, nem com aviso de senha).
+    ///
+    /// É o alvo do `Select all` / `Clear`: o que está na tela, ou seja, filtro × busca.
+    fn selectable_visible(&self, servers: &[ServerConfigEntry]) -> Vec<(String, String)> {
+        self.rows(servers)
+            .into_iter()
+            .filter(|row| row.info.blocked_by.is_none() && row.info.warning.is_none())
+            .map(|row| (row.server, row.database))
             .collect()
     }
 
-    /// Página seguinte/anterior (não passa dos limites).
-    pub fn turn_page(&mut self, servers: &[ServerConfigEntry], forward: bool) {
-        let last = self.page_count(servers).saturating_sub(1);
-        self.page = if forward {
-            (self.page(servers) + 1).min(last)
-        } else {
-            self.page(servers).saturating_sub(1)
-        };
+    /// Quantas bases o cadastro conhece (o "N" do filtro "All servers").
+    pub fn known_count(&self, servers: &[ServerConfigEntry]) -> usize {
+        servers
+            .iter()
+            .map(|server| self.known_on(&server.name))
+            .sum()
     }
 
-    /// Texto da busca (a página volta ao começo quando ele muda).
+    /// Quantas bases o `Select all` marcaria agora (o número do botão).
+    pub fn selectable_count(&self, servers: &[ServerConfigEntry]) -> usize {
+        self.selectable_visible(servers).len()
+    }
+
+    /// Tudo o que está visível já está marcado? (estado do `☑ Select all`)
+    pub fn all_visible_marked(&self, servers: &[ServerConfigEntry]) -> bool {
+        let visible = self.selectable_visible(servers);
+        !visible.is_empty()
+            && visible.iter().all(|(server, database)| {
+                self.marked
+                    .get(server)
+                    .is_some_and(|marked| marked.contains(database))
+            })
+    }
+
+    /// `Select all`: marca **tudo o que está visível** (filtro × busca).
+    ///
+    /// Barradas por `excludePatterns` e com aviso de senha ficam de fora, e a contagem do que ficou
+    /// de fora volta para a tela não esconder o que não entrou.
+    pub fn select_all_visible(&mut self, servers: &[ServerConfigEntry]) -> MarkSummary {
+        let rows = self.rows(servers);
+        let mut summary = MarkSummary::default();
+        for row in &rows {
+            if row.info.blocked_by.is_some() {
+                summary.excluded += 1;
+                continue;
+            }
+            if row.info.warning.is_some() {
+                summary.no_password += 1;
+                continue;
+            }
+            self.set_marked(&row.server, &row.database, true);
+            summary.marked += 1;
+        }
+        summary
+    }
+
+    /// `Clear`: desmarca tudo o que está visível.
+    pub fn clear_visible(&mut self, servers: &[ServerConfigEntry]) -> usize {
+        let rows = self.rows(servers);
+        let mut cleared = 0;
+        for row in &rows {
+            self.set_marked(&row.server, &row.database, false);
+            cleared += 1;
+        }
+        cleared
+    }
+
+    /// Texto da busca (mudar a busca volta a lista ao primeiro pedaço).
     pub fn set_search(&mut self, search: String) {
         if self.search != search {
             self.search = search;
-            self.page = 0;
+            self.revealed = 0;
         }
     }
 
@@ -480,10 +594,10 @@ mod tests {
         assert_eq!(state.query(), Some("Produção"));
     }
 
-    /// A seleção sobrevive a mudar página e busca (R7).
+    /// A seleção sobrevive a paginar, filtrar e buscar (R7).
     /// CONTRACT: IF-227
     #[test]
-    fn the_selection_survives_paging_and_searching() {
+    fn the_selection_survives_paging_filtering_and_searching() {
         let mut state = SelectionState::default();
         let servers = servers();
         state.sync_registry(&servers);
@@ -494,17 +608,13 @@ mod tests {
         state.set_marked("Local", "base_70", true);
         assert_eq!(state.marked_count(), 2);
 
-        state.turn_page(&servers, true);
-        state.turn_page(&servers, true);
-        assert_eq!(state.marked_count(), 2, "virar página não desmarca");
+        state.reveal_more(50, &servers);
+        state.set_server_filter(Some("Local".to_string()));
+        assert_eq!(state.marked_count(), 2, "filtrar não desmarca");
 
         state.set_search("base_7".to_string());
-        assert_eq!(state.page(&servers), 0, "mudar a busca volta ao começo");
         assert_eq!(state.marked_count(), 2, "buscar não desmarca");
         assert_eq!(state.rows(&servers).len(), 10, "base_70..base_79");
-
-        state.set_search(String::new());
-        assert_eq!(state.marked_count(), 2);
     }
 
     /// Servidor removido do cadastro leva a seleção dele junto.
@@ -598,10 +708,15 @@ mod tests {
         };
         state.apply(&[blocked], &ApplyScope::All, "Produção");
         assert_eq!(state.marked_count(), 1, "só a `dev` entrou");
+        let rows = state.rows(&servers);
+        let row = rows
+            .iter()
+            .find(|row| row.database == "postgres")
+            .expect("a barrada aparece na lista");
         assert_eq!(
-            state.rows(&servers)[1].info.blocked_by.as_deref(),
+            row.info.blocked_by.as_deref(),
             Some("postgres"),
-            "a barrada aparece na lista, com o padrão"
+            "com o padrão que a barrou"
         );
     }
 
@@ -624,62 +739,108 @@ mod tests {
         assert_eq!(targets[0].1, vec!["dev".to_string()]);
     }
 
-    /// A lista pagina e a busca filtra por base e por servidor.
+    /// A lista é **plana e alfabética**, com o servidor em cada linha; o servidor é filtro.
     /// CONTRACT: IF-227
     #[test]
-    fn the_list_pages_and_searches() {
+    fn the_list_is_flat_alphabetical_and_filtered_by_server() {
         let mut state = SelectionState::default();
         let servers = servers();
         state.sync_registry(&servers);
-        let many: Vec<String> = (0..PAGE_SIZE + 5)
-            .map(|index| format!("base_{index:02}"))
-            .collect();
-        state.discover(&servers[0], &many);
+        state.discover(&servers[0], &["dev".to_string(), "alpha".to_string()]);
+        state.discover(&servers[1], &["dev".to_string(), "zulu".to_string()]);
 
-        assert_eq!(state.page_count(&servers), 2);
-        assert_eq!(state.page_rows(&servers).len(), PAGE_SIZE);
-        assert!(
-            state
-                .page_rows(&servers)
-                .iter()
-                .all(|row| row.server == "Local")
-        );
-
-        state.turn_page(&servers, true);
-        let second = state.page_rows(&servers);
-        assert_eq!(second.len(), 6, "5 bases + o servidor sem base descoberta");
-        assert_eq!(
-            second.last().map(|row| row.database.as_str()),
-            Some(""),
-            "servidor sem base vira a linha de dica, para o ⟳ Discover da linha existir"
-        );
-
-        // Não passa do fim nem volta antes do começo.
-        state.turn_page(&servers, true);
-        assert_eq!(state.page(&servers), 1);
-        state.turn_page(&servers, false);
-        state.turn_page(&servers, false);
-        assert_eq!(state.page(&servers), 0);
-
-        // Busca pelo nome do servidor traz tudo dele.
-        state.set_search("produção".to_string());
         let rows = state.rows(&servers);
-        assert_eq!(rows.len(), 1, "só o servidor sem bases conhecidas");
-        assert_eq!(rows[0].server, "Produção");
-        assert_eq!(rows[0].database, "", "linha de dica, sem checkbox");
+        let names: Vec<&str> = rows.iter().map(|row| row.database.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["alpha", "dev", "dev", "zulu"],
+            "alfabetica, com o mesmo nome uma vez por servidor"
+        );
+        assert_eq!(rows[1].server, "Local", "empate desempatado pelo servidor");
+        assert_eq!(rows[2].server, "Produção");
+
+        state.set_server_filter(Some("produção".to_string()));
+        let rows = state.rows(&servers);
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|row| row.server == "Produção"));
+        assert_eq!(state.server_filter(), Some("produção"));
     }
 
-    /// Uma base com aviso de credencial **não** é marcada pelo `Apply` (R4b).
-    ///
-    /// Ela continua na lista, com o aviso, e o dono decide marcá-la à mão. Marcar sozinha seria
-    /// prometer uma execução que não tem senha para o usuário pedido.
-    /// CONTRACT: IF-226
+    /// Busca casa nome da base **e** nome do servidor, sem diferenciar maiúsculas.
+    /// CONTRACT: IF-227
     #[test]
-    fn a_warned_database_is_not_marked_by_apply() {
+    fn searching_matches_uppercase_and_server_name() {
         let mut state = SelectionState::default();
         let servers = servers();
         state.sync_registry(&servers);
+        state.discover(&servers[0], &["dev".to_string(), "test2".to_string()]);
 
+        state.set_search("LOCAL".to_string());
+        assert_eq!(state.rows(&servers).len(), 2, "nome do servidor casa");
+
+        state.set_search("DEV".to_string());
+        assert_eq!(state.rows(&servers).len(), 1, "sem diferenciar maiusculas");
+    }
+
+    /// `Select all` marca **o que esta visivel** (filtro x busca) e conta o que pulou.
+    /// CONTRACT: IF-227
+    #[test]
+    fn select_all_marks_what_is_visible_and_reports_what_it_skipped() {
+        let mut state = SelectionState::default();
+        let servers = servers();
+        state.sync_registry(&servers);
+        state.discover(
+            &servers[0],
+            &[
+                "dev".to_string(),
+                "test2".to_string(),
+                "postgres".to_string(),
+                "template0".to_string(),
+            ],
+        );
+        state.discover(&servers[1], &["dev".to_string()]);
+
+        assert_eq!(state.selectable_count(&servers), 3);
+        let summary = state.select_all_visible(&servers);
+        assert_eq!(summary.marked, 3);
+        assert_eq!(
+            summary.excluded, 2,
+            "postgres e template0 casam com os padroes"
+        );
+        assert_eq!(summary.no_password, 0);
+        assert!(
+            summary
+                .describe()
+                .contains("2 skipped (excluded by excludePatterns)")
+        );
+        assert!(state.all_visible_marked(&servers));
+
+        state.clear_visible(&servers);
+        assert_eq!(state.marked_count(), 0);
+        state.set_server_filter(Some("Produção".to_string()));
+        let summary = state.select_all_visible(&servers);
+        assert_eq!(summary.marked, 1, "so o dev do Producao");
+        assert_eq!(
+            state.marked_on("Local"),
+            0,
+            "o outro servidor nao foi tocado"
+        );
+
+        state.set_server_filter(None);
+        state.clear_visible(&servers);
+        state.set_search("test".to_string());
+        let summary = state.select_all_visible(&servers);
+        assert_eq!(summary.marked, 1, "so test2");
+        assert_eq!(state.marked_on("Local"), 1);
+    }
+
+    /// Base com aviso de senha **nao** entra no `Select all` (R4b), mas da para marcar a mao.
+    /// CONTRACT: IF-226
+    #[test]
+    fn a_warned_database_is_not_marked_by_select_all() {
+        let mut state = SelectionState::default();
+        let servers = servers();
+        state.sync_registry(&servers);
         let selection = ServerSelection {
             server: "Local".to_string(),
             databases: vec![
@@ -687,39 +848,72 @@ mod tests {
                 DatabaseChoice {
                     name: "test2".to_string(),
                     blocked_by: None,
-                    warning: Some(
-                        "user 'ana' has no password in the query; the vault only holds 'postgres'"
-                            .to_string(),
-                    ),
+                    warning: Some("user 'ana' has no password in the query".to_string()),
                 },
             ],
         };
         state.apply(&[selection], &ApplyScope::All, "Produção");
 
-        assert_eq!(state.marked_count(), 1, "só a linha pronta para rodar");
-        assert!(
-            state.rows(&servers)[1].info.warning.is_some(),
-            "a com aviso continua na lista, com o motivo"
-        );
+        assert_eq!(state.marked_count(), 1);
+        let summary = state.select_all_visible(&servers);
+        assert_eq!(summary.marked, 1, "dev ja estava; a com aviso fica de fora");
+        assert_eq!(summary.no_password, 1);
+        assert!(summary.describe().contains("1 skipped (no password)"));
 
-        // E não é barrada de vez: marcar à mão continua possível.
         state.set_marked("Local", "test2", true);
-        assert_eq!(state.marked_count(), 2);
+        assert_eq!(state.marked_on("Local"), 2);
     }
 
-    /// Servidor do cadastro sem base conhecida **aparece** na lista (R2).
-    ///
-    /// Sem a linha ele nem seria desenhado, e o `⟳ Discover` do cabeçalho ficaria inalcançável.
+    /// A paginacao e opcional: desligada desenha tudo, ligada revela em pedacos.
     /// CONTRACT: IF-227
     #[test]
-    fn a_server_without_known_databases_still_shows_up() {
+    fn pagination_is_optional_and_reveals_in_chunks() {
         let mut state = SelectionState::default();
         let servers = servers();
         state.sync_registry(&servers);
+        let many: Vec<String> = (0..120).map(|index| format!("base_{index:03}")).collect();
+        state.discover(&servers[0], &many);
 
-        let rows = state.rows(&servers);
-        assert_eq!(rows.len(), 2, "os dois servidores do cadastro");
-        assert!(rows.iter().all(|row| row.database.is_empty()));
-        assert_eq!(state.page_count(&servers), 1);
+        assert_eq!(state.visible_rows(&servers, None).len(), 120);
+        assert_eq!(state.hidden(&servers, None), 0);
+
+        assert_eq!(state.visible_rows(&servers, Some(50)).len(), 50);
+        assert_eq!(state.hidden(&servers, Some(50)), 70);
+
+        state.reveal_more(50, &servers);
+        assert_eq!(state.visible_rows(&servers, Some(50)).len(), 100);
+        state.reveal_more(50, &servers);
+        assert_eq!(state.visible_rows(&servers, Some(50)).len(), 120);
+        assert_eq!(state.hidden(&servers, Some(50)), 0);
+
+        state.set_search("base_119".to_string());
+        assert_eq!(state.visible_rows(&servers, Some(50)).len(), 1);
+        assert_eq!(state.hidden(&servers, Some(50)), 0);
+    }
+
+    /// **Estresse**: 1000 bases num servidor continuam baratas de desenhar.
+    ///
+    /// O custo de montar a lista é o que a tela paga por quadro, com paginação ou sem. Este teste
+    /// guarda o teto: se alguém trocar o algoritmo por algo quadrático, ele cai aqui.
+    /// CONTRACT: IF-227
+    #[test]
+    fn a_thousand_databases_stay_cheap_to_render() {
+        let servers = servers();
+        let mut state = SelectionState::default();
+        state.sync_registry(&servers);
+        let many: Vec<String> = (0..1000).map(|index| format!("db_{index:04}")).collect();
+        state.discover(&servers[0], &many);
+
+        let started = std::time::Instant::now();
+        for _ in 0..100 {
+            let rows = state.rows(&servers);
+            assert_eq!(rows.len(), 1000, "sem paginação, a lista é completa");
+        }
+        let per_frame = started.elapsed() / 100;
+
+        assert!(
+            per_frame < std::time::Duration::from_millis(4),
+            "montar a lista de 1000 bases custou {per_frame:?} por quadro"
+        );
     }
 }

@@ -61,6 +61,7 @@ mod tests {
                 editor_font: Some("Fira Code".to_string()),
                 font_scale: 1.1,
                 selections: Vec::new(),
+                selection_list: Default::default(),
             }),
         )
         .expect("salva preferências");

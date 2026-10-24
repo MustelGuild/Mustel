@@ -9,7 +9,10 @@
 use std::collections::BTreeMap;
 
 use mustel_core::config::ServerConfigEntry;
-use mustel_core::config::model::{GuiPrefs, MAX_FONT_SCALE, MIN_FONT_SCALE, SelectionQuery};
+use mustel_core::config::model::{
+    GuiPrefs, MAX_FONT_SCALE, MAX_PAGE_SIZE, MIN_FONT_SCALE, MIN_PAGE_SIZE, SelectionListPrefs,
+    SelectionQuery,
+};
 
 use crate::fonts::{self, Chosen, EMBEDDED_MONO, EMBEDDED_PROPORTIONAL};
 use crate::request::Request;
@@ -37,6 +40,8 @@ pub struct State {
     chosen: Chosen,
     /// Queries salvas de seleção de bases (a segunda seção da aba, §4.6).
     selections: Vec<SelectionQuery>,
+    /// Paginação da lista de bases (aba Query).
+    selection_list: SelectionListPrefs,
     /// Formulário de query aberto, quando houver.
     selection_form: Option<SelectionForm>,
     /// Nome da query marcada para remoção (confirmação em dois toques).
@@ -128,6 +133,9 @@ impl State {
             chosen: Chosen::from_prefs(prefs),
             selections: prefs
                 .map(|prefs| prefs.selections.clone())
+                .unwrap_or_default(),
+            selection_list: prefs
+                .map(|prefs| prefs.selection_list.clone())
                 .unwrap_or_default(),
             ..Self::default()
         }
@@ -258,6 +266,7 @@ impl State {
         let mut prefs = GuiPrefs::default();
         self.chosen.apply_to(&mut prefs);
         prefs.selections = self.selections.clone();
+        prefs.selection_list = self.selection_list.clone();
         prefs
     }
 
@@ -374,6 +383,18 @@ impl State {
         // tamanho era mexido — era o bug relatado.
         //
         // A segunda seção entra no mesmo commit: a seção `gui` é gravada inteira.
+        // --- Paginação da lista de bases (aba Query) -------------------------------------------
+        //
+        // Desligada por padrão: com o filtro de servidor, a lista completa é utilizável, e paginar
+        // sem necessidade esconde informação. Quem tiver muitos milhares liga aqui.
+        ui.separator();
+        ui.heading("Database list");
+        ui.label(
+            "How the database list in the Query tab is drawn. Filters and search always see the \
+             whole list; pagination only limits what is drawn at once.",
+        );
+        changed |= self.selection_list_ui(ui);
+
         let (selection_request, selections_changed) = self.selections_ui(ui, servers);
         changed |= selections_changed;
 
@@ -384,6 +405,49 @@ impl State {
         }
 
         decision(self.chosen.clone(), self.prefs(), changed, apply_now)
+    }
+
+    /// A seção **Database list**: liga/desliga a paginação e define o tamanho da página.
+    ///
+    /// Devolve `true` quando mudou (o app grava a seção `gui` inteira, como no resto da aba).
+    fn selection_list_ui(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+
+        if ui
+            .checkbox(
+                &mut self.selection_list.paginate,
+                "Paginate the database list",
+            )
+            .changed()
+        {
+            changed = true;
+        }
+
+        ui.horizontal(|ui| {
+            ui.add_enabled_ui(self.selection_list.paginate, |ui| {
+                ui.label("Page size");
+                let mut size = self.selection_list.clamped_page_size();
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut size)
+                            .range(MIN_PAGE_SIZE..=MAX_PAGE_SIZE)
+                            .speed(1.0),
+                    )
+                    .changed()
+                {
+                    self.selection_list.page_size = size;
+                    changed = true;
+                }
+            });
+        });
+
+        ui.weak(if self.selection_list.paginate {
+            "The list shows one page at a time, with a button to load the next."
+        } else {
+            "Off: every database in the filter is drawn at once."
+        });
+
+        changed
     }
 
     /// A seção **Database selection queries** (§4.6): lista + formulário de um por vez.
@@ -818,6 +882,53 @@ mod tests {
             username: "postgres".to_string(),
             ..ServerConfigEntry::default()
         }
+    }
+
+    /// O estado da aba **carrega** tudo o que está gravado — inclusive a paginação.
+    ///
+    /// O bug que originou este teste: `with_prefs` copiava fonte e queries e esquecia a lista,
+    /// então a opção ligada no arquivo não valia na tela.
+    /// CONTRACT: IF-234
+    #[test]
+    fn the_state_keeps_every_saved_preference() {
+        let prefs = GuiPrefs {
+            interface_font: Some("Segoe UI".to_string()),
+            selections: vec![query("Produção")],
+            selection_list: mustel_core::config::model::SelectionListPrefs {
+                paginate: true,
+                page_size: 80,
+            },
+            ..GuiPrefs::default()
+        };
+
+        let state = State::with_prefs(Some(&prefs));
+        assert_eq!(state.chosen().interface.as_deref(), Some("Segoe UI"));
+        assert_eq!(state.selections().len(), 1);
+        assert!(
+            state.prefs().selection_list.paginate,
+            "a paginação gravada chega no estado"
+        );
+        assert_eq!(state.prefs().selection_list.page_size, 80);
+    }
+
+    /// Mexer na paginação grava a seção `gui` inteira (sem perder fonte nem queries).
+    /// CONTRACT: IF-234
+    #[test]
+    fn changing_the_pagination_keeps_the_rest() {
+        let prefs = GuiPrefs {
+            interface_font: Some("Segoe UI".to_string()),
+            selections: vec![query("Produção")],
+            ..GuiPrefs::default()
+        };
+        let mut state = State::with_prefs(Some(&prefs));
+        state.selection_list.paginate = true;
+        state.selection_list.page_size = 25;
+
+        let merged = state.prefs();
+        assert!(merged.selection_list.paginate);
+        assert_eq!(merged.selection_list.page_size, 25);
+        assert_eq!(merged.interface_font.as_deref(), Some("Segoe UI"));
+        assert_eq!(merged.selections.len(), 1);
     }
 
     /// O formulário novo já aponta para o primeiro servidor do cadastro, e o servidor escolhido

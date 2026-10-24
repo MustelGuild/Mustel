@@ -63,6 +63,57 @@ pub struct GuiPrefs {
     /// a seleção por query não vê o arquivo mudar.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub selections: Vec<SelectionQuery>,
+    /// Como a lista de bases da aba **Query** é desenhada (paginação).
+    ///
+    /// Ausente = **sem paginação** (desenha todas as bases). Só aparece no arquivo quando alguém
+    /// mexe, como o resto de `gui`.
+    #[serde(skip_serializing_if = "SelectionListPrefs::is_default")]
+    pub selection_list: SelectionListPrefs,
+}
+
+/// Paginação da lista de bases (aba **Query**).
+///
+/// Desligada por padrão: com os filtros da tela, a lista completa é utilizável, e paginar sem
+/// necessidade esconde informação. Ligada, cada servidor/todos são revelados em pedaços de
+/// `page_size` com um botão no fim da lista.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SelectionListPrefs {
+    /// A lista é paginada?
+    pub paginate: bool,
+    /// Quantas bases por vez quando paginada.
+    pub page_size: usize,
+}
+
+/// Tamanho de página padrão.
+pub const DEFAULT_PAGE_SIZE: usize = 50;
+/// Faixa aceita para o tamanho da página.
+pub const MIN_PAGE_SIZE: usize = 10;
+/// Teto do tamanho da página.
+pub const MAX_PAGE_SIZE: usize = 500;
+
+impl Default for SelectionListPrefs {
+    fn default() -> Self {
+        Self {
+            paginate: false,
+            page_size: DEFAULT_PAGE_SIZE,
+        }
+    }
+}
+
+impl SelectionListPrefs {
+    /// É o padrão? (o que fica fora do arquivo)
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Tamanho de página dentro da faixa aceita.
+    ///
+    /// O arquivo é editável à mão: um `0` faria a lista não mostrar nada, e um valor absurdo
+    /// desfaria a razão de existir a paginação.
+    pub fn clamped_page_size(&self) -> usize {
+        self.page_size.clamp(MIN_PAGE_SIZE, MAX_PAGE_SIZE)
+    }
 }
 
 impl Default for GuiPrefs {
@@ -72,6 +123,7 @@ impl Default for GuiPrefs {
             editor_font: None,
             font_scale: DEFAULT_FONT_SCALE,
             selections: Vec::new(),
+            selection_list: SelectionListPrefs::default(),
         }
     }
 }
@@ -325,6 +377,7 @@ mod tests {
                 editor_font: Some("Fira Code".to_string()),
                 font_scale: 1.15,
                 selections: Vec::new(),
+                selection_list: Default::default(),
             }),
             ..UserConfig::default()
         };
@@ -363,6 +416,41 @@ mod tests {
             DEFAULT_FONT_SCALE,
             "valor corrompido volta ao padrão"
         );
+    }
+
+    /// A seção `selectionList` é lida do arquivo (ida e volta), e ausente = desligada.
+    /// CONTRACT: IF-234
+    #[test]
+    fn the_selection_list_prefs_round_trip() {
+        let json = r#"{
+            "selections": [],
+            "selectionList": { "paginate": true, "pageSize": 80 }
+        }"#;
+        let prefs: GuiPrefs = serde_json::from_str(json).expect("deserializes");
+        assert!(prefs.selection_list.paginate, "leu o `paginate`");
+        assert_eq!(prefs.selection_list.page_size, 80, "leu o `pageSize`");
+
+        // Ausente = desligado com o padrão.
+        let prefs: GuiPrefs = serde_json::from_str("{}").expect("deserializes");
+        assert!(!prefs.selection_list.paginate);
+        assert_eq!(prefs.selection_list.page_size, DEFAULT_PAGE_SIZE);
+
+        // Padrão não é gravado; fora do padrão é.
+        let plain = serde_json::to_string(&GuiPrefs::default()).expect("serializes");
+        assert!(
+            !plain.contains("selectionList"),
+            "padrão fica fora: {plain}"
+        );
+        let custom = serde_json::to_string(&GuiPrefs {
+            selection_list: SelectionListPrefs {
+                paginate: true,
+                page_size: 80,
+            },
+            ..GuiPrefs::default()
+        })
+        .expect("serializes");
+        assert!(custom.contains("\"selectionList\""), "{custom}");
+        assert!(custom.contains("\"pageSize\":80"), "{custom}");
     }
 
     /// Quem só usa a fonte não vê a chave `selections` no arquivo (D11).

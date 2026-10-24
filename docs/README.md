@@ -29,6 +29,7 @@ só é a origem da maior parte da documentação ruim.
 | | [Publicar uma release](how-to/publicar-release.md) | | |
 | | | [Contrato de interface](contrato-de-interface.md) | [Por que o autocomplete é assim](explanation/autocomplete.md) |
 | | | [Seleção de bases](reference/selecao-de-bases.md) | [Por que a seleção de bases é assim](explanation/selecao-de-bases.md) |
+| | | [Queries salvas](reference/saved-queries.md) | |
 | | | | [Fontes e licença](explanation/fontes.md) |
 | | | | [Decisões de engenharia](explanation/decisoes.md) |
 | | | | [Diferenças deliberadas](explanation/diferencas-deliberadas.md) |

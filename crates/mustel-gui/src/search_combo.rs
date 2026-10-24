@@ -14,7 +14,7 @@ pub struct Item<'a> {
     pub text: &'a str,
     /// Detalhe só de exibição, à direita do texto (ex.: a contagem de bases do servidor).
     ///
-    /// Fica **fora** da busca: procurar "104" não pode achar um servidor por causa do número.
+    /// Fica **fora da busca**: procurar "104" não pode achar um servidor por causa do número.
     pub note: Option<&'a str>,
     /// É o valor atual?
     pub selected: bool,
@@ -23,6 +23,11 @@ pub struct Item<'a> {
     /// Separado do `note` de propósito: a nota é informação cinza (contagem), o aviso é problema —
     /// e um problema não pode ser da mesma cor do detalhe.
     pub warning: Option<&'a str>,
+    /// Ação destrutiva por linha (o glifo do botão, ex.: `✕`).
+    ///
+    /// Clicar **não** seleciona a linha: devolve o índice em [`ComboOutcome::action`]. Use com
+    /// [`search_combo_actionable`] — o [`search_combo`] comum ignora a ação.
+    pub action: Option<&'a str>,
 }
 
 impl<'a> Item<'a> {
@@ -33,6 +38,7 @@ impl<'a> Item<'a> {
             note: None,
             selected,
             warning: None,
+            action: None,
         }
     }
 
@@ -49,8 +55,24 @@ impl<'a> Item<'a> {
             note: Some(note),
             selected,
             warning: None,
+            action: None,
         }
     }
+
+    /// Acrescenta um botão de ação na linha (o glifo é o rótulo).
+    pub fn with_action(mut self, icon: &'a str) -> Self {
+        self.action = Some(icon);
+        self
+    }
+}
+
+/// O que o combo devolveu neste quadro.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ComboOutcome {
+    /// Índice do item escolhido (o clique no texto).
+    pub selected: Option<usize>,
+    /// Índice do item cujo botão de ação foi clicado.
+    pub action: Option<usize>,
 }
 
 #[derive(Default, Clone)]
@@ -94,6 +116,9 @@ impl Default for Size {
 }
 
 /// O mesmo combo, com as larguras escolhidas por quem chama.
+///
+/// Devolve só o item escolhido: para linhas com ação por linha, use
+/// [`search_combo_actionable`].
 pub fn search_combo_sized(
     ui: &mut egui::Ui,
     id: &str,
@@ -102,11 +127,27 @@ pub fn search_combo_sized(
     enabled: bool,
     size: Size,
 ) -> Option<usize> {
+    search_combo_actionable(ui, id, button_text, items, enabled, size).selected
+}
+
+/// O combo com **ação por linha**: além do item escolhido, devolve qual botão de ação foi clicado.
+///
+/// Só as linhas com [`Item::with_action`] desenham o botão; clicar nele **não** seleciona a linha
+/// nem fecha a lista (excluir várias seguidas não deve exigir reabrir o combo).
+pub fn search_combo_actionable(
+    ui: &mut egui::Ui,
+    id: &str,
+    button_text: &str,
+    items: &[Item<'_>],
+    enabled: bool,
+    size: Size,
+) -> ComboOutcome {
     let state_id = egui::Id::unique(("search_combo", id));
     let mut state = ui
         .data(|data| data.get_temp::<State>(state_id))
         .unwrap_or_default();
     let mut chosen = None;
+    let mut acted = None;
 
     let button = ui
         .add_enabled(
@@ -163,9 +204,15 @@ pub fn search_combo_sized(
                             let response = ui.horizontal(|ui| {
                                 let clicked =
                                     ui.selectable_label(item.selected, item.text).clicked();
+                                let mut triggered = false;
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| {
+                                        // À direita de tudo: o glifo da ação. Clicar nele não
+                                        // seleciona a linha (são widgets separados).
+                                        if let Some(icon) = item.action {
+                                            triggered = ui.small_button(icon).clicked();
+                                        }
                                         if let Some(note) = item.note {
                                             ui.weak(note);
                                         }
@@ -174,10 +221,17 @@ pub fn search_combo_sized(
                                         }
                                     },
                                 );
-                                clicked
+                                (clicked, triggered)
                             });
-                            if response.inner {
+                            let (clicked, triggered) = response.inner;
+                            if clicked {
                                 chosen = Some(index);
+                                state.open = false;
+                            }
+                            if triggered {
+                                acted = Some(index);
+                                // Fecha ao agir: a confirmação (excluir) precisa aparecer **fora**
+                                // da lista, senão ela fica coberta pelo popup.
                                 state.open = false;
                             }
                         }
@@ -207,7 +261,10 @@ pub fn search_combo_sized(
     }
 
     ui.data_mut(|data| data.insert_temp(state_id, state));
-    chosen
+    ComboOutcome {
+        selected: chosen,
+        action: acted,
+    }
 }
 
 #[cfg(test)]
@@ -533,5 +590,87 @@ mod tests {
 
         // `combo_a` filtra tudo para fora; `combo_b` (fechado) não desenha busca nenhuma.
         assert_eq!(seen.len(), 2);
+    }
+
+    /// A linha com ação desenha o glifo; a sem ação não.
+    /// CONTRACT: IF-244
+    #[test]
+    fn an_action_glyph_is_drawn_only_on_rows_that_have_one() {
+        let ctx = egui::Context::default();
+        let state_id = egui::Id::unique(("search_combo", "test_combo"));
+
+        let mut texts: Vec<String> = Vec::new();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                ctx.data_mut(|data| {
+                    data.insert_temp(
+                        state_id,
+                        State {
+                            open: true,
+                            filter: String::new(),
+                        },
+                    )
+                });
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let items = vec![
+                        Item::new("Faturamento", true).with_action("✕"),
+                        Item::new("(none)", false),
+                    ];
+                    let _ = search_combo_actionable(
+                        ui,
+                        "test_combo",
+                        "Faturamento",
+                        &items,
+                        true,
+                        Size::default(),
+                    );
+                });
+            });
+            texts.clear();
+            collect_text(&output.shapes, &mut texts);
+            output.textures_delta.clear();
+        }
+
+        assert!(
+            texts.iter().any(|text| text == "✕"),
+            "a linha da query salva traz o botão de excluir: {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|text| text == "(none)"),
+            "a linha sem ação continua desenhada: {texts:?}"
+        );
+    }
+
+    /// O combo comum ignora ações: sem clique no texto, não devolve escolha nenhuma.
+    /// CONTRACT: IF-244
+    #[test]
+    fn the_plain_combo_ignores_the_action() {
+        let ctx = egui::Context::default();
+        let state_id = egui::Id::unique(("search_combo", "plain"));
+        let mut selected = Some(99);
+
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                ctx.data_mut(|data| {
+                    data.insert_temp(
+                        state_id,
+                        State {
+                            open: true,
+                            filter: String::new(),
+                        },
+                    )
+                });
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let items = vec![Item::new("Faturamento", false).with_action("✕")];
+                    selected = search_combo_sized(ui, "plain", "", &items, true, Size::default());
+                });
+            });
+            output.textures_delta.clear();
+        }
+
+        assert_eq!(
+            selected, None,
+            "a assinatura antiga devolve só o escolhido; a ação é do actionable"
+        );
     }
 }

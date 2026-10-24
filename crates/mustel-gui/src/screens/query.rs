@@ -23,7 +23,7 @@ use mustel_core::query::csv_writer::parse_records;
 use crate::request::{JobResult, Request};
 use crate::smooth_scroll::SmoothScroll;
 use crate::{desktop, picker::Picker, sql_completion, sql_editor};
-use mustel_core::config::model::SelectionQuery;
+use mustel_core::config::model::{SavedQuery, SelectionQuery};
 
 /// Teto de linhas carregadas para a tabela. O arquivo não é truncado — só a leitura da tela.
 pub const MAX_DISPLAY_ROWS: usize = 20_000;
@@ -139,6 +139,60 @@ pub struct State {
     form_scroll: SmoothScroll,
     /// Memória do popup entre quadros (pedido do `Ctrl+Space` e pausa depois de um aceite).
     completion_trigger: sql_completion::Trigger,
+    /// Estado das **queries salvas**: lista, o que está carregado, diálogo e confirmações.
+    saved: SavedState,
+}
+
+/// Estado das **queries salvas** na aba Query.
+///
+/// Separado do resto para a regra caber em funções puras testáveis sem janela: qual pedido emitir
+/// ao salvar, o que o "dirty" significa e o que acontece ao excluir a carregada.
+#[derive(Debug, Default)]
+struct SavedState {
+    /// A lista como o app a entregou (fonte da verdade é o app/núcleo).
+    queries: Vec<SavedQuery>,
+    /// Nome da salva **carregada** no editor (`None` = editor livre).
+    source: Option<String>,
+    /// SQL no momento em que foi carregada/gravada — é o que detecta "sujo".
+    loaded_sql: String,
+    /// Nome sendo digitado no diálogo (`Some` = diálogo aberto), sempre abre **vazio** (`D9`).
+    naming: Option<String>,
+    /// Nome esperando confirmação de exclusão (`D8`/`D10`).
+    pending_remove: Option<String>,
+    /// Nome esperando confirmação de **substituição** (`D4`: o aviso é no salvar).
+    pending_save: Option<String>,
+    /// Erro do diálogo de nome (vazio recusado).
+    naming_error: Option<String>,
+    /// Aviso do último gesto (ex.: "vai substituir").
+    notice: Option<String>,
+}
+
+impl SavedState {
+    /// Escolher `(none)` solta o vínculo sem tocar no texto.
+    fn clear_source(&mut self) {
+        self.source = None;
+        self.loaded_sql.clear();
+    }
+
+    /// Carrega a salva no editor: guarda o SQL de referência para detectar edição depois.
+    fn load(&mut self, name: &str, sql: &str) -> String {
+        self.source = Some(name.to_string());
+        self.loaded_sql = sql.to_string();
+        self.notice = None;
+        sql.to_string()
+    }
+
+    /// O editor tem texto **diferente** do que foi carregado/gravado?
+    fn is_dirty(&self, sql: &str) -> bool {
+        self.source.is_some() && sql != self.loaded_sql
+    }
+
+    /// Depois de gravar: o nome passa a ser a origem e o texto fica "limpo".
+    fn mark_saved(&mut self, name: &str, sql: &str) {
+        self.source = Some(name.to_string());
+        self.loaded_sql = sql.to_string();
+        self.notice = None;
+    }
 }
 
 impl Default for State {
@@ -170,6 +224,7 @@ impl Default for State {
             picker: Picker::default(),
             form_scroll: SmoothScroll::default(),
             completion_trigger: sql_completion::Trigger::default(),
+            saved: SavedState::default(),
         }
     }
 }
@@ -668,6 +723,243 @@ Selection unchanged."
         request
     }
 
+    /// Linha **Saved query** acima do editor: escolher carrega o SQL, `✕` exclui, e os diálogos
+    /// (nome e confirmações) vivem aqui.
+    ///
+    /// Devolve um [`Request::SaveSavedQueries`] quando a lista precisa ser gravada.
+    fn saved_row(&mut self, ui: &mut egui::Ui) -> Option<Request> {
+        let mut request = None;
+
+        ui.horizontal(|ui| {
+            ui.label("Saved query:");
+
+            let selected = self.saved.source.clone().unwrap_or_default();
+            let mut texts: Vec<String> = vec![String::new()];
+            texts.extend(self.saved.queries.iter().map(|query| query.name.clone()));
+            let items: Vec<crate::search_combo::Item<'_>> = texts
+                .iter()
+                .enumerate()
+                .map(|(index, text)| {
+                    if index == 0 {
+                        // A linha "(none)" não é uma query: não tem ação de excluir.
+                        crate::search_combo::Item::new("(none)", selected.is_empty())
+                    } else {
+                        crate::search_combo::Item::new(text.as_str(), *text == selected)
+                            .with_action("🗑")
+                    }
+                })
+                .collect();
+
+            let outcome = crate::search_combo::search_combo_actionable(
+                ui,
+                "saved_query",
+                &selected,
+                &items,
+                !self.is_running(),
+                crate::search_combo::Size::default(),
+            );
+
+            if let Some(index) = outcome.selected {
+                if index == 0 {
+                    self.saved.clear_source();
+                } else if let Some(query) = self.saved.queries.get(index - 1) {
+                    // D4: escolher **carrega**, sem perguntar. Os dados são clonados antes: o
+                    // `load` mexe no estado e devolveria empréstimo vivo com `queries`.
+                    let (name, sql) = (query.name.clone(), query.sql.clone());
+                    self.sql = self.saved.load(&name, &sql);
+                }
+            }
+
+            // D8: o ✕ age na linha; a exclusão só acontece na confirmação.
+            if let Some(index) = outcome.action
+                && let Some(query) = self.saved.queries.get(index - 1)
+            {
+                self.saved.pending_remove = Some(query.name.clone());
+            }
+
+            // Salvar mora **na linha** da query salva: é onde se escolhe o que carregar, então é
+            // onde se grava também. Clicar em Save com texto diferente do carregado **avisa**
+            // antes de substituir (D4).
+            if ui
+                .add_enabled(!self.sql.trim().is_empty(), egui::Button::new("💾 Save"))
+                .on_hover_text("Save over the loaded query")
+                .clicked()
+            {
+                match self.saved.source.clone() {
+                    Some(name) if self.saved.is_dirty(&self.sql) => {
+                        self.saved.pending_save = Some(name);
+                    }
+                    Some(name) => request = self.write_saved(&name, &self.sql.clone()),
+                    // Sem nada carregado, salvar é salvar como.
+                    None => {
+                        self.saved.naming = Some(String::new());
+                        self.saved.naming_error = None;
+                    }
+                }
+            }
+            if ui
+                .add_enabled(
+                    !self.sql.trim().is_empty(),
+                    egui::Button::new("📝 Save as…"),
+                )
+                .on_hover_text("Save the editor text under a new name")
+                .clicked()
+            {
+                self.saved.naming = Some(String::new());
+                self.saved.naming_error = None;
+            }
+        });
+
+        if let Some(notice) = &self.saved.notice {
+            ui.weak(notice);
+        }
+
+        // Confirmação de **exclusão** (definitiva, D10) num **popup**, não numa linha: a linha
+        // empurrava o editor para baixo e ficava fácil de ignorar no meio do formulário.
+        if let Some(name) = self.saved.pending_remove.clone() {
+            let mut decision = None;
+            egui::Modal::new(egui::Id::unique("saved_query_delete")).show(ui.ctx(), |ui| {
+                ui.set_max_width(420.0);
+                ui.heading("Delete saved query");
+                ui.label(format!("Delete '{name}'? This cannot be undone."));
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Delete").clicked() {
+                        decision = Some(true);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        decision = Some(false);
+                    }
+                });
+            });
+
+            match decision {
+                Some(true) => {
+                    let mut list = self.saved.queries.clone();
+                    mustel_core::usecases::gui_prefs::remove_saved_query(&mut list, &name);
+                    if self
+                        .saved
+                        .source
+                        .as_deref()
+                        .is_some_and(|source| source.eq_ignore_ascii_case(&name))
+                    {
+                        // O texto do editor fica; só o vínculo sai.
+                        self.saved.clear_source();
+                    }
+                    self.saved.pending_remove = None;
+                    self.saved.queries = list.clone();
+                    request = Some(Request::SaveSavedQueries(list));
+                }
+                Some(false) => self.saved.pending_remove = None,
+                None => {}
+            }
+        }
+
+        // Confirmação de **substituição** (D4: aviso no salvar, não no escolher).
+        if let Some(name) = self.saved.pending_save.clone() {
+            let mut decision = None;
+            egui::Modal::new(egui::Id::unique("saved_query_replace")).show(ui.ctx(), |ui| {
+                ui.set_max_width(420.0);
+                ui.heading("Replace saved query");
+                ui.label(format!("Replace '{name}' with the text in the editor?"));
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Replace").clicked() {
+                        decision = Some(true);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        decision = Some(false);
+                    }
+                });
+            });
+
+            match decision {
+                Some(true) => {
+                    self.saved.pending_save = None;
+                    request = self.write_saved(&name, &self.sql.clone());
+                }
+                Some(false) => self.saved.pending_save = None,
+                None => {}
+            }
+        }
+
+        // Diálogo de **nome** num popup (abre vazio, D9). Antes era uma linha do formulário, que
+        // empurrava o editor para baixo enquanto se digitava.
+        if let Some(mut name) = self.saved.naming.clone() {
+            let error = self.saved.naming_error.clone();
+            let mut decision = None;
+            egui::Modal::new(egui::Id::unique("saved_query_name")).show(ui.ctx(), |ui| {
+                ui.set_max_width(420.0);
+                ui.heading("Save query");
+                ui.label("Name:");
+                let field = ui.add(
+                    egui::TextEdit::singleline(&mut name)
+                        .hint_text("e.g. Faturamento por mês")
+                        .desired_width(f32::INFINITY),
+                );
+                // Foco no campo ao abrir: o popup existe para digitar um nome, e um clique a mais
+                // seria atrito.
+                if ui.memory(|memory| memory.focused().is_none()) {
+                    field.request_focus();
+                }
+                if let Some(error) = &error {
+                    ui.colored_label(crate::theme::danger(ui), error);
+                }
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Save").clicked() {
+                        decision = Some(true);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        decision = Some(false);
+                    }
+                });
+            });
+
+            match decision {
+                Some(true) => match self.write_saved(&name, &self.sql.clone()) {
+                    Some(save_request) => {
+                        self.saved.naming = None;
+                        self.saved.naming_error = None;
+                        request = Some(save_request);
+                    }
+                    None => {
+                        // Nome vazio: o popup continua aberto com a mensagem.
+                        self.saved.naming = Some(name);
+                        self.saved.naming_error =
+                            Some("The query name cannot be empty.".to_string());
+                    }
+                },
+                Some(false) => {
+                    self.saved.naming = None;
+                    self.saved.naming_error = None;
+                }
+                // Continua digitando: o texto volta para o estado.
+                None => self.saved.naming = Some(name),
+            }
+        }
+
+        request
+    }
+
+    /// Grava o texto do editor sob o nome pedido (cria ou substitui) e devolve o pedido.
+    ///
+    /// `None` quando o nome é inválido (vazio) — o chamador mostra o erro.
+    fn write_saved(&mut self, name: &str, sql: &str) -> Option<Request> {
+        let mut list = self.saved.queries.clone();
+        match mustel_core::usecases::gui_prefs::upsert_saved_query(&mut list, name, sql) {
+            Ok(_) => {
+                self.saved.queries = list.clone();
+                self.saved.mark_saved(name.trim(), sql);
+                Some(Request::SaveSavedQueries(list))
+            }
+            Err(_) => {
+                self.saved.naming_error = Some("The query name cannot be empty.".to_string());
+                None
+            }
+        }
+    }
+
     fn form_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -681,6 +973,12 @@ Selection unchanged."
         // A referência vem **antes** do editor: é o molde que alimenta as sugestões.
         if let Some(load) = self.reference_row(ui, servers, reference) {
             loaded_request = Some(load);
+        }
+
+        // Queries salvas: escolher uma **copia o SQL para o editor** (D2/D4). Fica acima do
+        // editor, junto da linha de referência: é insumo do texto, não do escopo.
+        if let Some(saved_request) = self.saved_row(ui) {
+            request = Some(saved_request);
         }
 
         ui.label("SQL");
@@ -872,6 +1170,27 @@ Selection unchanged."
     /// Aplica a paginação configurada (chamada pelo app a cada quadro).
     pub fn set_page_size(&mut self, page_size: Option<usize>) {
         self.page_size = page_size;
+    }
+
+    /// O app entrega a lista de queries salvas (ele é o dono; a tela só desenha).
+    ///
+    /// Se a carregada sumiu da lista (excluída por fora), o vínculo é solto sem tocar no texto.
+    pub fn set_saved_queries(&mut self, queries: Vec<SavedQuery>) {
+        self.saved.queries = queries;
+        if let Some(source) = self.saved.source.clone()
+            && !self
+                .saved
+                .queries
+                .iter()
+                .any(|query| query.name.eq_ignore_ascii_case(&source))
+        {
+            self.saved.clear_source();
+        }
+    }
+
+    /// A lista de queries salvas, como a tela a conhece (para os testes e para o pedido).
+    pub fn saved_queries(&self) -> &[SavedQuery] {
+        &self.saved.queries
     }
 
     /// A **sidebar** da aba Query: de onde vêm as bases e quais vão rodar.
@@ -2683,5 +3002,88 @@ mod tests {
         // O `epaint` exige que as texturas do quadro sejam consumidas ou limpas antes do descarte.
         let mut textures = output.textures_delta;
         textures.clear();
+    }
+
+    /// Escolher uma salva carrega o SQL e marca a origem; editar deixa "sujo"; gravar limpa.
+    /// CONTRACT: IF-244
+    #[test]
+    fn loading_a_saved_query_marks_the_source_and_tracks_dirt() {
+        let mut saved = SavedState::default();
+
+        let sql = saved.load("Faturamento", "select 1");
+        assert_eq!(sql, "select 1");
+        assert_eq!(saved.source.as_deref(), Some("Faturamento"));
+        assert!(!saved.is_dirty("select 1"), "recém-carregada não está suja");
+        assert!(saved.is_dirty("select 2"), "texto diferente está sujo");
+
+        saved.mark_saved("Faturamento", "select 2");
+        assert!(!saved.is_dirty("select 2"), "gravar limpa o estado");
+    }
+
+    /// `(none)` solta o vínculo sem tocar no texto; sem origem nunca está "sujo".
+    /// CONTRACT: IF-244
+    #[test]
+    fn clearing_the_source_leaves_the_editor_alone() {
+        let mut saved = SavedState::default();
+        saved.load("X", "select 1");
+
+        saved.clear_source();
+
+        assert_eq!(saved.source, None);
+        assert!(
+            !saved.is_dirty("qualquer coisa"),
+            "sem origem não há o que sujar"
+        );
+    }
+
+    /// A tela **adota** a lista do app e solta o vínculo se a carregada sumiu.
+    /// CONTRACT: IF-244
+    #[test]
+    fn setting_the_list_drops_a_source_that_no_longer_exists() {
+        let mut state = State::default();
+        state.saved.load("Faturamento", "select 1");
+
+        state.set_saved_queries(vec![SavedQuery {
+            name: "Outra".to_string(),
+            sql: "select 2".to_string(),
+        }]);
+
+        assert_eq!(
+            state.saved.source, None,
+            "a carregada sumiu da lista: vínculo solto"
+        );
+        assert_eq!(state.saved_queries().len(), 1, "a lista nova vale");
+    }
+
+    /// O popup de nome grava e devolve o pedido; nome vazio é recusado sem fechar.
+    /// CONTRACT: IF-244
+    #[test]
+    fn the_name_popup_saves_and_refuses_an_empty_name() {
+        let mut state = State {
+            sql: "select 42".to_string(),
+            ..State::default()
+        };
+
+        // Nome vazio: nada é gravado e a tela mostra o erro (o popup continua aberto).
+        assert!(
+            state.write_saved("   ", "select 42").is_none(),
+            "nome vazio não gera pedido"
+        );
+        assert!(state.saved_queries().is_empty(), "lista intacta");
+        assert!(
+            state.saved.naming_error.is_some(),
+            "a mensagem aparece no popup"
+        );
+
+        // Nome válido: grava, devolve o pedido e o vínculo fica com a salva.
+        let request = state.write_saved("Consulta", "select 42");
+        assert!(
+            matches!(request, Some(Request::SaveSavedQueries(_))),
+            "pedido de gravar a lista: {request:?}"
+        );
+        assert_eq!(state.saved_queries().len(), 1);
+        assert_eq!(state.saved_queries()[0].name, "Consulta");
+        assert_eq!(state.saved_queries()[0].sql, "select 42");
+        assert_eq!(state.saved.source.as_deref(), Some("Consulta"));
     }
 }

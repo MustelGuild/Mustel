@@ -92,6 +92,12 @@ pub struct GuiPrefs {
     /// a seleção por query não vê o arquivo mudar.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub selections: Vec<SelectionQuery>,
+    /// Queries salvas para **uso recorrente**: escolher uma carrega o SQL no editor (aba **Query**).
+    ///
+    /// Conceito separado de `selections`: aqui não há servidor nem banco, e o texto vai para o
+    /// editor — não é executado para descobrir bases. Ausente do JSON enquanto vazia.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub saved_queries: Vec<SavedQuery>,
     /// Como a lista de bases da aba **Query** é desenhada (paginação).
     ///
     /// Ausente = **sem paginação** (desenha todas as bases). Só aparece no arquivo quando alguém
@@ -153,6 +159,7 @@ impl Default for GuiPrefs {
             font_scale: DEFAULT_FONT_SCALE,
             theme: GuiTheme::System,
             selections: Vec::new(),
+            saved_queries: Vec::new(),
             selection_list: SelectionListPrefs::default(),
         }
     }
@@ -173,6 +180,20 @@ pub struct SelectionQuery {
     /// Banco desse servidor onde o SQL roda.
     pub database: String,
     /// O SQL; devolve as bases por connection string ou por colunas.
+    pub sql: String,
+}
+
+/// Uma query salva para **uso recorrente** na aba **Query**.
+///
+/// Guarda **só o SQL** (decisão `D7`): servidor, banco e diretório de saída são escolhidos na tela a
+/// cada execução. Escolher a query no combo **copia o texto para o editor**, onde ele continua
+/// editável — é um atalho de digitação, não uma execução pré-configurada.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SavedQuery {
+    /// Nome curto, único **sem diferenciar maiúsculas**. É o rótulo do combo.
+    pub name: String,
+    /// O SQL que vai para o editor.
     pub sql: String,
 }
 
@@ -408,6 +429,7 @@ mod tests {
                 font_scale: 1.15,
                 theme: GuiTheme::Dark,
                 selections: Vec::new(),
+                saved_queries: Vec::new(),
                 selection_list: Default::default(),
             }),
             ..UserConfig::default()
@@ -467,6 +489,56 @@ mod tests {
         assert!(
             !json.contains("theme"),
             "System não vai para o arquivo: {json}"
+        );
+    }
+
+    /// Sem a chave `savedQueries`, a lista começa vazia.
+    /// CONTRACT: IF-244
+    #[test]
+    fn a_config_without_saved_queries_reads_as_an_empty_list() {
+        let json = r#"{ "servers": [], "gui": { "fontScale": 1.0 } }"#;
+        let config: UserConfig = serde_json::from_str(json).expect("deserializes");
+
+        assert!(config.gui.expect("a seção existe").saved_queries.is_empty());
+    }
+
+    /// As queries salvas sobrevivem à ida e volta do arquivo, ao lado das de seleção.
+    /// CONTRACT: IF-244
+    #[test]
+    fn saved_queries_round_trip_next_to_selections() {
+        let prefs = GuiPrefs {
+            saved_queries: vec![SavedQuery {
+                name: "Faturamento por mês".to_string(),
+                sql: "select 1".to_string(),
+            }],
+            selections: vec![SelectionQuery {
+                name: "Tenants".to_string(),
+                server: "local".to_string(),
+                database: "dev".to_string(),
+                sql: "select host from tenants".to_string(),
+            }],
+            ..GuiPrefs::default()
+        };
+
+        let json = serde_json::to_string_pretty(&prefs).expect("serializes");
+        let back: GuiPrefs = serde_json::from_str(&json).expect("deserializes");
+
+        assert_eq!(back, prefs, "as duas listas convivem no arquivo: {json}");
+    }
+
+    /// Lista vazia de queries salvas não aparece no arquivo.
+    /// CONTRACT: IF-244
+    #[test]
+    fn empty_saved_queries_stay_out_of_the_file() {
+        let prefs = GuiPrefs {
+            interface_font: Some("Segoe UI".to_string()),
+            ..GuiPrefs::default()
+        };
+        let json = serde_json::to_string_pretty(&prefs).expect("serializes");
+
+        assert!(
+            !json.contains("savedQueries"),
+            "lista vazia não vai para o arquivo: {json}"
         );
     }
 

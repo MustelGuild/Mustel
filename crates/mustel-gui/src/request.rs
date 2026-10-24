@@ -50,9 +50,17 @@ pub enum Request {
     /// A lista de seletores mudou: o app compõe a seção `gui` (aparência + seletores + paginação)
     /// e grava.
     ///
-    /// A tela do cadastro devolve **este** pedido, e não um `SaveGuiPrefs` pronto: ela só conhece
-    /// os seletores, e gravar o que ela conhece apagaria a aparência.
+    /// A lista de seletores mudou: o app compõe a seção `gui` (aparência + seletores + salvas)
+    /// e grava.
+    ///
+    /// A tela do cadastro devolve **este** pedido, e não um `SaveGuiPrefs` pronto: ela só
+    /// conhece os seletores, e gravar o que ela conhece apagaria a aparência.
     SaveSelections,
+    /// A lista de **queries salvas** mudou (aba Query): o app compõe a seção `gui` inteira e grava.
+    ///
+    /// Mesmo motivo do `SaveSelections`: a aba Query conhece só as salvas, e gravar apenas isso
+    /// apagaria tema, fonte e seletores.
+    SaveSavedQueries(Vec<mustel_core::config::model::SavedQuery>),
     /// Roda uma query de seleção salva e marca as bases do escopo pedido (R1).
     ///
     /// Aborta a carga inteira quando um host não está no cadastro (D9) — o contrário do

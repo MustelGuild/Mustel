@@ -84,6 +84,8 @@ pub struct App {
     reference: crate::reference::Reference,
     /// Aba Settings: preferências de aparência.
     settings: settings_screen::State,
+    /// Queries salvas da aba **Query** (dono da lista, como `servers` é dono do cadastro).
+    saved_queries: Vec<mustel_core::config::model::SavedQuery>,
     /// A sidebar de servidores/bases está aberta?
     sidebar_open: bool,
 }
@@ -153,6 +155,10 @@ impl App {
             servers: servers_screen::State::new(servers).with_selectors(prefs.as_ref()),
             query,
             settings,
+            saved_queries: prefs
+                .as_ref()
+                .map(|prefs| prefs.saved_queries.clone())
+                .unwrap_or_default(),
             sidebar_open: true,
         })
     }
@@ -181,6 +187,7 @@ impl App {
         crate::screens::compose_gui_prefs(
             self.settings.prefs(),
             self.servers.selectors().selections(),
+            &self.saved_queries,
         )
     }
 
@@ -216,6 +223,21 @@ impl App {
                 ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(
                     crate::fonts::min_window_size(chosen.scale),
                 ));
+            }
+            // A lista de **queries salvas** mudou: compõe a seção `gui` inteira e grava.
+            Request::SaveSavedQueries(queries) => {
+                self.saved_queries = queries;
+                let prefs = self.gui_prefs();
+                match ConfigStore::with_default_path() {
+                    Ok(store) => match gui_prefs::save(&store, Some(prefs)) {
+                        Ok(()) => {
+                            self.status = "Saved queries saved.".to_string();
+                            ctx.request_repaint();
+                        }
+                        Err(error) => self.status = error.to_string(),
+                    },
+                    Err(error) => self.status = error.to_string(),
+                }
             }
             // O cadastro de seletores mudou: compõe a seção `gui` inteira e grava pelo mesmo
             // caminho da aparência.
@@ -884,6 +906,8 @@ impl eframe::App for App {
                         // edita, então mexer lá vale no quadro seguinte.
                         let page_size = crate::screens::query::page_size(&self.gui_prefs());
                         self.query.set_page_size(page_size);
+                        // O dono da lista é o app: a tela só desenha e devolve o pedido.
+                        self.query.set_saved_queries(self.saved_queries.clone());
                         self.query.ui(ui, &servers, schema, &self.reference)
                     }
                     Screen::Settings => self.settings.ui(ui),

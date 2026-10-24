@@ -139,6 +139,22 @@ reutiliza a numeração dos planos antigos — é uma quarta família, nascida d
 A referência da aba está em [`reference/settings-aba.md`](../reference/settings-aba.md); a linha de
 contrato é `IF-243`.
 
+## Queries salvas (`S1`–`S5`)
+
+Numeração própria desta feature, aberta em 2026-10-24. É a **segunda família de aparência/produto**
+depois da `A` (tema), e não reutiliza as numerações dos planos antigos.
+
+| ID | Tema | Decisão | Por quê |
+|---|---|---|---|
+| `S1` | Modelo | `gui.savedQueries: [{ name, sql }]`, **separado** de `gui.selections` | Unificar exigiria `server`/`database` opcionais e misturaria duas intenções no mesmo combo |
+| `S2` | Onde fica | Combo **acima do editor** da aba Query | É insumo do texto; a sidebar é escopo (quais bases rodam) |
+| `S3` | Salvar | `💾 Save` e `Save as…` **na linha do combo** (à direita dele); diálogo abre **vazio** | Gravar é o outro lado de escolher: fica onde a query é escolhida, não ao lado do `Run query` (ajuste do dono, 2026-10-24) |
+| `S4` | Sobrescrever | Escolher **carrega sem perguntar**; o aviso aparece **no salvar**, quando o texto difere | Escolher é reversível; sobrescrever não volta |
+| `S5` | Excluir | **Lixeira `🗑`** em cada linha do combo, confirmação num **popup** (não numa linha do formulário), **definitivo** (sem desfazer); excluir a carregada mantém o texto e solta o vínculo | Resolve na tela de uso; o popup protege sem deslocar o layout |
+
+A referência está em [`reference/saved-queries.md`](../reference/saved-queries.md); a linha de
+contrato é `IF-244`.
+
 ## O que não veio para cá
 
 - **Tarefas** (`T1`–`T48` e afins): viraram código; o registro de execução vive no histórico do Git.

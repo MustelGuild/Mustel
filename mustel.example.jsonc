@@ -55,6 +55,11 @@
     // Database list pagination in the Query tab (off by default).
     "selectionList": { "paginate": false, "pageSize": 50 },
     // Saved selection queries: [{ "name", "server", "database", "sql" }].
-    "selections": []
+    "selections": [],
+    // Queries you pick in the Query tab to load into the editor:
+    // [{ "name", "sql" }].
+    "savedQueries": [
+      { "name": "Sample: first 100 rows", "sql": "SELECT * FROM my_table LIMIT 100" }
+    ]
   }
 }

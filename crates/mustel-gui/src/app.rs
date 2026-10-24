@@ -54,6 +54,12 @@ struct Running {
 /// cena e a barra `▶` fica na área principal.
 const SIDEBAR_WIDTH: f32 = 300.0;
 
+/// Respiro entre a sidebar e o conteúdo à direita dela.
+///
+/// O painel desenha a própria linha divisória; sem o respiro o primeiro texto da área principal
+/// encosta nela e a tela parece "colada".
+const CONTENT_GAP: i8 = 12;
+
 pub struct App {
     runtime: Runtime,
     /// O contexto do `egui`, guardado para pedir repaint de fora do desenho (ao encadear jobs).
@@ -796,26 +802,40 @@ impl eframe::App for App {
                 }
             }
 
-            let main_request = match self.screen {
-                Screen::Servers => self.servers.ui(ui),
-                Screen::Query => {
-                    // O esquema carregado vai como `Arc`: a tela guarda uma cópia para o desenho e o
-                    // cache continua dono do original.
-                    let schema = self
-                        .schemas
-                        .get(
-                            self.query.reference_server(),
-                            self.query.reference_database(),
-                        )
-                        .map(|schema| std::sync::Arc::new(schema.clone()));
-                    self.query.ui(ui, &servers, schema, &self.reference)
-                }
-                Screen::Settings => {
-                    let servers = self.servers_snapshot();
-                    self.settings.ui(ui, &servers)
-                }
+            // **Padding entre a sidebar e o conteúdo.** Sem ele o texto da área principal encosta na
+            // linha divisória do painel. Só existe quando a sidebar está visível: em Settings, ou com
+            // a barra `▶`, o conteúdo usa a largura toda.
+            let gap = if self.sidebar_open && matches!(self.screen, Screen::Query | Screen::Servers)
+            {
+                CONTENT_GAP
+            } else {
+                0
             };
-            request = main_request.or(request);
+            let main = egui::Frame::NONE
+                .inner_margin(egui::Margin {
+                    left: gap,
+                    ..egui::Margin::ZERO
+                })
+                .show(ui, |ui| match self.screen {
+                    Screen::Servers => self.servers.ui(ui),
+                    Screen::Query => {
+                        // O esquema carregado vai como `Arc`: a tela guarda uma cópia para o desenho
+                        // e o cache continua dono do original.
+                        let schema = self
+                            .schemas
+                            .get(
+                                self.query.reference_server(),
+                                self.query.reference_database(),
+                            )
+                            .map(|schema| std::sync::Arc::new(schema.clone()));
+                        self.query.ui(ui, &servers, schema, &self.reference)
+                    }
+                    Screen::Settings => {
+                        let servers = self.servers_snapshot();
+                        self.settings.ui(ui, &servers)
+                    }
+                });
+            request = main.inner.or(request);
 
             if let Some(request) = request {
                 self.dispatch(request, &ctx);

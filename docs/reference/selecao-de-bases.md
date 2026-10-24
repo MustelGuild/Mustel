@@ -46,8 +46,8 @@ Servidores e escolha de bases ficam numa **sidebar** à esquerda; a área princi
 └────────────────────────────┴───────────────────────────────────────────────┘
 ```
 
-A sidebar tem **300 px** fixos. O botão `◀` recolhe para uma barra `▶ N selected` na área principal;
-`▶` reabre. A aba **Servers** usa a mesma sidebar — a lista do cadastro fica lá, em cards que ocupam
+A sidebar tem **300 px** fixos, com **12 px de respiro** entre ela e o conteúdo à direita. O botão
+`◀` recolhe para uma barra `▶ N selected` na área principal; `▶` reabre. A aba **Servers** usa a mesma sidebar — a lista do cadastro fica lá, em cards que ocupam
 a largura toda, e o formulário ocupa a área principal.
 
 | Controle | O que faz |

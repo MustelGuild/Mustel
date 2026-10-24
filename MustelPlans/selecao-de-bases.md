@@ -626,3 +626,10 @@ Append-only.
   que cortava na borda dos 300 px. **Verificado na janela:** abas Query e Servers com sidebar de
   300 px, cards de `Local` e `Producao-SP` ocupando a largura toda e iguais entre si, e a barra `▶ 0
   selected` ao recolher.
+- `[2026-10-23]` **Padding entre a sidebar e o conteúdo.** O dono pediu respiro entre o painel e o
+  que fica à direita dele. A área principal agora é desenhada dentro de um `Frame::NONE` com
+  `inner_margin` de **12 px à esquerda**, e só quando a sidebar está visível (`Query`/`Servers` com a
+  sidebar aberta) — em Settings, ou com a barra `▶`, o conteúdo continua usando a largura toda. O
+  rótulo e o valor vivem em `CONTENT_GAP`, na mesma constante de layout da `SIDEBAR_WIDTH`.
+  Verificado na janela nas três abas: Query e Servers com o texto afastado da divisória; Settings
+  inalterada, começando na borda.

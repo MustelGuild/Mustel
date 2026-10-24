@@ -4,7 +4,8 @@
 
 .DESCRIPTION
     Builda o binário release (com --locked), monta a pasta do pacote com binário,
-    configuração de exemplo e LICENSE, gera o .zip e o SHA256 em packaging/.
+    configuração de exemplo, LICENSE e o aviso da Fira Code (SIL OFL 1.1), gera o .zip
+    e o SHA256 em packaging/.
     A **publicação é manual**: o script só produz o artefato. O equivalente no Unix é
     o publish.sh, com o mesmo layout de saída.
 
@@ -59,7 +60,7 @@ Mustel $version ($triple)
 1. Copie o binário '$exe' para um diretório no PATH.
 2. Copie 'mustel.example.jsonc' para o diretório de configuração e ajuste:
    Windows:     %APPDATA%\Mustel\mustel.jsonc
-   Linux/macOS: \$XDG_CONFIG_HOME/Mustel/mustel.jsonc (ou ~/.config/Mustel/mustel.jsonc)
+   Linux/macOS: `$XDG_CONFIG_HOME/Mustel/mustel.jsonc (ou ~/.config/Mustel/mustel.jsonc)
 3. 'mustel --help' lista os comandos.
 
 Licença: AGPL-3.0-only (ver LICENSE).

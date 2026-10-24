@@ -1073,3 +1073,10 @@ O Docker Desktop também foi iniciado nesta rodada (o daemon estava parado) para
   fonte e os dois READMEs ganharam a seção “Third-party notices”/“Avisos de terceiros”. O preâmbulo
   do `FiraCode-OFL.txt` passou para **inglês** — o corpo da licença já era, então o arquivo agora é
   um documento inteiro em um idioma só.
+- `[2026-10-24]` **Bug pré-existente no `README.txt` do pacote Windows: `$XDG_CONFIG_HOME` sumia.** O
+  here-string `@"..."@` do `publish.ps1` escrevia `\$XDG_CONFIG_HOME`, mas em PowerShell o escape é
+  crase: a variável era expandida (vazia) e sobrava a barra, deixando `\/Mustel/mustel.jsonc` no
+  pacote — quem instalou no Linux seguia o caminho errado. Corrigido para `` `$XDG_CONFIG_HOME ``. O
+  `publish.sh` já estava correto: em heredoc bash `\$` é `$` literal (conferido executando o trecho).
+  Verificado com `publish.ps1 -NoBuild` e leitura do `README.txt` empacotado. O comentário de cabeçalho
+  do script também passou a citar o aviso da Fira Code.

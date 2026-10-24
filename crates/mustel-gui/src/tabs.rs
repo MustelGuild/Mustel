@@ -125,9 +125,158 @@ fn paint(painter: &egui::Painter, icon: Icon, rect: egui::Rect, stroke: egui::St
     }
 }
 
+/// Desenha um **controle segmentado** de largura toda e devolve o índice clicado.
+///
+/// É o que separa as duas sub-abas de Connections. Escolhido no lugar de duas pílulas soltas (que
+/// pareciam uma linha de lista com um item selecionado) e no lugar do [`tab`] de cima (que tem o
+/// mesmo peso da navegação principal e achataria a hierarquia): o contêiner com borda diz "aqui se
+/// troca de visão", e as metades iguais dizem que as duas são pares.
+///
+/// A ativa é **preenchida** com a cor de seleção e texto contrastante; a inativa é texto normal,
+/// com preenchimento só no hover — affordance de clique sem virar botão.
+pub fn segmented(ui: &mut egui::Ui, labels: &[&str], selected: usize) -> Option<usize> {
+    segmented_inner(ui, labels, selected).0
+}
+
+/// O controle e o **rect** que ele ocupou (o teste mede o clique a partir daqui).
+fn segmented_inner(
+    ui: &mut egui::Ui,
+    labels: &[&str],
+    selected: usize,
+) -> (Option<usize>, egui::Rect) {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let height = ui.spacing().interact_size.y + 4.0;
+    let width = ui.available_width();
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
+
+    // O contêiner: borda arredondada. Ele é o que separa navegação de conteúdo.
+    let visuals = ui.visuals();
+    ui.painter().rect(
+        rect,
+        4.0,
+        visuals.faint_bg_color,
+        egui::Stroke::new(1.0, visuals.widgets.noninteractive.bg_stroke.color),
+        egui::StrokeKind::Inside,
+    );
+
+    let mut clicked = None;
+    let inner = rect.shrink(2.0);
+    let segment_width = inner.width() / labels.len().max(1) as f32;
+
+    for (index, label) in labels.iter().enumerate() {
+        let left = inner.left() + segment_width * index as f32;
+        let segment = egui::Rect::from_min_size(
+            egui::pos2(left, inner.top()),
+            egui::vec2(segment_width, inner.height()),
+        );
+        let response = ui.interact(
+            segment,
+            ui.scope_id().with(("segment", index)),
+            egui::Sense::click(),
+        );
+        let active = index == selected;
+
+        if active {
+            ui.painter()
+                .rect_filled(segment, 3.0, visuals.selection.bg_fill);
+        } else if response.hovered() {
+            ui.painter()
+                .rect_filled(segment, 3.0, visuals.widgets.hovered.weak_bg_fill);
+        }
+
+        let color = if active {
+            visuals.selection.stroke.color
+        } else {
+            visuals.text_color()
+        };
+        ui.painter().text(
+            segment.center(),
+            egui::Align2::CENTER_CENTER,
+            label,
+            font.clone(),
+            color,
+        );
+
+        // Fio entre as duas metades: sem ele, dois rótulos no mesmo fundo parecem um só.
+        if index > 0 {
+            ui.painter().line_segment(
+                [segment.left_top(), segment.left_bottom()],
+                egui::Stroke::new(1.0, visuals.widgets.noninteractive.bg_stroke.color),
+            );
+        }
+
+        if response.clicked() {
+            clicked = Some(index);
+        }
+        if !active {
+            response.on_hover_cursor(egui::CursorIcon::PointingHand);
+        }
+    }
+
+    (clicked, rect)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Clicar na metade direita devolve o índice 1; na esquerda, 0.
+    ///
+    /// O controle é desenhado à mão (não é um par de botões), então o mapa clique → índice é
+    /// geometria: este teste garante que as duas metades existem e que a divisão é no meio. A
+    /// posição vem do **rect desenhado**, não de uma conta com a largura suposta — a primeira
+    /// versão do teste se enganou justamente aí (a largura do painel não é a que se pede no `ui`).
+    /// CONTRACT: IF-242
+    #[test]
+    fn the_segmented_control_maps_clicks_to_its_halves() {
+        let ctx = egui::Context::default();
+        let labels = ["Servers (2)", "Query Selector (2)"];
+
+        let mut drawn = egui::Rect::NOTHING;
+        let mut warmup = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                drawn = segmented_inner(ui, &labels, 0).1;
+            });
+        });
+        warmup.textures_delta.clear();
+        assert!(
+            drawn.width() > 100.0 && drawn.height() > 5.0,
+            "o controle foi desenhado: {drawn:?}"
+        );
+
+        let click_at = |fraction: f32| -> Option<usize> {
+            let mut chosen = None;
+            let target = egui::pos2(drawn.left() + drawn.width() * fraction, drawn.center().y);
+            let input = egui::RawInput {
+                events: vec![
+                    egui::Event::PointerMoved(target),
+                    egui::Event::PointerButton {
+                        pos: target,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                    egui::Event::PointerButton {
+                        pos: target,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                ..egui::RawInput::default()
+            };
+            let mut output = ctx.run_ui(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    chosen = segmented(ui, &labels, 0);
+                });
+            });
+            output.textures_delta.clear();
+            chosen
+        };
+
+        assert_eq!(click_at(0.75), Some(1), "metade direita");
+        assert_eq!(click_at(0.25), Some(0), "metade esquerda");
+    }
 
     /// O centro do ícone e o centro do texto ficam na **mesma** linha.
     ///

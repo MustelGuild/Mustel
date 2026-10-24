@@ -21,7 +21,8 @@ diz qual dos dois.
 ## Usar um seletor salvo
 
 O seletor é uma query cadastrada na aba **Connections**, na sub-aba **Query Selector** — o mesmo
-lugar do cadastro de servidores, uma sub-aba ao lado. Lá o formulário abre na área principal, com o
+lugar do cadastro de servidores, uma sub-aba ao lado (a troca é o controle segmentado no topo da
+sidebar; o `•` avisa quando o outro lado tem rascunho aberto). Lá o formulário abre na área principal, com o
 editor SQL largo e o `Test` embaixo. O campo `Reads from` diz de onde a query **lê**; o que ela marca
 pode cair em qualquer servidor do cadastro.
 

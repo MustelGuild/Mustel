@@ -86,6 +86,18 @@ impl Form {
     }
 }
 
+/// O rótulo de um segmento: `Servers (2)`, e `•` quando aquele lado tem rascunho aberto.
+///
+/// A contagem vai entre parênteses porque é **detalhe**, não parte do nome — a mesma leitura do
+/// `All servers (208)` no combo de servidor da aba Query.
+fn segment_label(name: &str, count: usize, draft: bool) -> String {
+    let mut label = format!("{name} ({count})");
+    if draft {
+        label.push_str(" •");
+    }
+    label
+}
+
 /// Qual dos dois cadastros a aba **Connections** está mostrando.
 ///
 /// O seletor é global (pode ser aplicado a qualquer servidor), então ele não mora dentro de um
@@ -212,22 +224,31 @@ impl State {
     pub fn sidebar_ui(&mut self, ui: &mut egui::Ui) -> Option<Request> {
         let mut request = None;
 
-        // As **duas sub-abas** deste cadastro. Ficam leves de propósito: a aba de cima já usa o
-        // estilo de pílula, e uma segunda fileira igual confundiria a hierarquia.
-        ui.horizontal(|ui| {
-            for (context, label) in [
-                (Context::Servers, "Servers"),
-                (Context::QuerySelector, "Query Selector"),
-            ] {
-                if ui
-                    .selectable_label(self.context == context, label)
-                    .clicked()
-                {
-                    self.context = context;
-                }
-            }
-        });
-        ui.separator();
+        // As **duas sub-abas** deste cadastro, como um controle segmentado: o contêiner diz "aqui se
+        // troca de visão" e as metades iguais dizem que as duas são pares. O contador vive dentro
+        // do segmento (a linha solta `N server(s)` saiu) e um `•` marca o lado que tem rascunho
+        // aberto — o rascunho sobrevive à troca, mas nada avisava que ele estava lá.
+        let labels = [
+            segment_label("Servers", self.servers.len(), self.form.is_some()),
+            segment_label(
+                "Query Selector",
+                self.selectors.selections().len(),
+                self.selectors.has_form(),
+            ),
+        ];
+        let selected = if self.context == Context::Servers {
+            0
+        } else {
+            1
+        };
+        let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+        if let Some(index) = crate::tabs::segmented(ui, &refs, selected) {
+            self.context = if index == 0 {
+                Context::Servers
+            } else {
+                Context::QuerySelector
+            };
+        }
 
         // A sub-aba do seletor tem lista própria (e a área principal também troca).
         if self.context == Context::QuerySelector {
@@ -244,7 +265,6 @@ impl State {
                 self.confirming_remove = None;
             }
         });
-        ui.weak(format!("{} server(s)", self.servers.len()));
 
         if let Some(error) = &self.error {
             ui.colored_label(egui::Color32::RED, error);
@@ -301,6 +321,14 @@ impl State {
     /// A **área principal**: o formulário de cadastro/edição e o recado da última operação.
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Request> {
         let mut request = None;
+
+        // Título da seção: depois de trocar de sub-aba, a orientação não pode depender só da
+        // sidebar.
+        ui.heading(match self.context {
+            Context::Servers => "Servers",
+            Context::QuerySelector => "Query Selector",
+        });
+        ui.separator();
 
         // O cadastro de seletores desenha na área principal inteira (é onde o editor SQL cabe).
         if self.context == Context::QuerySelector {
@@ -569,6 +597,22 @@ mod tests {
         assert_eq!(form.databases, "a, b");
         assert_eq!(form.exclude_patterns, "x*");
         assert_eq!(form.to_entry().name, "dev");
+    }
+
+    /// O rótulo do segmento traz a contagem, e `•` só quando aquele lado tem rascunho.
+    /// CONTRACT: IF-242
+    #[test]
+    fn the_segment_label_shows_the_count_and_the_draft_dot() {
+        assert_eq!(segment_label("Servers", 2, false), "Servers (2)");
+        assert_eq!(
+            segment_label("Query Selector", 0, false),
+            "Query Selector (0)"
+        );
+        assert_eq!(
+            segment_label("Query Selector", 3, true),
+            "Query Selector (3) •",
+            "o ponto avisa que há rascunho do outro lado"
+        );
     }
 
     /// Entrar na aba volta para `Servers`, e o rascunho do formulário **não** se perde.

@@ -200,7 +200,12 @@ O alias `Server=` só vale **dentro** da connection string.
 ## O cadastro do seletor
 
 O cadastro fica na aba **Connections**, na sub-aba **Query Selector** (ao lado de `Servers`). A
-sidebar lista os seletores (nome e de onde leem), cada um com `[Edit] [Test] [Remove]` — remover
+troca entre as duas é um **controle segmentado** de largura toda: contêiner com borda, metades
+iguais, a ativa preenchida. Cada lado mostra a **contagem** (`Servers (2)`), e um `•` marca o lado que
+tem **rascunho** de formulário aberto — o rascunho sobrevive à troca de abas. Entrar na aba sempre
+abre em `Servers`, e a área principal é titulada com a seção ativa.
+
+A sidebar lista os seletores (nome e de onde leem), cada um com `[Edit] [Test] [Remove]` — remover
 pede **dois** toques. O formulário abre na **área principal**, onde o editor SQL tem a largura toda.
 
 O seletor é **global**: ele pode ser aplicado a qualquer servidor do cadastro. O que é de um

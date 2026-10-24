@@ -918,3 +918,25 @@ Append-only.
   `a_selector_with_a_missing_source_warns_without_any_request` e
   `composing_the_section_keeps_both_halves`; os testes do cadastro migraram de
   `settings.rs` para `selectors.rs` no manifesto.
+
+- `[2026-10-24]` **As duas sub-abas viraram um controle segmentado (IF-242).** O dono achou as
+  sub-abas fracas, e eram: o azul era o mesmo de uma linha de lista selecionada, a inativa era texto
+  puro (sem affordance) e nada separava navegação de conteúdo. Discutimos três caminhos — segmentado,
+  sublinhado estilo navegador, ou reusar o `tabs::tab` de cima — e ele escolheu o **segmentado com
+  três ajustes**: contador dentro de cada lado (`Servers (2)`) no lugar da linha solta
+  `N server(s)`/`N selector(s)`, `•` no lado que tem **rascunho** de formulário aberto (o rascunho
+  sobrevive à troca, mas nada avisava), e título da seção na área principal.
+  Reusar o `tab` de cima foi recusado na conversa por hierarquia: duas fileiras de pílulas iguais
+  achatariam qual nível se está trocando.
+  Implementação: `tabs::segmented` (desenhado à mão, como o `tab`, ~60 linhas) — contêiner com
+  borda, metades iguais, ativa preenchida com a cor de seleção, inativa só texto com hover;
+  `servers.rs` troca os dois `selectable_label` por uma chamada e calcula `segment_label(name,
+  count, draft)`; o `_inner` devolve o rect para o teste medir o clique.
+  **Tropeço registrado:** a primeira versão do teste clicava em `400 * 0.75` supondo que o controle
+  teria 400 px — a largura do `CentralPanel` não é a que se pede no `ui`, então o clique caía na
+  metade esquerda e o teste "provava" o contrário. Agora o teste pega o **rect desenhado** num
+  quadro de aquecimento e clica dentro dele. Verificado também na janela (clique na metade direita
+  move o preenchimento, troca `Add server` por `Add query` e muda o título da área principal para
+  `Query Selector`; com rascunho aberto o rótulo fica `Query Selector 2 •`).
+  Testes: `the_segmented_control_maps_clicks_to_its_halves`,
+  `the_segment_label_shows_the_count_and_the_draft_dot`; workspace com 567 testes.

@@ -179,8 +179,6 @@ impl State {
                 self.test_result = None;
             }
         });
-        ui.weak(format!("{} selector(s)", self.selections.len()));
-
         if let Some(message) = &self.message {
             ui.weak(message);
         }

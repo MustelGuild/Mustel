@@ -861,3 +861,32 @@ Append-only.
   `forgetting_the_selector_turns_reset_back_into_clear`,
   `reset_touches_only_what_the_filter_and_search_show` e
   `the_clear_button_becomes_reset_when_a_selector_is_applied`. Workspace com 563 testes.
+- `[2026-10-24]` **Revisão Diátaxis da documentação depois da reforma da sidebar.** O dono pediu
+  para revisar o que fizemos e ajustar os quatro quadrantes. A revisão não ficou em estilo: achou
+  **fato errado** e **buraco de quadrante**.
+  Fatos corrigidos: `explanation/fontes.md` e `reference/settings-aba.md` ainda diziam que o mínimo
+  da janela era `640×480` (a 1,25x, `800×600`) — agora 880×560 e 1100×700, com a ressalva do 1366×768
+  a 125% + `fontScale` 1,25; a referência dizia que **escolher `template0` no combo `Database` é
+  permitido**, o que deixou de ser verdade quando o combo passou a usar `usable_names` (sem template
+  nem `datallowconn = false`); e o diagrama ASCII mostrava `[Clear]`, a linha do seletor com `⟳` e o
+  combo mais curto — regenerado com `[Reset]`, `∅`, `☐ Show only marked` e `template0` apagado.
+  Onde cada coisa ficou: a referência **descreve** (o quê, escopo, nomes) e a explicação **justifica**.
+  Saíram da referência (para `explanation/selecao-de-bases.md`) o "era o `Discover all`", o "não
+  existe botão `Apply Selector`", o "é a leitura literal de limpar a seleção manual", o "para não
+  ser barrada em silêncio" e o "assim a contagem é estável"; entraram lá seis seções novas — *O
+  combo é o botão*, *Por que cada servidor lembra o seu seletor*, *Por que `Clear` vira `Reset`*,
+  *Por que a contagem é o catálogo do servidor* e *Visão e ação não se misturam* —, e os dois pontos
+  que a referência agora delega à explicação têm link de âncora.
+  Buraco de quadrante fechado: **não havia how-to da janela**. A escolha de bases na GUI só existia
+  como referência ("o que é") e explicação ("por quê"), nunca como ação. Criei
+  `how-to/escolher-bases-na-janela.md` (marcar à mão, usar seletor, desfazer com `Reset`, ver o que o
+  servidor tem, limpar com a vassoura, o que fazer quando a aplicação falha), com o exemplo de erro
+  copiado da janela de verdade (`error connecting to server`), link no `README` e nos "para onde ir
+  agora" do tutorial, e cross-link com o how-to do terminal.
+  Ajustes de navegação: `reference/settings-aba.md` abria como se cobrisse a aba inteira, mas só
+  fala de aparência — ganhou um aviso apontando o cadastro de queries e a paginação, que vivem na
+  referência da seleção.
+  Também atualizei as **superfícies** do contrato que ainda diziam `⟳ Apply` / `⟳ Discover`
+  (IF-223, IF-224, IF-226, IF-227, IF-235): as decisões não mudaram, o nome do controle sim.
+  Conferido: `documentation_links_resolve` verde, 22 páginas todas linkadas do `README`, nenhum link
+  quebrado, 563 testes no workspace.

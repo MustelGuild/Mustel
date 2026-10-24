@@ -75,9 +75,14 @@ limite antigo do layout, não algo que a escolha de fonte cria.
 
 ## Por que o mínimo da janela acompanha a escala
 
-Escalar a fonte sem escalar a janela apertaria o layout: 1,25x com janela de 640 px é o mesmo que
-1,0x numa janela de 512 px. Então o mínimo vira `640×480 × escala` (a 1,25x: 800×600). Assim a folga
-relativa fica constante — o usuário nunca ganha uma janela que cabe menos coisa do que antes.
+Escalar a fonte sem escalar a janela apertaria o layout: 1,25x com janela de 880 px é o mesmo que
+1,0x numa janela de 704 px. Então o mínimo vira `880×560 × escala` (a 1,25x: 1100×700). Assim a
+folga relativa fica constante — o usuário nunca ganha uma janela que cabe menos coisa do que antes.
+
+O ponto de partida era 640×480; subiu para **880×560** quando a sidebar passou a ter 400 px (a
+área principal precisa de ~450 para o SQL e a tabela continuarem usáveis, e 1366×768 é o notebook
+mais apertado que o dono usa). A conta tem uma ressalva conhecida: a 125% de escala do sistema
+**com** `fontScale` 1,25 o mínimo passa de 1100×700 e pode não caber nesse 1366×768.
 
 ## O que não é feito
 

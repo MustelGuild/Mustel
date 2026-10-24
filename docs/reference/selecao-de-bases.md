@@ -34,17 +34,19 @@ existir em mais de um servidor.
 │ ◀  5 selected                        │ Referência do autocomplete: [Local] ⟳    │
 │                                      │ SQL                                      │
 │ Server                               │ ┌────────────────────────────────────┐   │
-│ [ Local (104) ▼ ] [⟳]                │ │ SELECT 1 AS valor                  │   │
+│ [ Local (106) ▼ ] [⟳]                │ │ SELECT 1 AS valor                  │   │
 │ Query Selector                       │ └────────────────────────────────────┘   │
-│ [ Producao ▼ ]  ⟳                    │ Output directory [ ./results ] [📂]       │
+│ [ Produção ▼ ] [∅]                   │ Output directory [ ./results ] [📂]       │
 │                                      │ [ Run query ]                            │
 │ [ Search database… ]                 │                                          │
-│ [Select all 103] [Clear]             │ Results                                  │
-│ 5 marked · from 'Producao'           │ ┌────────────────────────────────────┐   │
-│ 3 of 104                             │ │ Server │ Database │ valor           │  │
-│ ☑ configurador            Local      │ └────────────────────────────────────┘   │
+│ [Select all 103] [Reset]             │ Results                                  │
+│ 5 marked · from 'Produção'           │ ┌────────────────────────────────────┐   │
+│    ☐ Show only marked                │ │ Server │ Database │ valor           │  │
+│ 3 of 104                             │ └────────────────────────────────────┘   │
+│ ☑ configurador            Local      │                                          │
 │ ☑ dev                     Local      │                                          │
 │ ☐ postgres      Local (cinza)        │                                          │
+│ ☐ template0     Local (cinza)        │                                          │
 │ ☐ demo_001             Local 2       │                                          │
 └──────────────────────────────────────┴──────────────────────────────────────────┘
 ```
@@ -63,9 +65,10 @@ O combo de **Server** mostra o total de bases de cada servidor ao lado do nome (
 exibição: buscar "104" não encontra servidor nenhum, porque a busca é sobre o nome.
 
 O total é o que o **catálogo do servidor** tem: a descoberta lista `pg_database` inteiro, inclusive
-`template0` e `template1`. Os templates aparecem na lista **apagados**, com o motivo no tooltip
-(`template database`, ou `datallowconn = false`), e **contam** no total — mas nunca podem ser
-marcados. Assim a contagem é estável: aplicar um seletor não a muda.
+`template0` e `template1`. Os templates aparecem **apagados**, com o motivo no tooltip (`template
+database`, ou `datallowconn = false`), e **contam** no total, mas nunca podem ser marcados. Aplicar
+um seletor não muda a contagem. O [porquê](../explanation/selecao-de-bases.md#por-que-a-contagem-é-o-catálogo-do-servidor)
+está na explicação.
 
 O recorte de **execução** é outro: `query`, `backup --all` e o combo `Database` onde a seleção
 roda continuam usando as listas filtradas (sem template e sem `datallowconn = false`). Só a
@@ -87,22 +90,21 @@ O **filtro de servidor** define o escopo de tudo o que está na sidebar:
 | Controle | O que faz | Escopo |
 |---|---|---|
 | `Query Selector` | escolher um seletor **aplica na hora** e substitui a seleção | o filtro: um servidor, ou todos |
-| `⟳` ao lado do filtro | lista as bases do escopo (era o `Discover all`) | o filtro |
+| `⟳` ao lado do filtro | lista as bases do escopo | o filtro |
 | `Select all N` | marca **o que está visível** | filtro × busca |
 | `Clear` / `Reset` | **desfaz a seleção manual**: sem seletor desmarca o visível; com seletor devolve o visível ao que a query marcou | filtro × busca |
 | busca | cruza o nome da base **e** o do servidor | — |
 
-`Select all` e o combo têm papéis fixos: um marca tudo, o outro aplica a query — nenhum dos dois
-muda de significado conforme o outro controle. Base barrada por `excludePatterns` e base com aviso
-de senha **nunca** entram automaticamente, e o status diz quantas estão marcadas e de onde vieram:
+`Select all` e o combo têm papéis fixos: um marca tudo, o outro aplica a query. Base barrada por
+`excludePatterns` ou recusada pelo servidor, e base com aviso de senha, **nunca** entram
+automaticamente. O status diz quantas estão marcadas e de onde vieram:
 
 > `103 marked · from 'Producao'`
 
-O botão da direita muda de nome conforme o escopo: **`Clear`** quando não há seletor (desmarca o
-que está visível) e **`Reset`** quando há (desfaz o que foi marcado à mão e volta ao que a query
-marcou — marcado à mão sai, desmarcado à mão volta). É a leitura literal de "limpar a seleção
-manual": sem query, a seleção manual é tudo; com query, é a diferença em relação a ela. Esquecer o
-seletor (`(none)` ou a vassoura) devolve o botão ao estado `Clear`.
+O botão da direita muda de **nome** conforme o escopo (é a coluna `Clear` / `Reset` da tabela
+acima): sem seletor aparece `Clear`, com seletor aparece `Reset`. Esquecer o seletor (`(none)` ou a
+vassoura) devolve o botão ao estado `Clear`. O
+[porquê](../explanation/selecao-de-bases.md#por-que-clear-vira-reset) está na explicação.
 
 O toggle **Show only marked**, na mesma linha do status, esconde as bases não marcadas — é
 **visão**, não ação: `Select all` e `Clear` continuam valendo para o filtro × busca inteiro, e o
@@ -114,8 +116,7 @@ O recado da última ação vem embaixo, e só conta o que ficou de fora:
 
 ### Quem lembra o seletor é o servidor
 
-Não existe botão `Apply Selector`: **o combo é o botão**. Cada servidor guarda o nome do seletor
-que o marcou, e o combo mostra o que vale no escopo atual:
+Cada servidor guarda o nome do seletor que o marcou, e o combo mostra o que vale no escopo atual:
 
 | Filtro | Seletores dos servidores | O combo mostra | Escolher aplica em |
 |---|---|---|---|
@@ -123,21 +124,19 @@ que o marcou, e o combo mostra o que vale no escopo atual:
 | todos | todos com o mesmo seletor | o nome comum | todos |
 | todos | diferentes (ou algum **sem** seletor) | **vazio** | todos (e passa a valer para todos) |
 
-Servidor **sem** seletor conta como um valor diferente, não como "tanto faz": aplicar `todas` só no
-`Local`, com `Local 2` sem nada, deixa o escopo "todos" **sem** nome. É por isso que a linha
-`All servers` do dropdown de servidor mostra só a contagem (`· 209`) nesse caso, enquanto
-`Local` mostra `todas · 104`. A linha `All servers` descreve o escopo **dela**, nunca o do
-filtro atual.
+Servidor **sem** seletor conta como um valor diferente: aplicar `todas` só no `Local`, com `Local
+2` sem nada, deixa o escopo "todos" **sem** nome — a linha `All servers` do dropdown mostra só a
+contagem (`· 209`), e `Local` mostra `todas · 104`. A linha `All servers` descreve o escopo **dela**,
+nunca o do filtro atual.
 
-A linha `(none)` **esquece o rótulo** do escopo: a seleção continua exatamente como estava. O
-rótulo é "de onde veio", não uma promessa de que a seleção ainda seja só aquela — marcar uma base
-à mão não apaga o nome do seletor.
+A linha `(none)` **esquece o rótulo** do escopo, sem desmarcar nada: marcar uma base à mão não
+apaga o nome do seletor, e o rótulo diz de onde a seleção veio.
 
 Ao lado do combo, o botão `∅` é a **vassoura**: esquece o seletor de **todos** os servidores de uma
-vez (não desmarca nada, e age mesmo com o filtro num servidor). Ele fica apagado quando não há
-seletor para limpar. A linha do seletor tem a mesma geometria da linha do servidor — mesma largura de
-combo e o botão lateral na mesma coluna —, e o indicador de progresso aparece **no lugar** da
-vassoura enquanto a aplicação roda, para nada pular de lugar.
+vez, sem desmarcar nada, e age mesmo com o filtro num servidor. Fica apagado quando não há seletor
+para limpar. As duas linhas (Server e Query Selector) têm a mesma geometria — combos da mesma largura
+e o botão lateral na mesma coluna —, e o indicador de progresso aparece **no lugar** da vassoura
+enquanto a aplicação roda.
 
 ### Falha ao aplicar
 
@@ -215,8 +214,9 @@ Não há campo de digitação solto no formulário: o nome entra pelo dropdown. 
 descoberta (`⟳`) e do `databases` do cadastro — se a base não aparecer, rode o `⟳` de novo: o
 cadastro do dono costuma usar `fetchAllDatabases`, e a lista só fica completa depois de descobrir.
 
-Escolher `postgres` ou `template0` é permitido — a exclusão por `excludePatterns` vale na aba
-**Query**, na hora de marcar, e não impede apontar onde a query roda.
+A lista deste combo é a de **execução**: não oferece template nem base com `datallowconn = false`,
+porque a query precisa conectar ali. Já `postgres` aparece (é uma base comum). A exclusão por
+`excludePatterns` vale na aba **Query**, na hora de marcar, e não impede apontar onde a query roda.
 
 Falha na descoberta aparece no próprio formulário, em amarelo, com a mensagem do núcleo (servidor
 fora do ar, senha ausente no cofre). Antes disso o `⟳` ficava em silêncio e parecia não fazer nada.
@@ -231,5 +231,5 @@ foram ignoradas. Senha e connection string nunca aparecem.
 
 - a seleção **não persiste**: fechar a janela e abrir de novo volta sem nada marcado;
 - não há agendamento nem histórico de execuções;
-- a lista de bases só conhece o que veio do cadastro (`databases`), do `⟳ Discover` e da query — base
-  criada depois disso só aparece após outra descoberta.
+- a lista de bases só conhece o que veio do cadastro (`databases`), do `⟳` e da query — base criada
+  depois disso só aparece após outra descoberta.

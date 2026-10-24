@@ -155,6 +155,8 @@ mustel settings db-servers rm -n tutorial
 - Quer guardar senhas e rodar em CI? [Credenciais](../explanation/credenciais.md) e
   [Automação](../how-to/automacao.md).
 - Quer rodar contra vários bancos de uma vez? [Vários bancos](../how-to/varios-bancos.md).
+- Quer escolher as bases na janela, com filtro, busca e um seletor salvo?
+  [Escolher bases na janela](../how-to/escolher-bases-na-janela.md).
 - Quer o mapa completo de flags? [Referência do `query run`](../reference/query-run.md).
 - Quer escrever a consulta na janela, com os nomes das tabelas aparecendo enquanto digita? Use o
   servidor e a senha que você acabou de cadastrar: [Sugestões ao escrever SQL](../how-to/autocomplete-no-editor.md).

@@ -56,6 +56,10 @@ A falha de um banco **não** aborta os outros: ela vai para `<timestamp>_erros.c
 `Error` do `_log.csv`, e o comando termina com sucesso se ao menos um banco respondeu. Se **nenhum**
 banco for alcançável, ele para antes de escrever arquivos e falha.
 
+> Este guia é o caminho do **terminal**. Para escolher as mesmas bases pela janela (com seletor
+> salvo, filtro por servidor e `Show only marked`), veja
+> [escolher bases na janela](escolher-bases-na-janela.md).
+
 ## Conferir depois
 
 ```bash

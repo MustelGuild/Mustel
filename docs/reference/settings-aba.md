@@ -1,5 +1,10 @@
 # Referência: aba Settings (aparência)
 
+> Esta página cobre a parte de **aparência** da aba. As outras seções da mesma aba têm referência
+> própria: o cadastro de queries de seleção e o combo `Database` estão na
+> [referência da seleção de bases](selecao-de-bases.md#o-formulário-do-cadastro), e a paginação da
+> lista, em [`gui.selectionList`](selecao-de-bases.md#paginação-opcional).
+
 A aba **Settings** da janela guarda as preferências de aparência. Tudo o que ela edita fica na seção
 `gui` do `mustel.jsonc` — o mesmo arquivo do cadastro de servidores —, então dá para versionar,
 inspecionar e editar à mão:
@@ -38,8 +43,9 @@ uma máquina típica tem centenas de famílias e achar o nome rolando a lista é
 editável à mão e um `5.0` salvo por engano deixaria a janela inutilizável antes de alguém conseguir
 abrir a aba para corrigir.
 
-O **tamanho mínimo da janela cresce junto**: a 1,25x o mínimo passa de 640×480 para 800×600. É o que
-mantém a folga do layout em qualquer escala (a conta está na [explicação](../explanation/fontes.md)).
+O **tamanho mínimo da janela cresce junto**: a 1,25x o mínimo passa de 880×560 para 1100×700. É o
+que mantém a folga do layout em qualquer escala (a conta está na
+[explicação](../explanation/fontes.md)).
 
 ## O que a aba não faz
 

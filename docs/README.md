@@ -21,10 +21,11 @@ só é a origem da maior parte da documentação ruim.
 | Tutorial | How-to | Referência | Explicação |
 |---|---|---|---|
 | [Primeiros passos](tutorials/primeiros-passos.md) | [Vários bancos](how-to/varios-bancos.md) | [Comandos](reference/comandos.md) | [Credenciais](explanation/credenciais.md) |
-| | [Automação](how-to/automacao.md) | [`query run`](reference/query-run.md) | [CSV como o Npgsql](explanation/csv-como-o-npgsql.md) |
-| | [Backup e restore](how-to/backup-e-restore.md) | [Exit codes e ambiente](reference/exit-codes.md) | [Escada de fidelidade](explanation/escada-de-fidelidade.md) |
-| | [Senhas no cofre](how-to/senhas-no-cofre.md) | [Autocomplete do editor](reference/autocomplete.md) | [Progresso ao vivo](explanation/progresso-ao-vivo.md) |
-| | [Sugestões ao escrever SQL](how-to/autocomplete-no-editor.md) | [Aba Settings](reference/settings-aba.md) | [Por que `tokio-postgres`](explanation/por-que-tokio-postgres.md) |
+| | [Escolher bases na janela](how-to/escolher-bases-na-janela.md) | [`query run`](reference/query-run.md) | [CSV como o Npgsql](explanation/csv-como-o-npgsql.md) |
+| | [Automação](how-to/automacao.md) | [Exit codes e ambiente](reference/exit-codes.md) | [Escada de fidelidade](explanation/escada-de-fidelidade.md) |
+| | [Backup e restore](how-to/backup-e-restore.md) | [Autocomplete do editor](reference/autocomplete.md) | [Progresso ao vivo](explanation/progresso-ao-vivo.md) |
+| | [Senhas no cofre](how-to/senhas-no-cofre.md) | [Aba Settings](reference/settings-aba.md) | |
+| | [Sugestões ao escrever SQL](how-to/autocomplete-no-editor.md) | | [Por que `tokio-postgres`](explanation/por-que-tokio-postgres.md) |
 | | | [Contrato de interface](contrato-de-interface.md) | [Por que o autocomplete é assim](explanation/autocomplete.md) |
 | | | [Seleção de bases](reference/selecao-de-bases.md) | [Por que a seleção de bases é assim](explanation/selecao-de-bases.md) |
 | | | | [Fontes e licença](explanation/fontes.md) |

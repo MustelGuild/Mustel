@@ -61,11 +61,65 @@ como descobrir o conjunto, não o conjunto em si. Reaplicar é um clique e mostr
 
 As duas operações falham de formas diferentes de propósito:
 
-- `⟳ Discover` só quer **enumerar**. Um servidor fora do ar não pode impedir que os outros mostrem
-  suas bases, então cada servidor responde por si e o aviso é por servidor.
-- `⟳ Apply` quer **decidir o que vai rodar**. Se metade das linhas não casa com o cadastro, marcar a
-  outra metade produziria uma execução com escopo que o dono não escolheu. Aborta-se tudo, com o
-  erro agregado.
+- a descoberta (`⟳`, ao lado do filtro) só quer **enumerar**. Um servidor fora do ar não pode
+  impedir que os outros mostrem suas bases, então cada servidor responde por si e o aviso é por
+  servidor.
+- aplicar um seletor quer **decidir o que vai rodar**. Se metade das linhas não casa com o cadastro,
+  marcar a outra metade produziria uma execução com escopo que o dono não escolheu. Aborta-se tudo,
+  com o erro agregado.
+
+## O combo é o botão
+
+Antes havia dois gestos: escolher a query num combo e depois apertar `⟳ Apply to …`. O segundo
+passo existia só porque o primeiro não sabia em que escopo agir. Com o escopo sempre visível (o
+filtro de servidor, logo acima), escolher **é** a decisão completa — e um botão a mais só cria a
+oportunidade de esquecê-lo apertado, com a tela mostrando um seletor escolhido e uma seleção que não
+é a dele.
+
+## Por que cada servidor lembra o seu seletor
+
+O escopo de uma aplicação é o filtro: um servidor, ou todos. Mas o que a tela mostra é o mundo
+inteiro — e é normal `Local` estar em `Producao` enquanto `Local 2` está em `Homologacao`. Com uma
+escolha única, o combo teria de mentir sobre um dos dois.
+
+Por isso a memória é **por servidor** (`servidor → nome do seletor`), e o combo resume o escopo:
+com filtro, mostra o do servidor; com "todos" e seletores iguais, o nome comum; com diferentes,
+fica vazio. Servidor **sem** seletor conta como um valor diferente, não como "tanto faz": senão o
+escopo afirmaria estar em `Producao` quando só um dos servidores está — foi exatamente o bug que o
+dono pegou no dropdown (`All servers` dizendo `todas` com o `Local 2` sem nada).
+
+## Por que `Clear` vira `Reset`
+
+"Limpar a seleção manual" quer dizer coisas diferentes conforme exista ou não uma query:
+
+- sem seletor, a seleção manual é **tudo** — limpar é desmarcar;
+- com seletor, a seleção manual é a **diferença** em relação a ele — limpar é voltar ao que a query
+  marcou, e isso inclui **remarcar** o que foi desmarcado à mão.
+
+Um botão chamado `Clear` que remarca bases seria armadilha, então o rótulo acompanha o estado. O
+alvo do reset é o resultado que o seletor produziu (guardado quando ele foi aplicado), não uma nova
+execução: o botão fica instantâneo e não tem modo de falha. A contrapartida é que base criada depois
+da última aplicação não entra no reset — para isso se aplica o seletor de novo.
+
+## Por que a contagem é o catálogo do servidor
+
+A contagem ao lado do nome do servidor responde "quantas bases este servidor tem", e essa resposta
+não pode depender do que a tela fez depois. Enquanto a descoberta escondia `template0`, aplicar um
+seletor que o nomeava mudava o número de 104 para 105 — o servidor não ganhou base nenhuma, e mesmo
+assim o total mudou.
+
+A saída foi listar o `pg_database` **inteiro**, com os templates **visíveis e apagados** (o
+servidor recusa: `datistemplate` ou `datallowconn = false`) e contando. Silêncio é pior: quem tem
+`template*` no `excludePatterns` espera ver o que foi barrado. O recorte de **execução** continua
+outro — `query`, `backup --all` e o combo onde a seleção roda não oferecem template —, porque ali a
+pergunta é "onde dá para conectar", não "o que existe".
+
+## Visão e ação não se misturam
+
+`Show only marked` esconde as linhas não marcadas, e só isso. Se ele também estreitasse o alvo do
+`Select all`, o mesmo botão passaria a significar duas coisas conforme um terceiro controle, e
+"marcar tudo" com o filtro ligado viraria "remarcar o que já estava marcado". Por isso a lista
+mostra um recorte e os botões continuam falando do filtro × busca.
 
 ## Bases explícitas no plano
 

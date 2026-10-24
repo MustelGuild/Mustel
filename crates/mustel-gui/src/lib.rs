@@ -37,6 +37,7 @@ pub mod smooth_scroll;
 pub mod sql_completion;
 pub mod sql_editor;
 pub mod tabs;
+pub mod theme;
 
 pub use app::App;
 pub use events::{ChannelSink, GuiEvent};

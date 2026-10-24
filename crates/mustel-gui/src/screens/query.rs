@@ -242,9 +242,6 @@ const BROOM: &str = "∅";
 /// Largura mínima da lista aberta do combo de servidor: `Homologacao-Tenant… · 104`.
 const SERVER_POPUP_WIDTH: f32 = 400.0;
 
-/// Cor do alerta de falha ao aplicar (âmbar: lê em tema claro e escuro).
-const ALERT_COLOR: egui::Color32 = egui::Color32::from_rgb(214, 158, 46);
-
 /// O detalhe de uma linha do combo de servidor: `Producao · 104`.
 ///
 /// Sem seletor a linha fica `· 0`/`· 104`: o ponto separador continua ali para a contagem ficar
@@ -827,7 +824,7 @@ Selection unchanged."
         }
 
         if let Some(error) = &self.error {
-            ui.colored_label(egui::Color32::RED, error);
+            ui.colored_label(crate::theme::danger(ui), error);
         }
 
         if !self.progress.is_empty() {
@@ -1104,7 +1101,7 @@ Selection unchanged."
                 // texto, e uma caixa estreita some no meio do nada).
                 ui.set_min_width(ui.available_width());
                 ui.horizontal_wrapped(|ui| {
-                    ui.colored_label(ALERT_COLOR, format!("⚠ {alert}"));
+                    ui.colored_label(crate::theme::alert(ui), format!("⚠ {alert}"));
                     if ui.small_button("✕").on_hover_text("Dismiss").clicked() {
                         dismiss = true;
                     }
@@ -1462,12 +1459,12 @@ Selection unchanged."
                     ui.label(
                         egui::RichText::new("⚠")
                             .size(28.0)
-                            .color(egui::Color32::from_rgb(200, 60, 40)),
+                            .color(crate::theme::danger(ui)),
                     );
                     ui.label(
                         egui::RichText::new("WARNING: DESTRUCTIVE QUERY DETECTED")
                             .strong()
-                            .color(egui::Color32::from_rgb(200, 60, 40)),
+                            .color(crate::theme::danger(ui)),
                     );
                 });
 
@@ -1497,10 +1494,7 @@ Selection unchanged."
                     }
                     ui.add_space(8.0);
                     if ui
-                        .button(
-                            egui::RichText::new("Run anyway")
-                                .color(egui::Color32::from_rgb(200, 60, 40)),
-                        )
+                        .button(egui::RichText::new("Run anyway").color(crate::theme::danger(ui)))
                         .clicked()
                     {
                         decision = Some(true);

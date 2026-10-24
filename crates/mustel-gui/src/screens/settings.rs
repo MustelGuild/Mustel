@@ -1,4 +1,4 @@
-//! Tela **Settings**: preferências de aparência da janela (hoje, fonte).
+//! Tela **Settings**: preferências de aparência da janela (tema e fonte).
 //!
 //! A tela não grava nada: devolve [`Request::SaveGuiPrefs`] e quem persiste é o app, através de
 //! `usecases::gui_prefs` — a mesma separação das outras telas (`Request` → `App` → núcleo).
@@ -7,17 +7,38 @@
 //! **uma vez**, na primeira vez que a aba abre, e guardada na tela.
 
 use mustel_core::config::model::{
-    GuiPrefs, MAX_FONT_SCALE, MAX_PAGE_SIZE, MIN_FONT_SCALE, MIN_PAGE_SIZE, SelectionListPrefs,
+    GuiPrefs, GuiTheme, MAX_FONT_SCALE, MAX_PAGE_SIZE, MIN_FONT_SCALE, MIN_PAGE_SIZE,
+    SelectionListPrefs,
 };
 
 use crate::fonts::{self, Chosen, EMBEDDED_MONO, EMBEDDED_PROPORTIONAL};
 use crate::request::Request;
 
+/// As três opções de tema, na ordem em que aparecem no controle segmentado.
+///
+/// Ícone **e** texto: o ícone dá a leitura instantânea, o texto dispensa adivinhar o símbolo. São os
+/// mesmos ícones que o `egui` usa em `ThemePreference::icon`.
+const THEME_OPTIONS: [(&str, GuiTheme); 3] = [
+    ("💻 System", GuiTheme::System),
+    ("☀️ Light", GuiTheme::Light),
+    ("🌙 Dark", GuiTheme::Dark),
+];
+
+/// Posição da escolha no controle (o desconhecido cai em `System`, que é o default).
+fn theme_index(theme: GuiTheme) -> usize {
+    THEME_OPTIONS
+        .iter()
+        .position(|(_, option)| *option == theme)
+        .unwrap_or(0)
+}
+
 /// Estado da aba Settings.
 #[derive(Debug, Default)]
 pub struct State {
-    /// Escolha em edição (aplicada ao vivo e gravada ao soltar os controles).
+    /// Escolha em edição (aplicada ao vivo e gravada ao solver os controles).
     chosen: Chosen,
+    /// Tema da janela em edição.
+    theme: GuiTheme,
     /// Paginação da lista de bases (aba Query).
     selection_list: SelectionListPrefs,
     /// Famílias instaladas no sistema (`None` = ainda não carregadas).
@@ -31,6 +52,7 @@ impl State {
     pub fn with_prefs(prefs: Option<&GuiPrefs>) -> Self {
         Self {
             chosen: Chosen::from_prefs(prefs),
+            theme: prefs.map(|prefs| prefs.theme).unwrap_or_default(),
             selection_list: prefs
                 .map(|prefs| prefs.selection_list.clone())
                 .unwrap_or_default(),
@@ -41,6 +63,11 @@ impl State {
     /// A escolha atual (o app usa para aplicar no contexto).
     pub fn chosen(&self) -> &Chosen {
         &self.chosen
+    }
+
+    /// O tema em edição (aplicado na abertura e a cada commit).
+    pub fn theme(&self) -> GuiTheme {
+        self.theme
     }
 
     /// Aplica o que voltou de um job.
@@ -55,6 +82,7 @@ impl State {
     pub fn prefs(&self) -> GuiPrefs {
         let mut prefs = GuiPrefs::default();
         self.chosen.apply_to(&mut prefs);
+        prefs.theme = self.theme;
         // `selections` **não** é desta tela: quem monta a seção `gui` inteira é o app, juntando a
         // aparência (daqui) com os seletores (do cadastro em Connections) e a paginação (daqui).
         prefs.selection_list = self.selection_list.clone();
@@ -85,6 +113,22 @@ impl State {
 
         let mut changed = false;
         let mut apply_now = false;
+
+        // Primeiro item da aba: o tema da **janela** (claro, escuro ou seguindo o SO).
+        ui.label("Theme");
+        let selected = theme_index(self.theme);
+        let labels: Vec<&str> = THEME_OPTIONS.iter().map(|(label, _)| *label).collect();
+        if let Some(index) = crate::tabs::segmented(ui, &labels, selected) {
+            let theme = THEME_OPTIONS[index].1;
+            if theme != self.theme {
+                self.theme = theme;
+                // Clicar é escolha concluída: aplica **e** grava (o commit tem precedência).
+                apply_now = true;
+                changed = true;
+            }
+        }
+        ui.weak("Follow system uses the operating system's light or dark setting.");
+        ui.separator();
 
         changed |= self.family_combo(
             ui,
@@ -132,13 +176,13 @@ impl State {
 
         ui.separator();
         if ui.button("Restore defaults").clicked() {
-            self.chosen = Chosen::default();
+            self.restore_defaults();
             apply_now = true;
             changed = true;
         }
 
         if let Some(warning) = &self.warning {
-            ui.colored_label(egui::Color32::YELLOW, warning);
+            ui.colored_label(crate::theme::warning(ui), warning);
         }
 
         // Gravar é o "commit": persiste **e** aplica. Sem isso, trocar a fonte mandava só
@@ -159,6 +203,12 @@ impl State {
         changed |= self.selection_list_ui(ui);
 
         decision(self.chosen.clone(), self.prefs(), changed, apply_now)
+    }
+
+    /// Repõe aparência **e** tema no de fábrica (`System`).
+    fn restore_defaults(&mut self) {
+        self.chosen = Chosen::default();
+        self.theme = GuiTheme::System;
     }
 
     /// A seção **Database list**: liga/desliga a paginação e define o tamanho da página.
@@ -384,5 +434,64 @@ mod tests {
         assert!(merged.selection_list.paginate);
         assert_eq!(merged.selection_list.page_size, 25);
         assert_eq!(merged.interface_font.as_deref(), Some("Segoe UI"));
+    }
+
+    /// O tema gravado chega na tela, e a tela o devolve ao gravar.
+    /// CONTRACT: IF-243
+    #[test]
+    fn the_state_keeps_and_returns_the_theme() {
+        let prefs = GuiPrefs {
+            theme: GuiTheme::Dark,
+            ..GuiPrefs::default()
+        };
+
+        let state = State::with_prefs(Some(&prefs));
+        assert_eq!(theme_index(GuiTheme::Dark), 2, "dark é a terceira opção");
+        assert_eq!(
+            state.prefs().theme,
+            GuiTheme::Dark,
+            "o tema volta ao gravar"
+        );
+    }
+
+    /// Cada opção do controle mapeia para um tema (e volta), sem rótulo vazio.
+    /// CONTRACT: IF-243
+    #[test]
+    fn every_theme_option_has_a_label_and_round_trips() {
+        assert_eq!(THEME_OPTIONS.len(), 3, "System, Light e Dark");
+
+        for (index, (label, theme)) in THEME_OPTIONS.iter().enumerate() {
+            assert!(!label.trim().is_empty(), "rótulo vazio na posição {index}");
+            assert!(
+                label
+                    .chars()
+                    .any(|c| !c.is_alphanumeric() && !c.is_whitespace()),
+                "o rótulo precisa do ícone: {label}"
+            );
+            assert!(
+                label.contains(char::is_alphabetic),
+                "falta o texto: {label}"
+            );
+            assert_eq!(theme_index(*theme), index, "posição de {theme:?}");
+        }
+    }
+
+    /// `Restore defaults` volta o tema para `System` (o default do produto).
+    /// CONTRACT: IF-243
+    #[test]
+    fn restore_defaults_resets_the_theme() {
+        let mut state = State::with_prefs(Some(&GuiPrefs {
+            theme: GuiTheme::Dark,
+            ..GuiPrefs::default()
+        }));
+
+        state.restore_defaults();
+
+        assert_eq!(state.prefs().theme, GuiTheme::System);
+        assert_eq!(
+            theme_index(state.prefs().theme),
+            0,
+            "volta para a primeira opção"
+        );
     }
 }

@@ -47,6 +47,29 @@ pub const DEFAULT_FONT_SCALE: f32 = 1.0;
 pub const MIN_FONT_SCALE: f32 = 0.8;
 pub const MAX_FONT_SCALE: f32 = 1.25;
 
+/// Tema da janela.
+///
+/// `System` é o padrão e reproduz o comportamento anterior a esta preferência existir: o `egui` abre
+/// seguindo o tema do sistema operacional. `Light` e `Dark` fixam a escolha do usuário.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GuiTheme {
+    /// Segue o tema do sistema operacional.
+    #[default]
+    System,
+    /// Sempre claro.
+    Light,
+    /// Sempre escuro.
+    Dark,
+}
+
+impl GuiTheme {
+    /// `true` quando é o padrão — é o que **omite** a chave do arquivo, como o resto de `gui`.
+    pub fn is_default(&self) -> bool {
+        *self == Self::System
+    }
+}
+
 /// Preferências de aparência da janela.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -57,6 +80,12 @@ pub struct GuiPrefs {
     pub editor_font: Option<String>,
     /// Escala aplicada a todos os tamanhos de texto da janela.
     pub font_scale: f32,
+    /// Tema da janela. Ausente = `System` (segue o sistema operacional).
+    ///
+    /// Só aparece no arquivo quando o usuário **não** está em `System`, pela mesma razão das outras
+    /// chaves de `gui`: quem não mexeu não vê o arquivo mudar.
+    #[serde(skip_serializing_if = "GuiTheme::is_default")]
+    pub theme: GuiTheme,
     /// Queries salvas que a aba **Query** usa para marcar bases em massa.
     ///
     /// Fica fora do JSON enquanto a lista está vazia, pela mesma razão da seção `gui`: quem não usa
@@ -122,6 +151,7 @@ impl Default for GuiPrefs {
             interface_font: None,
             editor_font: None,
             font_scale: DEFAULT_FONT_SCALE,
+            theme: GuiTheme::System,
             selections: Vec::new(),
             selection_list: SelectionListPrefs::default(),
         }
@@ -376,6 +406,7 @@ mod tests {
                 interface_font: Some("Segoe UI".to_string()),
                 editor_font: Some("Fira Code".to_string()),
                 font_scale: 1.15,
+                theme: GuiTheme::Dark,
                 selections: Vec::new(),
                 selection_list: Default::default(),
             }),
@@ -391,6 +422,52 @@ mod tests {
         assert_eq!(gui.interface_font.as_deref(), Some("Segoe UI"));
         assert_eq!(gui.editor_font.as_deref(), Some("Fira Code"));
         assert!((gui.font_scale - 1.15).abs() < f32::EPSILON);
+    }
+
+    /// Sem a chave `theme`, o tema é `System` — o comportamento de antes da preferência existir.
+    /// CONTRACT: IF-243
+    #[test]
+    fn a_config_without_theme_reads_as_system() {
+        let json = r#"{ "servers": [], "gui": { "fontScale": 1.1 } }"#;
+        let config: UserConfig = serde_json::from_str(json).expect("deserializes");
+        let gui = config.gui.expect("a seção existe");
+
+        assert_eq!(gui.theme, GuiTheme::System);
+    }
+
+    /// Escolher claro ou escuro sobrevive à ida e volta do arquivo.
+    /// CONTRACT: IF-243
+    #[test]
+    fn the_chosen_theme_round_trips() {
+        for chosen in [GuiTheme::Light, GuiTheme::Dark] {
+            let config = UserConfig {
+                gui: Some(GuiPrefs {
+                    theme: chosen,
+                    ..GuiPrefs::default()
+                }),
+                ..UserConfig::default()
+            };
+            let json = serde_json::to_string_pretty(&config).expect("serializes");
+            let back: UserConfig = serde_json::from_str(&json).expect("deserializes");
+
+            assert_eq!(back.gui.expect("a seção existe").theme, chosen, "{json}");
+        }
+    }
+
+    /// `System` é o padrão e **não** entra no arquivo, como o resto de `gui`.
+    /// CONTRACT: IF-243
+    #[test]
+    fn the_system_theme_stays_out_of_the_file() {
+        let prefs = GuiPrefs {
+            interface_font: Some("Segoe UI".to_string()),
+            ..GuiPrefs::default()
+        };
+        let json = serde_json::to_string_pretty(&prefs).expect("serializes");
+
+        assert!(
+            !json.contains("theme"),
+            "System não vai para o arquivo: {json}"
+        );
     }
 
     /// Escala fora da faixa é **lida** com limite, sem reescrever o arquivo.

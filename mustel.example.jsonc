@@ -39,5 +39,22 @@
     "outputDirectory": "./results",
     "requireConfirmation": true,
     "maxParallelism": 4
+  },
+
+  // Window preferences (Settings tab). Only what you changed appears here: an
+  // untouched installation has no "gui" section at all.
+  "gui": {
+    // "system" follows the operating system theme (default, and therefore
+    // omitted from the file), or pin it with "light" / "dark".
+    "theme": "dark",
+    // Window font families; omit to use the embedded ones.
+    "interfaceFont": "Segoe UI",
+    "editorFont": "Fira Code",
+    // Uniform text scale, 0.80 to 1.25 (default 1.0).
+    "fontScale": 1.1,
+    // Database list pagination in the Query tab (off by default).
+    "selectionList": { "paginate": false, "pageSize": 50 },
+    // Saved selection queries: [{ "name", "server", "database", "sql" }].
+    "selections": []
   }
 }

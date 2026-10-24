@@ -28,7 +28,7 @@ pub fn save(store: &ConfigStore, prefs: Option<GuiPrefs>) -> Result<(), CoreErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::model::{MAX_FONT_SCALE, SelectionQuery, ServerConfigEntry};
+    use crate::config::model::{GuiTheme, MAX_FONT_SCALE, SelectionQuery, ServerConfigEntry};
 
     fn store() -> (tempfile::TempDir, ConfigStore) {
         let directory = tempfile::tempdir().expect("tempdir");
@@ -60,6 +60,7 @@ mod tests {
                 interface_font: Some("Segoe UI".to_string()),
                 editor_font: Some("Fira Code".to_string()),
                 font_scale: 1.1,
+                theme: GuiTheme::Light,
                 selections: Vec::new(),
                 selection_list: Default::default(),
             }),

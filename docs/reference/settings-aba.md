@@ -16,6 +16,7 @@ inspecionar e editar à mão:
   "servers": [ /* ... */ ],
   "defaults": { /* ... */ },
   "gui": {
+    "theme": "dark",
     "interfaceFont": "Segoe UI",
     "editorFont": "Fira Code",
     "fontScale": 1.1
@@ -30,6 +31,7 @@ configurado, e `Restore defaults` a remove de novo.
 
 | Campo | O que é | Ausente significa |
 |---|---|---|
+| `theme` | tema da **janela**: `system`, `light` ou `dark` | `system` (segue o tema do SO) |
 | `interfaceFont` | família do texto comum (rótulos, botões, tabela) | a embutida (`Ubuntu-Light`) |
 | `editorFont` | família do **editor de SQL** (monoespaçada) | a embutida (`Fira Code`) |
 | `fontScale` | multiplicador de **todos** os tamanhos de texto | `1.0` |
@@ -38,6 +40,23 @@ Os dois combos listam: a opção **embutida**, a **Fira Code** (mesmo que não e
 famílias **instaladas no sistema**. A lista do sistema é montada uma vez, quando a aba abre — e os
 dois combos têm **campo de busca** (o mesmo widget do campo `Database` da query de seleção), porque
 uma máquina típica tem centenas de famílias e achar o nome rolando a lista é o que dói.
+
+## Tema
+
+O primeiro item de Appearance é o controle segmentado **`💻 System | ☀️ Light | 🌙 Dark`**:
+
+| Escolha | O que faz |
+|---|---|
+| `system` | segue o tema do sistema operacional — **default**, e o comportamento de antes da opção existir |
+| `light` | sempre claro |
+| `dark` | sempre escuro |
+
+`system` **não** fixa claro nem escuro: o tema acompanha o SO, inclusive se ele mudar com a janela
+aberta. Só `light` e `dark` ficam gravados no arquivo — em `system` a chave `theme` não existe, então
+quem nunca mexeu no controle não vê o `mustel.jsonc` mudar.
+
+As cores de **erro**, **aviso** e **alerta** vêm do tema ativo, não de valores fixos: o âmbar do
+alerta tem uma variante para cada fundo, com contraste medido.
 
 ## Faixa do tamanho
 
@@ -51,9 +70,10 @@ que mantém a folga do layout em qualquer escala (a conta está na
 
 ## O que a aba não faz
 
-- não muda o **tema** (claro/escuro) nem o tamanho da janela — só fonte, por enquanto;
+- não muda o **tamanho da janela** (só o mínimo acompanha a escala da fonte);
 - não lista fontes que não estejam instaladas e não instala nada;
-- não pede nada ao banco e não depende de servidor: a aparência vale antes de qualquer conexão.
+- não pede nada ao banco e não depende de servidor: a aparência vale antes de qualquer conexão;
+- não tem atalho de teclado para trocar de tema: a troca é só pelo controle da aba.
 
 ## Se a fonte escolhida desaparecer
 
@@ -75,4 +95,6 @@ da cadeia de fallback.
 
 Escolher uma fonte **grava e aplica na hora**: a janela muda no mesmo quadro e a seção `gui` é
 atualizada. Arrastar o slider de tamanho só mostra a prévia enquanto o botão está pressionado, e a
-gravação acontece ao soltá-lo — arrastar não escreve o arquivo a cada pixel.
+gravação acontece ao soltá-lo — arrastar não escreve o arquivo a cada pixel. Clicar numa opção de
+**tema** é escolha concluída, então também grava e aplica no mesmo quadro; `Restore defaults` volta o
+tema para `system` e a chave sai do arquivo.

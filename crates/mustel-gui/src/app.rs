@@ -134,6 +134,8 @@ impl App {
             .flatten();
         let settings = settings_screen::State::with_prefs(prefs.as_ref());
         crate::fonts::apply(&cc.egui_ctx, settings.chosen());
+        // O tema também vale no primeiro quadro: `System` (default) deixa a decisão ao SO.
+        crate::theme::apply(&cc.egui_ctx, settings.theme());
 
         Ok(Self {
             runtime,
@@ -238,6 +240,7 @@ impl App {
                 // fonte surtir efeito imediato (a prévia ao vivo é do `ApplyGuiPrefs`).
                 let chosen = crate::fonts::Chosen::from_prefs(Some(&prefs));
                 let problems = crate::fonts::apply(ctx, &chosen);
+                crate::theme::apply(ctx, prefs.theme);
                 self.settings.set_warning(problems.first().cloned());
                 ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(
                     crate::fonts::min_window_size(chosen.scale),
@@ -790,7 +793,7 @@ impl eframe::App for App {
                 }
             });
             if let Some(error) = &self.config_error {
-                ui.colored_label(egui::Color32::RED, error);
+                ui.colored_label(crate::theme::danger(ui), error);
             }
             ui.separator();
 

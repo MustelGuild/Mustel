@@ -267,7 +267,7 @@ impl State {
         });
 
         if let Some(error) = &self.error {
-            ui.colored_label(egui::Color32::RED, error);
+            ui.colored_label(crate::theme::danger(ui), error);
         }
 
         ui.separator();

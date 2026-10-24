@@ -15,9 +15,6 @@ use mustel_core::config::model::{GuiPrefs, SelectionQuery};
 use crate::request::Request;
 use crate::sql_editor;
 
-/// Âmbar do aviso (o mesmo do combo e do alerta de falha).
-const WARNING_COLOR: egui::Color32 = egui::Color32::from_rgb(214, 158, 46);
-
 /// O que já se sabe das bases de um servidor.
 ///
 /// O `⟳` do campo `Database` precisa mostrar cada desfecho: era um botão que, quando a descoberta
@@ -201,7 +198,7 @@ impl State {
                         match crate::selection::missing_source(&query, servers) {
                             Some(missing) => {
                                 ui.colored_label(
-                                    WARNING_COLOR,
+                                    crate::theme::warning(ui),
                                     format!("⚠ source server '{missing}' is gone"),
                                 );
                             }
@@ -355,7 +352,7 @@ impl State {
                     ui.vertical(|ui| match self.discovered.get(&form.server) {
                         Some(Discovery::Failed(error)) => {
                             ui.colored_label(
-                                egui::Color32::YELLOW,
+                                crate::theme::warning(ui),
                                 format!("Could not list the databases: {error}"),
                             );
                         }
@@ -395,7 +392,7 @@ impl State {
                 });
 
             if let Some(error) = &form.error {
-                ui.colored_label(egui::Color32::YELLOW, error);
+                ui.colored_label(crate::theme::warning(ui), error);
             }
 
             ui.horizontal(|ui| {

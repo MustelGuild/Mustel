@@ -123,6 +123,22 @@ código implementa e que o número representa:
 | `D14` | Falha/lixo na query | **Mantém a seleção anterior**; status com erro e linhas ignoradas | Menos destrutivo que limpar a tela |
 | `D15` | Execução | `ServerRun` com `databases` explícitas, `fetch_all_databases: false`, `all: false`, `exclude_patterns` do cadastro; servidor sem base marcada **não entra** | Reaproveita o plano do núcleo; evita execução vazia |
 
+## Aparência da janela (`A1`–`A5`)
+
+Numeração própria desta feature (`A`, de aparência), aberta em 2026-10-24 com o tema da janela. Não
+reutiliza a numeração dos planos antigos — é uma quarta família, nascida depois da consolidação.
+
+| ID | Tema | Decisão | Por quê |
+|---|---|---|---|
+| `A1` | Estados do tema | `System`, `Light` e `Dark`, com **`System` como default** | O `egui` já abria seguindo o SO; fixar claro teria mudado a janela de quem usa SO escuro sem ele pedir |
+| `A2` | Persistência | `gui.theme`, **omitido do arquivo** enquanto `System` | Mesmo padrão de `selections`/`selectionList`: quem não mexe não vê o arquivo mudar, e config antiga cai no default sem migração |
+| `A3` | Paleta escura | `Visuals` **nativo** do egui, sem paleta própria | Não existe paleta própria nem no claro; "identidade visual" é outra feature |
+| `A4` | Cores de estado | `danger`/`warning` delegam a `visuals.error_fg_color`/`warn_fg_color`; `alert` tem par claro/escuro com contraste ≥ 4.5:1 | Erro e aviso eram `Color32::RED`/`YELLOW` fixos, escolhidos para fundo claro — no escuro perdiam contraste |
+| `A5` | Escopo e atalho | Tema só da janela; **sem** atalho de teclado | CLI e tabelas ANSI são contrato de paridade; o controle da aba basta |
+
+A referência da aba está em [`reference/settings-aba.md`](../reference/settings-aba.md); a linha de
+contrato é `IF-243`.
+
 ## O que não veio para cá
 
 - **Tarefas** (`T1`–`T48` e afins): viraram código; o registro de execução vive no histórico do Git.

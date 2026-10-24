@@ -8,9 +8,6 @@
 //! quem chama não precisa carregar mais campos no próprio estado, e dois combos na mesma tela não
 //! compartilham busca.
 
-/// Âmbar do aviso: o mesmo tom do alerta de falha da sidebar.
-const WARNING_COLOR: egui::Color32 = egui::Color32::from_rgb(214, 158, 46);
-
 /// Uma linha do combo.
 pub struct Item<'a> {
     /// Texto mostrado (e usado como chave e como alvo da busca).
@@ -173,7 +170,7 @@ pub fn search_combo_sized(
                                             ui.weak(note);
                                         }
                                         if let Some(warning) = item.warning {
-                                            ui.colored_label(WARNING_COLOR, warning);
+                                            ui.colored_label(crate::theme::warning(ui), warning);
                                         }
                                     },
                                 );

@@ -11,7 +11,11 @@
 
 ## Convenções
 
-- **ID**: `IF-NNN`, único e nunca reutilizado. A origem (`D9`, `DIV18`, `N1`, `T9`) vai em `Origem`.
+- **ID**: `IF-NNN`, único e nunca reutilizado. A origem vai em `Origem` e segue este mapa:
+  `D*` → [decisões de engenharia](explanation/decisoes.md) (três numerações: migração, autocomplete,
+  seleção de bases — veja a tabela de resolução lá); `DIV*` → `oracle/known-divergences.md`;
+  `N1`–`N4` → [escada de fidelidade](explanation/escada-de-fidelidade.md); `T*` → tarefa do plano de
+  migração já encerrado (histórico do Git, sem definição vigente).
 - **Classe**:
   - `A` — observável por uma invocação de CLI (flag, exit code, mensagem, artefato).
   - `B` — observável por unidade/integração, mas com efeito visível no CLI (cofre, driver, formatos).

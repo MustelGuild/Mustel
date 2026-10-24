@@ -1,7 +1,8 @@
 # Mustel — Guia de desenvolvimento e de agentes
 
-> Fonte de verdade do trabalho em andamento: `MustelPlans/` (cada plano é executável). O contrato de
-> interface do CLI vive em `docs/contrato-de-interface.md` e é verificado por `cargo test`.
+> Trabalho ainda **não executado** vive em `MustelPlans/`; o que já foi concluído é consolidado em
+> `docs/` e o plano é removido. O contrato de interface do CLI vive em `docs/contrato-de-interface.md`
+> e é verificado por `cargo test`.
 
 ## Idioma
 
@@ -20,7 +21,7 @@ repositório falam pt-BR.
 |------|---------|
 | `crates/` | **Mustel** (Rust) — o produto ativo |
 | `oracle/` | baseline **congelado**, relatórios de divergência e números de performance |
-| `MustelPlans/` | planos de implementação (fonte de verdade do trabalho) |
+| `MustelPlans/` | apenas trabalho **não executado** (hoje, as pendências de release) |
 | `docs/` | documentação do Mustel em quatro quadrantes (Diátaxis) e o manifesto `contrato-de-interface.md` |
 
 Escopo do produto: grupos **`query`**, **`database`** e **`settings`**, mais a GUI em egui. O código
@@ -107,7 +108,8 @@ precedência:
    **não** é necessário para comparar (o `oracle-compare` apenas relê o baseline).
 3. `oracle/known-divergences.md` — as divergências aceitas, com justificativa.
 
-A escada de fidelidade (detalhe na seção 4.4 de `MustelPlans/migracao-rust.md`):
+A escada de fidelidade (detalhe em
+[`docs/explanation/escada-de-fidelidade.md`](docs/explanation/escada-de-fidelidade.md)):
 
 | Nível | Exige | Bloqueia? |
 |-------|-------|-----------|
@@ -187,6 +189,12 @@ Regras práticas:
 O que **não** é documentação de produto: o **manifesto de contrato**
 (`docs/contrato-de-interface.md`, uma linha por decisão com o teste que a prova) e os **planos**
 (`MustelPlans/`). Esses são artefatos de engenharia, não páginas para o leitor.
+
+**Consolidação:** quando um plano é concluído, o que ele documenta — decisões, porquês, o que foi
+verificado — vira página em `docs/` **antes** de o plano ser removido, e a página é linkada em
+`docs/README.md`. Decisões de engenharia já consolidadas estão em
+[`docs/explanation/decisoes.md`](docs/explanation/decisoes.md). `MustelPlans/` não é arquivo
+histórico: o histórico é o Git.
 
 Toda página nova precisa de link a partir de `docs/README.md`, e `documentation_links_resolve`
 (`cargo test`) falha se um link relativo apontar para arquivo inexistente.

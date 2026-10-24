@@ -29,6 +29,7 @@ só é a origem da maior parte da documentação ruim.
 | | | [Contrato de interface](contrato-de-interface.md) | [Por que o autocomplete é assim](explanation/autocomplete.md) |
 | | | [Seleção de bases](reference/selecao-de-bases.md) | [Por que a seleção de bases é assim](explanation/selecao-de-bases.md) |
 | | | | [Fontes e licença](explanation/fontes.md) |
+| | | | [Decisões de engenharia](explanation/decisoes.md) |
 
 ## A bússola
 
@@ -61,3 +62,8 @@ no Mustel). Antes de removê-los, cada um foi minerado — esta tabela registra 
 
 O contrato vigente não está aqui: está em [`contrato-de-interface.md`](contrato-de-interface.md) e é
 verificado por `cargo test --workspace`.
+
+Os **planos** de `MustelPlans/` têm o mesmo destino, com uma diferença: o que eles documentam vira
+página aqui antes de o plano ser removido. As decisões dos planos de migração, autocomplete e seleção
+de bases estão consolidadas em [Decisões de engenharia](explanation/decisoes.md). `MustelPlans/`
+guarda apenas trabalho que ainda não foi executado.

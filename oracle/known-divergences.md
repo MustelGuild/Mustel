@@ -7,21 +7,22 @@ no repositório de propósito.
 > **Estado desde 2026-10-22:** o diretório `legacy/` foi removido. O baseline de `oracle/baseline/` é
 > **contrato congelado** e não pode mais ser re-gravado. As menções a caminhos `legacy/...` nos
 > doc-comments são rastreabilidade histórica do porte.
+>
+> **Estado desde 2026-10-24:** o diretório `openspec/` também foi removido — era o ferramental do
+> produto .NET (17 specs + propostas arquivadas). O contrato dessas features sobrevive onde ele sempre
+> valeu de fato: no manifesto `docs/contrato-de-interface.md` e nas 47 capturas de `oracle/baseline/`.
 
 ## 1. Lista branca de resíduos `furlab` / `fur`
 
-Com o `legacy/` removido, o critério é: fora de `openspec/`, `docs/`, `.git/` e `MustelPlans/`, o termo
-aparece apenas nos lugares abaixo.
+Com o `legacy/` e o `openspec/` removidos, o critério é: fora de `docs/`, `.git/` e `MustelPlans/`, o
+termo aparece apenas nos lugares abaixo.
 
 | Caminho | Por que permanece |
 |---------|-------------------|
-| `Cargo.toml`, `crates/*/Cargo.toml` | `repository` aponta para `liphvf/FurLab` (D18: o repositório só é renomeado depois) |
 | `crates/**` (doc comments) | citam o FurLab/FurLab.CLI para rastrear o porte (“contrato `Program.cs` do FurLab”, “Porte de `PgPassService.cs`”). É rastreabilidade da paridade: apagar tornaria mais difícil conferir o código contra o contrato |
 | `oracle/baseline/*.json` | são **capturas do oráculo**: a saída do `fur` inclui o nome do binário e da config, e elas são o contrato congelado — não podem ser reescritas |
 | `AGENTS.md` | descreve a paridade com o legado e o estado do baseline congelado |
 | `README.md`, `README.pt-BR.md` | explicam de onde o Mustel veio (produto anterior) |
-| `publish.ps1`, `publish.sh` | `repository`/URL de release do repositório `liphvf/FurLab` (D18) |
-| `.github/workflows/release-build.yml` | nomes do repositório e do pacote (`Mustel.CLI`) nos comentários e no artefato |
 | `oracle/perf/baseline.md`, `oracle/perf/final.md`, `oracle/README.md`, `oracle/known-divergences.md` | documentam o oráculo e as medições por nome |
 | `oracle/baseline/help-root.json` | **captura congelada**: a ajuda do binário antigo listava `opencode`, `claude`, `file`; o arquivo é o contrato e não pode ser reescrito |
 

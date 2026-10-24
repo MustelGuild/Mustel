@@ -4,7 +4,8 @@
 > **Criado em:** 2026-10-21
 > **Atualizado em:** 2026-10-21
 > **Complexidade:** baixa (três tarefas pequenas, todas bloqueadas por recurso externo)
-> **Depende de (outros planos):** `migracao-rust.md` (T44 — empacotamento feito)
+> **Depende de (outros planos):** nada — o empacotamento (`publish.ps1`/`publish.sh`) está pronto e
+> verificado (`D26` em [`docs/explanation/decisoes.md`](../docs/explanation/decisoes.md))
 
 ---
 

@@ -4,7 +4,7 @@
 //! candidatos. Não lê banco, não desenha, não conhece egui — é o que torna o miolo testável com um
 //! esquema fictício.
 //!
-//! As regras vêm do plano (`MustelPlans/autocomplete-sql.md`, §4.4):
+//! As regras são as decisões `D1`–`D20` do autocomplete, em `docs/explanation/decisoes.md`:
 //!
 //! 1. a palavra sob o cursor define o prefixo;
 //! 2. a **última palavra-chave** define o contexto (tabela × coluna × palavra-chave);

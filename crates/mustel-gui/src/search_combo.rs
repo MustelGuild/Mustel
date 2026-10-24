@@ -56,6 +56,39 @@ pub fn search_combo(
     items: &[Item<'_>],
     enabled: bool,
 ) -> Option<usize> {
+    search_combo_sized(ui, id, button_text, items, enabled, Size::default())
+}
+
+/// Larguras do combo: do botão fechado e da lista aberta.
+///
+/// A lista pode ser mais larga que o botão — no filtro de servidor ela mostra
+/// `nome-do-servidor · 104` e precisa de espaço, mesmo numa sidebar estreita.
+#[derive(Debug, Clone, Copy)]
+pub struct Size {
+    /// Largura mínima do botão.
+    pub button: f32,
+    /// Largura da lista aberta.
+    pub popup: f32,
+}
+
+impl Default for Size {
+    fn default() -> Self {
+        Self {
+            button: 200.0,
+            popup: 260.0,
+        }
+    }
+}
+
+/// O mesmo combo, com as larguras escolhidas por quem chama.
+pub fn search_combo_sized(
+    ui: &mut egui::Ui,
+    id: &str,
+    button_text: &str,
+    items: &[Item<'_>],
+    enabled: bool,
+    size: Size,
+) -> Option<usize> {
     let state_id = egui::Id::unique(("search_combo", id));
     let mut state = ui
         .data(|data| data.get_temp::<State>(state_id))
@@ -66,7 +99,7 @@ pub fn search_combo(
         .add_enabled(
             enabled,
             // Mesmo desenho dos combos de fonte: valor à esquerda, triângulo à direita.
-            egui::Button::new(format!("{button_text}   ▼")).min_size(egui::vec2(200.0, 0.0)),
+            egui::Button::new(format!("{button_text}   ▼")).min_size(egui::vec2(size.button, 0.0)),
         )
         .on_hover_text(if enabled {
             "Choose…"
@@ -87,7 +120,7 @@ pub fn search_combo(
         let inner = egui::Popup::from_response(&button)
             .open(true)
             .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
-            .width(260.0)
+            .width(size.popup)
             .show(|ui| {
                 ui.add(
                     egui::TextEdit::singleline(&mut state.filter)

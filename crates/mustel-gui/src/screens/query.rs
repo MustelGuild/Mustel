@@ -91,10 +91,15 @@ pub struct State {
     selection: crate::selection::SelectionState,
     /// Cadastro como a tela o conhece (a descoberta precisa dos `excludePatterns` de cada servidor).
     registry: Vec<ServerConfigEntry>,
-    /// Query de seleção escolhida no combo (`None` = seleção à mão).
-    chosen_query: Option<String>,
     /// Recado da última ação na sidebar (quantas marcou, quantas pulou).
+    ///
+    /// Transiente: a linha **derivada** (`103 marked · from 'Producao'`) é que diz o estado atual;
+    /// este recado explica o efeito da última ação.
     selection_message: Option<String>,
+    /// Query de seleção sendo aplicada agora (mostra o `⟳` cinza no combo).
+    applying: Option<String>,
+    /// Último erro ao aplicar (o alerta na sidebar). A seleção anterior fica.
+    apply_alert: Option<String>,
     /// Tamanho da página quando a paginação está ligada (`None` = desenha tudo).
     page_size: Option<usize>,
     /// Já pediu a descoberta de **todos** os servidores ao abrir a aba?
@@ -144,8 +149,9 @@ impl Default for State {
             selected: Vec::new(),
             selection: crate::selection::SelectionState::default(),
             registry: Vec::new(),
-            chosen_query: None,
             selection_message: None,
+            applying: None,
+            apply_alert: None,
             page_size: None,
             auto_discovered: false,
             reference_server: String::new(),
@@ -204,6 +210,42 @@ pub fn results_height(total: f32, has_results: bool) -> f32 {
     (total * RESULTS_PANEL_SHARE).max(MIN_TABLE_HEIGHT)
 }
 
+/// Corta um texto em N caracteres, com reticencias (contagem em chars, nao em bytes).
+///
+/// Usado no detalhe do combo de servidor: o nome do seletor nao pode espremer o do servidor.
+fn truncate(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let mut out: String = text.chars().take(max.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
+/// Quanto do nome do seletor cabe no detalhe da linha do combo de servidor.
+const SELECTOR_NOTE_CHARS: usize = 20;
+
+/// Largura reservada para o botão colado no combo (o `⟳` do servidor, o `⟳` do progresso).
+const ICON_WIDTH: f32 = 28.0;
+
+/// Largura mínima da lista aberta do combo de servidor: `Homologacao-Tenant… · 104`.
+const SERVER_POPUP_WIDTH: f32 = 400.0;
+
+/// Cor do alerta de falha ao aplicar (âmbar: lê em tema claro e escuro).
+const ALERT_COLOR: egui::Color32 = egui::Color32::from_rgb(214, 158, 46);
+
+/// O detalhe de uma linha do combo de servidor: `Producao · 104`.
+///
+/// Sem seletor a linha fica `· 0`/`· 104`: o ponto separador continua ali para a contagem ficar
+/// sempre na mesma coluna, e um servidor recém-cadastrado (sem descoberta) mostra `· 0`.
+fn note_line(selector: &str, databases: usize) -> String {
+    if selector.is_empty() {
+        format!("· {databases}")
+    } else {
+        format!("{} · {databases}", truncate(selector, SELECTOR_NOTE_CHARS))
+    }
+}
+
 /// Tamanho de página da lista, quando a paginação está ligada (`None` = desenha tudo).
 ///
 /// A decisão mora na configuração (`gui.selectionList`), não na tela: assim o dono liga/desliga em
@@ -224,19 +266,13 @@ impl State {
         }
     }
 
-    /// Esquece a query escolhida quando ela não existe mais (removida na aba Settings).
+    /// Esquece os seletores que não existem mais (query removida na aba Settings).
     ///
     /// Sem isto o combo da aba Query continuava mostrando o nome de uma query que já não existe, e
-    /// o `⟳ Apply` falhava ao ser clicado.
+    /// escolhê-la falhava com um erro de cadastro.
     pub fn retain_selection_queries(&mut self, selections: &[SelectionQuery]) {
-        let still_there = self.chosen_query.as_deref().is_some_and(|chosen| {
-            selections
-                .iter()
-                .any(|query| query.name.eq_ignore_ascii_case(chosen))
-        });
-        if !still_there {
-            self.chosen_query = None;
-        }
+        let known: Vec<String> = selections.iter().map(|query| query.name.clone()).collect();
+        self.selection.retain_selectors(&known);
     }
 
     /// Ajusta a seleção quando a lista de servidores muda (mantém o que ainda existe).
@@ -355,7 +391,15 @@ impl State {
                 selection,
                 ..
             } => {
-                self.selection.apply(selection, scope, query);
+                self.apply_selection(selection, scope, query);
+            }
+            // Falha ao aplicar: a seleção anterior **fica** e o alerta diz o que houve. O erro não
+            // vai para o rodapé porque ele fala da sidebar, onde o seletor foi escolhido.
+            JobResult::SelectionFailed { query, error } => {
+                self.applying = None;
+                self.apply_alert = Some(format!(
+                    "Could not apply '{query}'.\n{error}\nSelection unchanged."
+                ));
             }
             // `⟳ Discover`: preenche o universo do servidor. Base marcada que sumiu vira aviso (R7).
             JobResult::Databases {
@@ -385,6 +429,53 @@ impl State {
             }
             _ => {}
         }
+    }
+
+    /// A aplicação de um seletor começou (o `⟳` cinza aparece ao lado do combo).
+    pub fn begin_apply(&mut self, query: &str) {
+        self.applying = Some(query.to_string());
+    }
+
+    /// O usuário escolheu uma linha do combo de seletor: o que pedir à tela.
+    ///
+    /// Índice 0 (`None` aqui) é o `(none)`: **não** desmarca nada, só esquece o rótulo do escopo.
+    /// Os demais **aplicam na hora** — o combo aplica, não existe mais o botão `Apply Selector`.
+    ///
+    /// Fica fora do desenho porque a decisão é testável sem janela; o `egui` só informa a linha
+    /// clicada.
+    fn choose_selector(
+        &mut self,
+        chosen: Option<&str>,
+        scope: &crate::selection::ApplyScope,
+        servers: &[ServerConfigEntry],
+    ) -> Option<Request> {
+        let Some(query) = chosen else {
+            self.selection.forget_scope_selector(servers);
+            self.selection_message = Some("selector forgotten · selection unchanged".to_string());
+            return None;
+        };
+        Some(Request::ApplySelection {
+            query: query.to_string(),
+            scope: scope.clone(),
+        })
+    }
+
+    /// Aplicação de seletor concluída: registra a seleção e conta o que aconteceu.
+    ///
+    /// Aqui (e não no `apply` do `JobResult`) porque o recado é da sidebar, não do formulário.
+    fn apply_selection(
+        &mut self,
+        selection: &[mustel_core::usecases::custom_databases::ServerSelection],
+        scope: &crate::selection::ApplyScope,
+        query: &str,
+    ) {
+        let summary = self.selection.apply(selection, scope, query);
+        self.applying = None;
+        // Deu certo: o alerta da tentativa anterior sai da tela.
+        self.apply_alert = None;
+        // O "quantas marcadas" e a origem já estão na linha derivada do status; aqui só entra o
+        // que ela não consegue dizer (o que ficou de fora).
+        self.selection_message = summary.describe_skips();
     }
 
     /// Lê o consolidado para a tabela, respeitando [`MAX_DISPLAY_ROWS`].
@@ -771,52 +862,28 @@ impl State {
         let mut request = None;
         let running = self.is_running();
 
+        // O **escopo** de tudo o que está abaixo é o filtro: um servidor, ou todos.
+        let scope_name = self
+            .selection
+            .server_filter()
+            .map(str::to_string)
+            .unwrap_or_else(|| "all".to_string());
+        let scope = match self.selection.server_filter() {
+            Some(name) => crate::selection::ApplyScope::Server(name.to_string()),
+            None => crate::selection::ApplyScope::All,
+        };
+
         ui.separator();
+
+        // Servidor primeiro: ele é o **escopo** de tudo o que vem depois (inclusive do `⟳`, que
+        // descobre justamente o recorte escolhido).
+        ui.label("Server");
+        // O combo ocupa a linha, menos o botão ao lado.
+        let combo_width = (ui.available_width() - ICON_WIDTH).max(160.0);
+        // A lista aberta é mais larga que o botão: as linhas levam `seletor · bases` e a nota não
+        // pode ser espremida (por isso os 400 px, mesmo numa sidebar de 400).
+        let popup_width = (combo_width + ICON_WIDTH).max(SERVER_POPUP_WIDTH);
         ui.horizontal(|ui| {
-            ui.label("Databases");
-
-            // Combo das queries salvas na aba Settings, com **busca** (o mesmo widget do campo
-            // `Database` e das fontes).
-            //
-            // A **primeira** linha é "nenhuma query": o botão fica em branco quando ela está
-            // escolhida, mas a linha da lista precisa de rótulo — sem texto, o egui pinta só o
-            // fundo azul da seleção e sobra um quadrado azul sem significado.
-            const NO_QUERY: &str = "(none)";
-            let chosen = self.chosen_query.clone().unwrap_or_default();
-            let mut texts: Vec<String> = vec![NO_QUERY.to_string()];
-            texts.extend(selections.iter().map(|query| query.name.clone()));
-            let items: Vec<crate::search_combo::Item<'_>> = texts
-                .iter()
-                .map(|text| {
-                    // `chosen` vazio corresponde justamente à primeira linha.
-                    let selected = if text == NO_QUERY {
-                        chosen.is_empty()
-                    } else {
-                        text == &chosen
-                    };
-                    crate::search_combo::Item::new(text.as_str(), selected)
-                })
-                .collect();
-            if let Some(index) =
-                crate::search_combo::search_combo(ui, "selection_query", &chosen, &items, true)
-            {
-                // A posição 0 é o "nenhuma", independentemente do texto (um dono pode batizar
-                // uma query de `(none)`; a posição não se confunde).
-                self.chosen_query = if index == 0 {
-                    None
-                } else {
-                    Some(texts[index].clone())
-                };
-            }
-
-            // `⟳ Apply` substitui a seleção do escopo (R1). Sem query escolhida não há o que
-            // aplicar: o botão fica desabilitado em vez de adivinhar.
-        });
-
-        // Filtro de servidor: a lista e **plana e alfabetica**; o servidor e um filtro. E o que
-        // deixa "marcar tudo do servidor 1" ser: filtra o servidor 1, aperta `Select all`.
-        ui.horizontal(|ui| {
-            ui.label("Server");
             // O botão mostra a contagem do escopo, igual ao "All servers (208)".
             let current = match self.selection.server_filter() {
                 Some(name) => format!("{name} ({})", self.selection.known_on(name)),
@@ -824,16 +891,24 @@ impl State {
             };
             let mut texts: Vec<String> = vec!["All servers".to_string()];
             texts.extend(servers.iter().map(|server| server.name.clone()));
-            // A contagem é **detalhe** (`note`), não parte do nome: fica fora da busca e não
-            // contamina o valor. `(0)` é o sinal de que aquele servidor ainda não foi descoberto.
-            let counts: Vec<String> =
-                std::iter::once(self.selection.known_count(servers).to_string())
-                    .chain(
-                        servers
-                            .iter()
-                            .map(|server| self.selection.known_on(&server.name).to_string()),
-                    )
-                    .collect();
+            // O detalhe de cada linha é `seletor · bases`. A contagem fica **fora** da busca
+            // (procurar "104" não pode achar um servidor pelo número) e o seletor entra truncado,
+            // senão um nome longo espreme a contagem.
+            //
+            // A linha `All servers` descreve o escopo **dela**, não o do filtro atual: com o filtro
+            // em `Local`, usar o seletor do filtro fazia essa linha dizer que *todos* estavam no
+            // seletor que só o `Local` tinha.
+            let mut notes: Vec<String> = vec![note_line(
+                &self.selection.selector_for_all(servers).unwrap_or_default(),
+                self.selection.known_count(servers),
+            )];
+            notes.extend(servers.iter().map(|server| {
+                let selector = self
+                    .selection
+                    .selector_for(&server.name)
+                    .unwrap_or_default();
+                note_line(selector, self.selection.known_on(&server.name))
+            }));
             let items: Vec<crate::search_combo::Item<'_>> = texts
                 .iter()
                 .enumerate()
@@ -847,56 +922,31 @@ impl State {
                     };
                     crate::search_combo::Item::with_note(
                         text.as_str(),
-                        counts[index].as_str(),
+                        notes[index].as_str(),
                         selected,
                     )
                 })
                 .collect();
-            if let Some(index) = crate::search_combo::search_combo(
+            if let Some(index) = crate::search_combo::search_combo_sized(
                 ui,
                 "selection_server_filter",
                 &current,
                 &items,
                 true,
+                crate::search_combo::Size {
+                    button: combo_width,
+                    popup: popup_width,
+                },
             ) {
                 self.selection
                     .set_server_filter((index > 0).then(|| texts[index].clone()));
             }
-        });
 
-        // O **escopo** dos botoes e o filtro: um servidor, ou todos.
-        let scope_name = self
-            .selection
-            .server_filter()
-            .map(str::to_string)
-            .unwrap_or_else(|| "all".to_string());
-        let scope = match self.selection.server_filter() {
-            Some(name) => crate::selection::ApplyScope::Server(name.to_string()),
-            None => crate::selection::ApplyScope::All,
-        };
-
-        ui.horizontal(|ui| {
+            // `⟳` no lugar do antigo `Discover all`: a descoberta age no escopo do filtro, e ao
+            // lado do filtro isso fica visível sem um rótulo a mais.
             if ui
-                .add_enabled(
-                    self.chosen_query.is_some() && !running,
-                    egui::Button::new(format!("⟳ Apply to {scope_name}")),
-                )
-                .on_hover_text("Mark the databases the saved query returns, in this scope")
-                .clicked()
-                && let Some(query) = &self.chosen_query
-            {
-                request = Some(Request::ApplySelection {
-                    query: query.clone(),
-                    scope,
-                });
-            }
-
-            if ui
-                .add_enabled(
-                    !running,
-                    egui::Button::new(format!("⟳ Discover {scope_name}")),
-                )
-                .on_hover_text("List the databases of this scope")
+                .add_enabled(!running, egui::Button::new("⟳"))
+                .on_hover_text(format!("List the databases of {scope_name}"))
                 .clicked()
             {
                 request = Some(Request::DiscoverDatabases {
@@ -905,8 +955,92 @@ impl State {
             }
         });
 
-        // `Select all` / `Clear`: papeis fixos, escopo = filtro x busca. Nunca dependem de haver
-        // query escolhida (era a opcao A, recusada por acoplar dois controles).
+        // Seletor do escopo. **Escolher aplica na hora** — não existe mais o botão `Apply Selector`.
+        // A linha `(none)` não desmarca nada: só esquece o rótulo (a seleção continua).
+        ui.label("Query Selector");
+        ui.horizontal(|ui| {
+            const NO_SELECTOR: &str = "(none)";
+            let chosen = self
+                .selection
+                .selector_for_scope(servers)
+                .unwrap_or_default();
+            let mut texts: Vec<String> = vec![NO_SELECTOR.to_string()];
+            texts.extend(selections.iter().map(|query| query.name.clone()));
+            let items: Vec<crate::search_combo::Item<'_>> = texts
+                .iter()
+                .map(|text| {
+                    // `chosen` vazio corresponde justamente à primeira linha.
+                    let selected = if text == NO_SELECTOR {
+                        chosen.is_empty()
+                    } else {
+                        text == &chosen
+                    };
+                    crate::search_combo::Item::new(text.as_str(), selected)
+                })
+                .collect();
+            if let Some(index) = crate::search_combo::search_combo_sized(
+                ui,
+                "selection_query",
+                &chosen,
+                &items,
+                self.applying.is_none() && !running,
+                crate::search_combo::Size {
+                    button: combo_width,
+                    popup: popup_width,
+                },
+            ) {
+                // A posição 0 é o `(none)`, independentemente do texto (um dono pode batizar uma
+                // query de `(none)`; a posição não se confunde).
+                let chosen = (index > 0).then(|| texts[index].as_str());
+                if let Some(pedido) = self.choose_selector(chosen, &scope, servers) {
+                    request = Some(pedido);
+                }
+            }
+
+            // O banco está respondendo: `⟳` cinza até chegar (aplicar ou rodar).
+            if let Some(query) = &self.applying {
+                ui.spinner().on_hover_text(format!("Applying '{query}'..."));
+            } else if running {
+                ui.spinner().on_hover_text("Running the query...");
+            }
+        });
+
+        // Falha ao aplicar: a seleção anterior **continua marcada**, e o recado fica aqui até a
+        // próxima aplicação dar certo (ou até o `✕`).
+        if let Some(alert) = self.apply_alert.clone() {
+            let mut dismiss = false;
+            egui::Frame::group(ui.style()).show(ui, |ui| {
+                // O alerta ocupa a **largura toda** da sidebar (o `Frame` sozinho encolhe até o
+                // texto, e uma caixa estreita some no meio do nada).
+                ui.set_min_width(ui.available_width());
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(ALERT_COLOR, format!("⚠ {alert}"));
+                    if ui.small_button("✕").on_hover_text("Dismiss").clicked() {
+                        dismiss = true;
+                    }
+                });
+            });
+            if dismiss {
+                self.apply_alert = None;
+            }
+        }
+
+        // Busca em **largura toda**: é o controle mais usado da sidebar. Cruza o nome da base e o
+        // do servidor; a seleção é guardada por nome, então filtrar não perde nada (R7).
+        let mut search = self.selection.search().to_string();
+        if ui
+            .add(
+                egui::TextEdit::singleline(&mut search)
+                    .hint_text("Search database...")
+                    .desired_width(f32::INFINITY),
+            )
+            .changed()
+        {
+            self.selection.set_search(search);
+        }
+
+        // `Select all` / `Clear`: papéis fixos, escopo = filtro × busca. Nunca dependem de haver
+        // seletor escolhido (era a opção A, recusada por acoplar dois controles).
         let selectable = self.selection.selectable_count(servers);
         let all_marked = self.selection.all_visible_marked(servers);
         ui.horizontal(|ui| {
@@ -921,7 +1055,8 @@ impl State {
                 .clicked()
             {
                 let summary = self.selection.select_all_visible(servers);
-                self.selection_message = Some(summary.describe());
+                // O "quantas marcadas" já está no status abaixo; aqui só o que ficou de fora.
+                self.selection_message = summary.describe_skips();
             }
             if ui
                 .add_enabled(
@@ -934,27 +1069,32 @@ impl State {
                 let cleared = self.selection.clear_visible(servers);
                 self.selection_message = Some(format!("{cleared} cleared"));
             }
-        });
-
-        // Busca: cruza o nome da base e o do servidor. A selecao e guardada por nome, entao filtrar
-        // nao perde nada (R7).
-        ui.horizontal(|ui| {
-            let mut search = self.selection.search().to_string();
-            if ui
-                .add(
-                    egui::TextEdit::singleline(&mut search)
-                        .hint_text("Search database...")
-                        .desired_width(180.0),
-                )
-                .changed()
-            {
-                self.selection.set_search(search);
-            }
-            if !self.selection.search().is_empty() && ui.small_button("x").clicked() {
-                self.selection.set_search(String::new());
+            // A busca ocupa a largura toda, então o "limpar" dela vive aqui — **rotulado**, para
+            // não se confundir com o `Clear`, que desmarca bases.
+            if !self.selection.search().is_empty() {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .small_button("✕ search")
+                        .on_hover_text("Clear the search")
+                        .clicked()
+                    {
+                        self.selection.set_search(String::new());
+                    }
+                });
             }
         });
 
+        // Status **derivado** (é sempre a verdade atual): quantas bases estão marcadas no escopo e
+        // de qual seletor vieram. O recado da última ação vem embaixo, quando há o que contar.
+        let scope_marked = match self.selection.server_filter() {
+            Some(name) => self.selection.marked_on(name),
+            None => self.selection.marked_count(),
+        };
+        let mut status = format!("{scope_marked} marked");
+        if let Some(origin) = self.selection.scope_origin(servers) {
+            status.push_str(&format!(" · from '{origin}'"));
+        }
+        ui.label(status);
         if let Some(message) = &self.selection_message {
             ui.weak(message);
         }
@@ -963,10 +1103,6 @@ impl State {
         let page_size = self.page_size;
         let rows = self.selection.visible_rows(servers, page_size);
         let hidden = self.selection.hidden(servers, page_size);
-        let scope_marked = match self.selection.server_filter() {
-            Some(name) => self.selection.marked_on(name),
-            None => self.selection.marked_count(),
-        };
         let scope_total = rows.len() + hidden;
 
         egui::ScrollArea::vertical()
@@ -1704,33 +1840,268 @@ mod tests {
         );
     }
 
-    /// Esquecer a query escolhida quando ela sai do cadastro (aba Settings).
+    /// Esquecer o seletor quando ele sai do cadastro (aba Settings).
     ///
-    /// Sem isto o combo da aba Query continuava exibindo o nome de uma query que já não existia.
+    /// Sem isto o combo da aba Query continuava exibindo o nome de uma query que já não existe —
+    /// agora por servidor, então a limpeza é por servidor também.
     /// CONTRACT: IF-230
     #[test]
     fn removing_the_query_in_use_resets_the_combo() {
-        let mut state = State {
-            chosen_query: Some("Smoke".to_string()),
-            ..State::default()
-        };
+        let mut state = State::default();
+        let servers = [server("Local"), server("Produção")];
+        state.sync_servers(&servers);
 
-        // Ainda existe (com outra caixa): o combo fica.
+        for name in ["Local", "Produção"] {
+            let selected = mustel_core::usecases::custom_databases::ServerSelection {
+                server: name.to_string(),
+                databases: vec![mustel_core::usecases::custom_databases::DatabaseChoice {
+                    name: "dev".to_string(),
+                    blocked_by: None,
+                    warning: None,
+                }],
+            };
+            state.selection.apply(
+                &[selected],
+                &crate::selection::ApplyScope::Server(name.to_string()),
+                "Smoke",
+            );
+        }
+
+        // Ainda existe (com outra caixa): o combo continua mostrando o nome.
         state.retain_selection_queries(&[SelectionQuery {
             name: "smoke".to_string(),
             server: "Local".to_string(),
             database: "dev".to_string(),
             sql: "select 1".to_string(),
         }]);
-        assert_eq!(state.chosen_query.as_deref(), Some("Smoke"));
+        assert_eq!(state.selection.selector_for("Local"), Some("Smoke"));
+        assert_eq!(
+            state.selection.selector_for_scope(&servers).as_deref(),
+            Some("Smoke"),
+            "os dois servidores usam o mesmo seletor: o escopo tem um nome só"
+        );
 
-        // Removida: volta para `— none —`.
+        // Removida: o combo volta a ficar vazio (e a seleção de bases **fica**, não é dela).
         state.retain_selection_queries(&[]);
-        assert_eq!(state.chosen_query, None);
+        assert_eq!(state.selection.selector_for("Local"), None);
+        assert_eq!(state.selection.selector_for_scope(&servers), None);
+        assert_eq!(
+            state.selection.marked_count(),
+            2,
+            "esquecer o rótulo não desmarca nada"
+        );
+    }
+
+    /// Escolher um seletor **aplica no escopo do filtro** — e `(none)` só esquece o rótulo.
+    ///
+    /// É a regra do combo que aplica: não há botão `Apply Selector`, e o escopo é sempre o que o
+    /// combo de servidor está mostrando.
+    /// CONTRACT: IF-237
+    #[test]
+    fn choosing_a_selector_applies_it_in_the_current_scope() {
+        let mut state = State::default();
+        let servers = [server("Local"), server("Produção")];
+        state.sync_servers(&servers);
+        // A tela guarda a seleção como se ela já tivesse voltado do banco.
+        for name in ["Local", "Produção"] {
+            state.selection.apply(
+                &[mustel_core::usecases::custom_databases::ServerSelection {
+                    server: name.to_string(),
+                    databases: vec![mustel_core::usecases::custom_databases::DatabaseChoice {
+                        name: "dev".to_string(),
+                        blocked_by: None,
+                        warning: None,
+                    }],
+                }],
+                &crate::selection::ApplyScope::Server(name.to_string()),
+                "Producao",
+            );
+        }
+        // Com filtro: aplica **só** naquele servidor.
+        state
+            .selection
+            .set_server_filter(Some("Produção".to_string()));
+        assert_eq!(
+            state.choose_selector(
+                Some("Homologacao"),
+                &crate::selection::ApplyScope::Server("Produção".to_string()),
+                &servers
+            ),
+            Some(Request::ApplySelection {
+                query: "Homologacao".to_string(),
+                scope: crate::selection::ApplyScope::Server("Produção".to_string()),
+            })
+        );
+
+        // Sem filtro: aplica em todos.
+        state.selection.set_server_filter(None);
+        assert_eq!(
+            state.choose_selector(Some("Comum"), &crate::selection::ApplyScope::All, &servers),
+            Some(Request::ApplySelection {
+                query: "Comum".to_string(),
+                scope: crate::selection::ApplyScope::All,
+            })
+        );
+
+        // `(none)`: nenhum pedido, o rótulo do escopo é esquecido e nada é desmarcado.
+        let antes = state.selection.marked_count();
+        assert_eq!(
+            state.choose_selector(None, &crate::selection::ApplyScope::All, &servers),
+            None
+        );
+        assert_eq!(state.selection.selector_for("Local"), None);
+        assert_eq!(state.selection.marked_count(), antes, "não desmarca");
+        assert!(
+            state
+                .selection_message
+                .as_deref()
+                .is_some_and(|message| message.contains("selection unchanged")),
+            "o recado diz que a seleção ficou: {:?}",
+            state.selection_message
+        );
+    }
+
+    /// Falha ao aplicar **mantém** a seleção anterior e deixa o alerta na tela.
+    ///
+    /// O alerta some quando a próxima aplicação dá certo (ou no `✕` da tela).
+    /// CONTRACT: IF-238
+    #[test]
+    fn a_failed_apply_keeps_the_selection_and_raises_the_alert() {
+        let mut state = State::default();
+        let servers = [server("Local")];
+        state.sync_servers(&servers);
+        let selection = mustel_core::usecases::custom_databases::ServerSelection {
+            server: "Local".to_string(),
+            databases: vec![mustel_core::usecases::custom_databases::DatabaseChoice {
+                name: "dev".to_string(),
+                blocked_by: None,
+                warning: None,
+            }],
+        };
+        state.apply_selection(
+            std::slice::from_ref(&selection),
+            &crate::selection::ApplyScope::All,
+            "Producao",
+        );
+        assert_eq!(state.selection.marked_count(), 1);
+
+        state.begin_apply("Homologacao");
+        assert_eq!(state.applying.as_deref(), Some("Homologacao"));
+
+        state.apply(&JobResult::SelectionFailed {
+            query: "Homologacao".to_string(),
+            error: "connection refused".to_string(),
+        });
+
+        assert_eq!(state.applying, None, "o `⟳` saiu da tela");
+        let alert = state.apply_alert.clone().expect("alerta");
+        assert!(alert.contains("Could not apply 'Homologacao'"), "{alert}");
+        assert!(alert.contains("connection refused"), "{alert}");
+        assert!(alert.contains("Selection unchanged."), "{alert}");
+        assert_eq!(
+            state.selection.marked_count(),
+            1,
+            "a seleção anterior continua de pé"
+        );
+        assert_eq!(
+            state.selection.selector_for("Local"),
+            Some("Producao"),
+            "o seletor que valia continua valendo"
+        );
+
+        // A próxima aplicação que der certo limpa o alerta.
+        state.begin_apply("Producao");
+        state.apply(&JobResult::Selection {
+            query: "Producao".to_string(),
+            scope: crate::selection::ApplyScope::All,
+            selection: vec![selection],
+            ignored_rows: 0,
+        });
+        assert_eq!(state.apply_alert, None);
+        assert_eq!(state.applying, None);
+    }
+
+    /// O detalhe da linha do combo de servidor mostra o seletor truncado em 20 e a contagem.
+    /// CONTRACT: IF-237
+    #[test]
+    fn the_server_note_truncates_the_selector_and_keeps_the_count() {
+        assert_eq!(note_line("Producao", 104), "Producao · 104");
+        assert_eq!(note_line("", 0), "· 0", "sem seletor nem base");
+        assert_eq!(note_line("", 104), "· 104");
+
+        let long = note_line("Homologacao-Tenant-Producao", 104);
+        let selector = long.split(" · ").next().expect("a nota tem duas partes");
+        assert_eq!(selector.chars().count(), 20, "truncado em 20: {long}");
+        assert!(selector.ends_with('…'), "com reticências: {long}");
+        assert!(long.ends_with(" · 104"), "a contagem fica inteira: {long}");
+        assert_eq!(truncate("curto", 20), "curto", "quem cabe não é mexido");
+    }
+
+    /// O alerta de falha mora **abaixo do combo de seletor** e acima da busca — largura toda.
+    ///
+    /// E o status mostra de onde veio a seleção (`103 marked · from 'Producao'`).
+    /// CONTRACT: IF-238
+    #[test]
+    fn the_apply_alert_sits_under_the_selector_combo() {
+        let ctx = egui::Context::default();
+        let servers = [server("Local")];
+        let mut state = State::default();
+        state.sync_servers(&servers);
+        state.selection.apply(
+            &[mustel_core::usecases::custom_databases::ServerSelection {
+                server: "Local".to_string(),
+                databases: vec![mustel_core::usecases::custom_databases::DatabaseChoice {
+                    name: "dev".to_string(),
+                    blocked_by: None,
+                    warning: None,
+                }],
+            }],
+            &crate::selection::ApplyScope::All,
+            "Producao",
+        );
+        state.apply_alert =
+            Some("Could not apply 'Homologacao'.\nboom\nSelection unchanged.".to_string());
+
+        let mut texts: Vec<(String, f32)> = Vec::new();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let _ = state.sidebar_ui(ui, &servers, &[]);
+                });
+            });
+            texts.clear();
+            collect_text(&output.shapes, &mut texts);
+            output.textures_delta.clear();
+        }
+
+        let y = |needle: &str| {
+            texts
+                .iter()
+                .find(|(text, _)| text.contains(needle))
+                .map(|(_, y)| *y)
+                .unwrap_or_else(|| panic!("{needle} não foi desenhado: {texts:?}"))
+        };
+
+        let selector = y("Query Selector");
+        let alert = y("Could not apply 'Homologacao'");
+        let search = y("Search database...");
+        assert!(selector < alert, "o alerta vem depois do combo");
+        assert!(alert < search, "e antes da busca");
+        assert!(
+            texts
+                .iter()
+                .any(|(text, _)| text.contains("Selection unchanged."))
+        );
+
+        assert!(
+            texts
+                .iter()
+                .any(|(text, _)| text == "1 marked · from 'Producao'"),
+            "o status diz a origem: {texts:?}"
+        );
     }
 
     /// A escolha de bases saiu do formulário: ela é da **sidebar** (R1/R2 continuam valendo).
-    ///
     /// O teste desenha a sidebar e o formulário separados e confere onde cada rótulo caiu — a
     /// divisão "servidores e bases à esquerda, execução à direita" é o desenho pedido pelo dono.
     /// CONTRACT: IF-233
@@ -1762,7 +2133,12 @@ mod tests {
 
         // Rótulos que só a escolha de bases tem. (`dev` fica de fora: ele também aparece na linha
         // de referência do autocomplete, que continua na área principal de propósito.)
-        for expected in ["Databases", "Search database...", "Select all 0", "Server"] {
+        for expected in [
+            "Query Selector",
+            "Search database...",
+            "Select all 0",
+            "Server",
+        ] {
             assert!(
                 sidebar.iter().any(|(text, _)| text == expected),
                 "a sidebar tem {expected:?}: {sidebar:?}"

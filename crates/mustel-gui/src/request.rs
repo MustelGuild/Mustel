@@ -152,6 +152,16 @@ pub enum JobResult {
         /// Linhas descartadas por falta de host/banco.
         ignored_rows: usize,
     },
+    /// A aplicação de uma query de seleção falhou.
+    ///
+    /// Variante própria (e não o `Failed` genérico) porque a tela precisa saber **o que** não
+    /// aplicou: o alerta da sidebar nomeia a query e a seleção anterior fica de pé.
+    SelectionFailed {
+        /// Rótulo da query que não aplicou.
+        query: String,
+        /// Erro agregado, pronto para a tela.
+        error: String,
+    },
     /// O resultado do `Test` de uma query de seleção (aba Settings).
     SelectionTested {
         /// Nome da query ensaiada.

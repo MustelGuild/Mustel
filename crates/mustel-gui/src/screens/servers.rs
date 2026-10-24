@@ -154,7 +154,7 @@ impl State {
             // O ensaio de query de seleção é da aba Settings.
             JobResult::SelectionTested { .. } => {}
             // A carga da seleção é da aba Query.
-            JobResult::Selection { .. } => {}
+            JobResult::Selection { .. } | JobResult::SelectionFailed { .. } => {}
             JobResult::Failed(error) => {
                 self.error = Some(error.clone());
             }

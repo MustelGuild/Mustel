@@ -31,48 +31,96 @@ existir em mais de um servidor.
 
 ```text
 ┌──────────────────────────────────────┬──────────────────────────────────────────┐
-│ ◀  5 selected                        │ Referência do autocomplete: [Local] [conf…] ⟳ │
+│ ◀  5 selected                        │ Referência do autocomplete: [Local] ⟳    │
 │                                      │ SQL                                      │
-│ Databases [ Producao             ▼ ] │ ┌──────────────────────────────────────┐ │
-│ Server    [ Local · 3 of 104     ▼ ] │ │ SELECT 1 AS valor                    │ │
-│ [⟳ Apply to Local] [⟳ Discover Local]│ └──────────────────────────────────────┘ │
-│ [Select all 103] [Clear]             │ Output directory [ ./results ] [📂] [🗂]  │
-│ [ Search database…                ] ✕│ [ Run query ]                             │
-│ 5 marked                             │                                          │
-│ 3 of 104                             │ Results                                  │
-│ ☑ configurador                 Local │ ┌──────────────────────────────────────┐ │
-│ ☑ dev                          Local │ │ Server │ Database │ valor                │ │
-│ ☐ postgres            Local (cinza)  │ └──────────────────────────────────────┘ │
-│ ☐ demo_001                   Local 2 │                                          │
+│ Server                               │ ┌────────────────────────────────────┐   │
+│ [ Local (104) ▼ ] [⟳]                │ │ SELECT 1 AS valor                  │   │
+│ Query Selector                       │ └────────────────────────────────────┘   │
+│ [ Producao ▼ ]  ⟳                    │ Output directory [ ./results ] [📂]       │
+│                                      │ [ Run query ]                            │
+│ [ Search database… ]                 │                                          │
+│ [Select all 103] [Clear]             │ Results                                  │
+│ 5 marked · from 'Producao'           │ ┌────────────────────────────────────┐   │
+│ 3 of 104                             │ │ Server │ Database │ valor           │  │
+│ ☑ configurador            Local      │ └────────────────────────────────────┘   │
+│ ☑ dev                     Local      │                                          │
+│ ☐ postgres      Local (cinza)        │                                          │
+│ ☐ demo_001             Local 2       │                                          │
 └──────────────────────────────────────┴──────────────────────────────────────────┘
 ```
 
-A sidebar tem **300 px** fixos, com **12 px de respiro** entre ela e o conteúdo à direita. O botão
+A sidebar tem **400 px** fixos, com **12 px de respiro** entre ela e o conteúdo à direita. O botão
 `◀` recolhe para uma barra `▶ N selected` na área principal; `▶` reabre. A aba **Servers** usa a
 mesma sidebar — a lista do cadastro fica lá, em cards que ocupam a largura toda, e o formulário
 ocupa a área principal.
+
+A **janela mínima** é **880 × 560** na escala 1,0x e cresce junto com o `fontScale`
+(Settings → Text size): a 100% e a 125% de escala do sistema cabe num 1366×768, mas a 125%
+com `fontScale` 1,25 o mínimo passa de 1100 × 700 e pode não caber.
 
 O combo de **Server** mostra o total de bases de cada servidor ao lado do nome (`Local 104`,
 `Local 2 0`) — o `0` é o sinal de que aquele servidor ainda não foi descoberto. A contagem é só de
 exibição: buscar "104" não encontra servidor nenhum, porque a busca é sobre o nome.
 
-### Escopo dos botões
+O mesmo combo mostra **qual seletor** marcou cada servidor e quantas bases ele tem
+(`Producao · 104`), com o nome do seletor truncado em **20 caracteres**
+(`Homologacao-Tenant… · 104`); servidor sem seletor aparece `· 104`, e `· 0` é o sinal de
+que aquele servidor ainda não foi descoberto.
 
-O **filtro de servidor** define o escopo de tudo:
+### Escopo: o filtro manda
 
-| Ação | Escopo |
-|---|---|
-| `⟳ Apply to …` | roda a query salva e **substitui** a seleção do escopo (um servidor, ou todos) |
-| `⟳ Discover …` | lista as bases do escopo |
-| `Select all N` | marca **o que está visível**: filtro × busca |
-| `Clear` | desmarca o que está visível |
-| busca | cruza o nome da base **e** o do servidor |
+O **filtro de servidor** define o escopo de tudo o que está na sidebar:
 
-`Select all` e `Apply` têm papéis fixos: um marca tudo, o outro aplica a query — nenhum dos dois muda
-de significado conforme o outro controle. Base barrada por `excludePatterns` e base com aviso de senha
-**nunca** entram automaticamente, e o status conta o que ficou de fora:
+| Controle | O que faz | Escopo |
+|---|---|---|
+| `Query Selector` | escolher um seletor **aplica na hora** e substitui a seleção | o filtro: um servidor, ou todos |
+| `⟳` ao lado do filtro | lista as bases do escopo (era o `Discover all`) | o filtro |
+| `Select all N` | marca **o que está visível** | filtro × busca |
+| `Clear` | desmarca o que está visível | filtro × busca |
+| busca | cruza o nome da base **e** o do servidor | — |
 
-> `206 marked · 2 skipped (excluded by excludePatterns) · 1 skipped (no password)`
+`Select all` e o combo têm papéis fixos: um marca tudo, o outro aplica a query — nenhum dos dois
+muda de significado conforme o outro controle. Base barrada por `excludePatterns` e base com aviso
+de senha **nunca** entram automaticamente, e o status diz quantas estão marcadas e de onde vieram:
+
+> `103 marked · from 'Producao'`
+
+O recado da última ação vem embaixo, e só conta o que ficou de fora:
+
+> `2 skipped (excluded by excludePatterns) · 1 skipped (no password)`
+
+### Quem lembra o seletor é o servidor
+
+Não existe botão `Apply Selector`: **o combo é o botão**. Cada servidor guarda o nome do seletor
+que o marcou, e o combo mostra o que vale no escopo atual:
+
+| Filtro | Seletores dos servidores | O combo mostra | Escolher aplica em |
+|---|---|---|---|
+| um servidor | o dele (ou nenhum) | o nome, ou vazio | **só naquele servidor** |
+| todos | todos com o mesmo seletor | o nome comum | todos |
+| todos | diferentes (ou algum **sem** seletor) | **vazio** | todos (e passa a valer para todos) |
+
+Servidor **sem** seletor conta como um valor diferente, não como "tanto faz": aplicar `todas` só no
+`Local`, com `Local 2` sem nada, deixa o escopo "todos" **sem** nome. É por isso que a linha
+`All servers` do dropdown de servidor mostra só a contagem (`· 209`) nesse caso, enquanto
+`Local` mostra `todas · 104`. A linha `All servers` descreve o escopo **dela**, nunca o do
+filtro atual.
+
+A linha `(none)` **esquece o rótulo** do escopo: a seleção continua exatamente como estava. O
+rótulo é "de onde veio", não uma promessa de que a seleção ainda seja só aquela — marcar uma base
+à mão não apaga o nome do seletor.
+
+### Falha ao aplicar
+
+Se a carga falhar (servidor fora do ar, host fora do cadastro), a seleção anterior **fica como
+estava** e um alerta aparece logo abaixo do combo, com o nome da query, o erro do núcleo e
+`Selection unchanged.`:
+
+> ⚠ Could not apply 'Producao'.
+> connection refused
+> Selection unchanged.
+
+O alerta é dispensável no `✕` e some sozinho quando a próxima aplicação dá certo.
 
 ### Paginação (opcional)
 
@@ -114,7 +162,7 @@ O alias `Server=` só vale **dentro** da connection string.
 - **`excludePatterns` do cadastro sempre valem**, inclusive sobre o que a query trouxe: a base
   aparece **desabilitada**, com o padrão no tooltip, e o status conta quantas foram barradas.
 - **Descoberta é melhor esforço:** um servidor fora do ar não impede os outros de aparecer, e o
-  aviso é por servidor. O `⟳ Apply`, ao contrário, **aborta** — uma seleção pela metade seria pior
+  aviso é por servidor. Aplicar um seletor, ao contrário, **aborta** — uma seleção pela metade seria pior
   que nenhuma.
 - **Recarga que perde base marcada avisa:** quem estava marcado e sumiu do servidor aparece no
   status.

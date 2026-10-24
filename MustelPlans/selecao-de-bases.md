@@ -698,3 +698,64 @@ Append-only.
   `All servers 208`, `Local 104`, `Local 2 104`, `Remoto 0`; digitar `104` na busca devolveu
   "Nothing matches the search.". Testes: `the_note_is_drawn_next_to_the_name` e
   `the_note_is_shown_but_not_searchable`.
+- `[2026-10-24]` **O combo virou o seletor: "Query Selector" que aplica na hora, com memória
+  por servidor, alerta de falha e sidebar de 400 px (IF-237, IF-238).** O dono fechou uma revisão
+  da sidebar em quatro pontos e todos entraram juntos:
+  (a) o rótulo `Databases` virou **`Query Selector`** e **escolher aplica** — o botão
+  `⟳ Apply to …` deixou de existir. O que era "escolher uma query" e depois clicar virou um gesto
+  só; a decisão saiu do desenho para `choose_selector`, que é testável sem janela;
+  (b) **cada servidor lembra o próprio seletor** (`server_selectors`, `BTreeMap` no estado da
+  seleção): com filtro num servidor o combo mostra o dele, com "todos" e seletores iguais mostra o
+  nome comum, e com seletores diferentes fica **vazio** — escolher então passa a valer para todos.
+  A linha `(none)` só esquece o rótulo, nunca desmarca. O campo `chosen_query` (escolha única) saiu:
+  era ele que tornava impossível ter um seletor por servidor;
+  (c) **falha ao aplicar mantém a seleção** e mostra um alerta abaixo do combo (nome da query, erro
+  agregado, `Selection unchanged.`), dispensável no `✕` e limpo na próxima aplicação que der certo.
+  O `JobResult::Failed` não servia: um `Failed` de `Run query` seria atribuído à aplicação em voo —
+  daí `JobResult::SelectionFailed { query, error }`, que nomeia o que falhou;
+  (d) **layout**: busca na largura toda, `Select all`/`Clear` abaixo dela, `⟳` da descoberta ao lado
+  do combo de servidor (o texto `Discover all` saiu), o dropdown de servidor com `seletor · bases`
+  (seletor truncado em 20 caracteres, contagem inteira e fora da busca) e a sidebar de **400 px**
+  (era 300), com a janela mínima em **880×560** (era 640×480) — cabe num 1366×768 a 100% e a 125%.
+  O status passou a ser **derivado** (`103 marked · from 'Producao'`), e o recado da última ação só
+  conta o que ficou de fora (`N skipped …`): repetir a contagem duas vezes era ruído.
+  **Verificado na janela** com config temporário (`MUSTEL_CONFIG_DIR`), servidor `Local` vivo e um
+  inalcançável: (a) aplicar `Producao` marcou `dev` e o combo passou a mostrá-lo, com
+  `1 marked · from 'Producao'`; (b) o dropdown listou `All servers` e `Local` com
+  `Producao · 104` e o inalcançável com `· 0`; (c) o nome longo apareceu como
+  `Homologacao-Tenant-… · 104` (truncado, contagem inteira); (d) aplicar um seletor de SQL inválido
+  manteve a seleção anterior e abriu o alerta em largura toda com `Could not apply 'Quebrada'.`,
+  `selection query failed: db error` e `Selection unchanged.`. Nessa rodada o alerta ainda encolhia
+  até o texto — corrigido com `ui.set_min_width(ui.available_width())` dentro do `Frame`.
+  Testes: 550 no workspace (eram 543), com `each_server_remembers_its_own_selector`,
+  `forgetting_the_selector_does_not_unmark_anything`,
+  `applying_reports_what_it_marked_and_what_it_skipped`,
+  `choosing_a_selector_applies_it_in_the_current_scope`,
+  `a_failed_apply_keeps_the_selection_and_raises_the_alert`,
+  `the_apply_alert_sits_under_the_selector_combo` e
+  `the_server_note_truncates_the_selector_and_keeps_the_count`; o teste de layout antigo passou a
+  esperar `Query Selector` e o do combo virou `removing_the_query_in_use_resets_the_combo` (limpa
+  `server_selectors` sem desmarcar). `IF-233` teve a largura da sidebar atualizada para 400 px.
+- `[2026-10-24]` **Bug do dono: "All servers" dizia ter o seletor que só um servidor tinha.**
+  Reprodução dele: filtrar `Local`, aplicar o seletor `todas`, abrir o dropdown de servidor — a
+  linha `All servers` aparecia como `todas · 209` e a `Local` como `todas · 105`, embora o `Local 2`
+  não estivesse em seletor nenhum. O status afirmava a mesma coisa (`from 'todas'` num escopo que
+  não estava uniforme).
+  Eram **duas** causas, ambas no mesmo lugar conceitual: (a) a linha `All servers` do dropdown usava
+  `selector_for_scope`, que respeita o filtro — então ela ecoava o seletor do `Local` como se fosse o
+  de todos; (b) `selector_for_scope`, no caso "todos", **ignorava** os servidores sem seletor ao
+  comparar, então "um tem `todas`, o outro não tem nada" contava como "todos iguais".
+  Correção: `selector_for_scope` passou a delegar o caso "todos" a
+  **`selector_for_all`**, que exige que **todos** os servidores do cadastro tenham o mesmo seletor —
+  e "não tem nenhum" é um valor como outro qualquer (o primeiro servidor sem seletor já responde
+  `None`). A linha `All servers` passou a pedir `selector_for_all` explicitamente: ela descreve o
+  escopo **dela**, não o do filtro. Efeito colateral coerente: com filtro em "todos", o combo fica
+  vazio nessa situação e escolher um seletor aplica em **todos** (a linha "diferentes" da tabela
+  combinada), e o status deixa de atribuir origem a um escopo misto.
+  **Verificado na janela** com `Local` (5432) e `Local 2` (5433, fora do ar), seletor `todas`
+  aplicado só no `Local`: o dropdown passou a mostrar `All servers · 104`, `Local todas · 104` e
+  `Local 2 · 0` (antes da correção, `All servers` mostrava `todas`).
+  **Prova de que o teste pega a regressão:** reinstalei o comportamento antigo
+  (`filter_map` ignorando quem não tem seletor) de propósito, rodei o teste novo e vi falhar com
+  `left: Some("todas") right: None`; desfiz. Teste novo:
+  `the_all_servers_scope_is_named_only_when_every_server_agrees`; workspace com 551 testes.

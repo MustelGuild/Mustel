@@ -236,13 +236,21 @@ pub fn apply(ctx: &egui::Context, chosen: &Chosen) -> Vec<String> {
 /// A linha mais larga da tela de consulta mede ~332 px a 1.0 com nomes típicos e ~413 px na fonte de
 /// sistema mais larga testada (Lucida Console). Escalar a fonte sem escalar o mínimo deixaria o
 /// layout apertado; por isso o mínimo acompanha.
+/// Tamanho mínimo da janela, em pontos, a 1,0x de escala.
+///
+/// **880×560** (era 640×480): a sidebar tem 400 px, então a área principal precisa de ~450 para o
+/// SQL e a tabela continuarem usáveis. Cabe num notebook **1366×768** com a barra de tarefas — e
+/// também a 125% de escala, onde sobram 1093×576 pontos (com pouca folga na altura, é verdade).
+const MIN_WINDOW_WIDTH: f32 = 880.0;
+const MIN_WINDOW_HEIGHT: f32 = 560.0;
+
 pub fn min_window_size(scale: f32) -> egui::Vec2 {
     let scale = if scale.is_finite() {
         scale.clamp(MIN_FONT_SCALE, MAX_FONT_SCALE)
     } else {
         DEFAULT_FONT_SCALE
     };
-    egui::vec2(640.0 * scale, 480.0 * scale)
+    egui::vec2(MIN_WINDOW_WIDTH * scale, MIN_WINDOW_HEIGHT * scale)
 }
 
 #[cfg(test)]
@@ -367,13 +375,13 @@ mod tests {
     /// CONTRACT: IF-220
     #[test]
     fn the_minimum_window_grows_with_the_scale() {
-        assert_eq!(min_window_size(1.0), egui::vec2(640.0, 480.0));
+        assert_eq!(min_window_size(1.0), egui::vec2(880.0, 560.0));
         assert_eq!(
             min_window_size(1.25),
-            egui::vec2(640.0 * 1.25, 480.0 * 1.25)
+            egui::vec2(880.0 * 1.25, 560.0 * 1.25)
         );
         // Valor corrompido não vira janela gigante nem invisível.
-        assert_eq!(min_window_size(f32::NAN), egui::vec2(640.0, 480.0));
+        assert_eq!(min_window_size(f32::NAN), egui::vec2(880.0, 560.0));
     }
 
     /// Ida e volta das preferências: o que a tela escolhe é o que vai para o arquivo.

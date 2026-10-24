@@ -49,10 +49,10 @@ struct Running {
 /// Largura da sidebar de servidores/bases.
 ///
 /// **Fixa** (`exact_size`): com `resizable` + `default_size` o `Panel` do egui cresce para caber o
-/// conteúdo e a sidebar ia parar no teto do intervalo (420) — mais de um quarto da janela. A janela
-/// mínima é 640 px a 1,0x, então 300 deixa a área do SQL utilizável; recolhida, a sidebar sai de
-/// cena e a barra `▶` fica na área principal.
-const SIDEBAR_WIDTH: f32 = 300.0;
+/// conteúdo e a sidebar ia parar no teto do intervalo (420) — mais de um quarto da janela. Com 400 a
+/// sidebar acomoda a lista plana com o servidor em cada linha e o seletor no combo de filtro; a
+/// janela mínima (880) garante ~450 para o SQL. Recolhida, a barra `▶` fica na área principal.
+const SIDEBAR_WIDTH: f32 = 400.0;
 
 /// Respiro entre a sidebar e o conteúdo à direita dela.
 ///
@@ -361,6 +361,7 @@ impl App {
                 };
 
                 self.status = format!("Applying selection query '{query}'...");
+                self.query.begin_apply(&query);
                 let results = self.results.clone();
                 let context = ctx.clone();
                 let (token, _handle) = self.runtime.spawn(move |_token| async move {
@@ -371,7 +372,10 @@ impl App {
                             selection,
                             ignored_rows: loaded.ignored_rows,
                         },
-                        Err(error) => JobResult::Failed(error.to_string()),
+                        Err(error) => JobResult::SelectionFailed {
+                            query: saved.name,
+                            error: error.to_string(),
+                        },
                     };
                     let _ = results.send(result);
                     context.request_repaint();
@@ -647,6 +651,9 @@ impl App {
                         selection,
                     );
                     format!("'{query}' applied: {}", outcome.summary())
+                }
+                JobResult::SelectionFailed { query, error } => {
+                    format!("Could not apply selection query '{query}': {error}")
                 }
                 JobResult::Failed(error) => error.clone(),
             };

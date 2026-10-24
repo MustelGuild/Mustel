@@ -37,11 +37,25 @@ pub enum Request {
     CancelJob,
     /// Descobre os bancos do servidor e se o cofre tem a senha dele.
     ///
-    /// É o que alimenta o combo de banco da linha "Referência do autocomplete": o cadastro pode não
+    /// É o que alimenta o combo de banco da linha "Referência do autocomplete": o cadastro pod
+    /// e não
     /// listar todos os bancos (ou nenhum, quando o servidor usa `fetchAllDatabases`).
+    ///
+    /// `None` descobre **todos** os servidores do cadastro, um a um e em melhor esforço: um
+    /// servidor fora do ar não pode impedir os outros (é o `⟳ Discover all`).
     DiscoverDatabases {
-        /// Servidor do cadastro.
-        server: String,
+        /// Servidor do cadastro (`None` = todos).
+        server: Option<String>,
+    },
+    /// Roda uma query de seleção salva e marca as bases do escopo pedido (R1).
+    ///
+    /// Aborta a carga inteira quando um host não está no cadastro (D9) — o contrário do
+    /// `DiscoverDatabases`, que segue em melhor esforço.
+    ApplySelection {
+        /// Nome da query salva em `gui.selections`.
+        query: String,
+        /// Todos os servidores, ou um só.
+        scope: crate::selection::ApplyScope,
     },
     /// Carrega o esquema de um banco, para o autocomplete.
     LoadSchema {
@@ -54,10 +68,19 @@ pub enum Request {
     ApplyGuiPrefs(crate::fonts::Chosen),
     /// Grava as preferências da janela na seção `gui` do `mustel.jsonc`.
     SaveGuiPrefs(mustel_core::config::model::GuiPrefs),
-    /// Executa a consulta nos servidores escolhidos.
+    /// Ensaia uma query de seleção (aba Settings: `Test`).
+    ///
+    /// Roda o **mesmo** caminho da carga real: abre a conexão do servidor do cadastro e valida as
+    /// linhas. Devolve só números, nunca a connection string nem a senha (D12).
+    TestSelection(mustel_core::config::model::SelectionQuery),
+    /// Executa a consulta nos servidores escolhidos, com as **bases marcadas** (D15).
+    ///
+    /// O servidor vai pelo nome do cadastro: as bases explícitas são as que a tela marcou, e o
+    /// plano roda só elas (`fetch_all_databases: false`, `all: false`). Servidor sem base marcada
+    /// nem chega aqui.
     RunQuery {
-        /// Servidores escolhidos, na ordem da tela.
-        servers: Vec<ServerConfigEntry>,
+        /// Pares `(servidor, bases marcadas)`, na ordem do cadastro.
+        targets: Vec<(String, Vec<String>)>,
         /// SQL da caixa de texto.
         sql: String,
         /// Diretório base da saída.
@@ -117,6 +140,24 @@ pub enum JobResult {
         databases: Result<Vec<String>, String>,
         /// O cofre tinha senha para o servidor?
         has_password: bool,
+    },
+    /// Uma query de seleção foi carregada e validada contra o cadastro.
+    Selection {
+        /// Rótulo da query.
+        query: String,
+        /// O escopo que a tela pediu (volta para ser aplicado só nele).
+        scope: crate::selection::ApplyScope,
+        /// O que a query trouxe, por servidor do cadastro.
+        selection: Vec<mustel_core::usecases::custom_databases::ServerSelection>,
+        /// Linhas descartadas por falta de host/banco.
+        ignored_rows: usize,
+    },
+    /// O resultado do `Test` de uma query de seleção (aba Settings).
+    SelectionTested {
+        /// Nome da query ensaiada.
+        name: String,
+        /// Os números, ou o erro agregado pronto para a tela.
+        outcome: Result<crate::query::SelectionOutcome, String>,
     },
     /// O job falhou, com a mensagem pronta do núcleo.
     Failed(String),

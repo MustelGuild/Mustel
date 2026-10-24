@@ -28,7 +28,7 @@ pub fn save(store: &ConfigStore, prefs: Option<GuiPrefs>) -> Result<(), CoreErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::model::{MAX_FONT_SCALE, ServerConfigEntry};
+    use crate::config::model::{MAX_FONT_SCALE, SelectionQuery, ServerConfigEntry};
 
     fn store() -> (tempfile::TempDir, ConfigStore) {
         let directory = tempfile::tempdir().expect("tempdir");
@@ -60,6 +60,7 @@ mod tests {
                 interface_font: Some("Segoe UI".to_string()),
                 editor_font: Some("Fira Code".to_string()),
                 font_scale: 1.1,
+                selections: Vec::new(),
             }),
         )
         .expect("salva preferências");
@@ -109,5 +110,39 @@ mod tests {
 
         let text = std::fs::read_to_string(store.path()).expect("lê arquivo");
         assert!(!text.contains("\"gui\""), "nem a chave aparece: {text}");
+    }
+
+    /// O CLI grava um servidor e as queries de seleção continuam no arquivo (D11).
+    ///
+    /// A seção `gui` viaja no modelo inteiro: quem reescreve o arquivo tem de preservá-la.
+    /// CONTRACT: IF-229
+    #[test]
+    fn a_cli_rewrite_keeps_the_selection_queries() {
+        let (_directory, store) = store();
+        let query = SelectionQuery {
+            name: "Produção".to_string(),
+            server: "configurador".to_string(),
+            database: "configurador".to_string(),
+            sql: "select host, port, database from tenants".to_string(),
+        };
+        save(
+            &store,
+            Some(GuiPrefs {
+                selections: vec![query.clone()],
+                ..GuiPrefs::default()
+            }),
+        )
+        .expect("salva as queries");
+
+        // `settings db-servers add` reescreve o arquivo inteiro.
+        crate::usecases::db_servers::save(&store, None, &server("dev")).expect("salva servidor");
+
+        let config = store.load().expect("lê");
+        assert_eq!(config.servers.len(), 1);
+        assert_eq!(
+            config.gui.expect("seção gui").selections,
+            vec![query],
+            "a query sobrevive à reescrita do CLI"
+        );
     }
 }

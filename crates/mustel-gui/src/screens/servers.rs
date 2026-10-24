@@ -151,6 +151,10 @@ impl State {
             }
             // O esquema é da tela de consulta; a de servidores não tem o que fazer com ele.
             JobResult::Schema { .. } | JobResult::Databases { .. } => {}
+            // O ensaio de query de seleção é da aba Settings.
+            JobResult::SelectionTested { .. } => {}
+            // A carga da seleção é da aba Query.
+            JobResult::Selection { .. } => {}
             JobResult::Failed(error) => {
                 self.error = Some(error.clone());
             }

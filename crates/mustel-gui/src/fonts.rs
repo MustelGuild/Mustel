@@ -58,12 +58,13 @@ impl Chosen {
     }
 
     /// As preferências para gravar (vazio volta a ser `None`).
-    pub fn to_prefs(&self) -> GuiPrefs {
-        GuiPrefs {
-            interface_font: normalise(&self.interface),
-            editor_font: normalise(&self.editor),
-            font_scale: self.scale,
-        }
+    ///
+    /// Escreve **só** a aparência dentro da seção já existente: a lista de queries de seleção viaja
+    /// no mesmo objeto e não pode sumir quando alguém troca a fonte.
+    pub fn apply_to(&self, prefs: &mut GuiPrefs) {
+        prefs.interface_font = normalise(&self.interface);
+        prefs.editor_font = normalise(&self.editor);
+        prefs.font_scale = self.scale;
     }
 }
 
@@ -385,7 +386,8 @@ mod tests {
             editor: Some(String::new()),
             scale: 1.1,
         };
-        let prefs = chosen.to_prefs();
+        let mut prefs = GuiPrefs::default();
+        chosen.apply_to(&mut prefs);
 
         assert_eq!(prefs.interface_font.as_deref(), Some("Segoe UI"), "apara");
         assert_eq!(prefs.editor_font, None, "vazio vira ausência");

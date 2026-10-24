@@ -14,6 +14,7 @@
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
+use mustel_core::config::model::SelectionQuery;
 use mustel_core::config::{ConfigStore, ServerConfigEntry};
 use mustel_core::events::Status;
 use mustel_core::signal::CancellationToken;
@@ -141,6 +142,15 @@ impl App {
         self.servers.servers().to_vec()
     }
 
+    /// A query de seleção salva com esse nome (sem diferenciar maiúsculas).
+    fn selection_query(&self, name: &str) -> Option<SelectionQuery> {
+        self.settings
+            .selections()
+            .iter()
+            .find(|query| query.name.eq_ignore_ascii_case(name))
+            .cloned()
+    }
+
     /// Executa um pedido de tela.
     fn dispatch(&mut self, request: Request, ctx: &egui::Context) {
         match request {
@@ -169,6 +179,10 @@ impl App {
                 match ConfigStore::with_default_path() {
                     Ok(store) => match gui_prefs::save(&store, Some(prefs)) {
                         Ok(()) => {
+                            // A query em uso pode ter sido removida (ou renomeada) na aba Settings:
+                            // o combo da aba Query não pode continuar apontando para o nome antigo.
+                            let selections = self.settings.selections().to_vec();
+                            self.query.retain_selection_queries(&selections);
                             self.status = "Appearance saved.".to_string();
                             ctx.request_repaint();
                         }
@@ -176,6 +190,24 @@ impl App {
                     },
                     Err(error) => self.status = error.to_string(),
                 }
+            }
+            // O `Test` da aba Settings roda o **mesmo** caminho do `⟳ Apply`: conexão, `load` e
+            // `validate`. O que volta são números; a senha e a connection string não aparecem (D12).
+            Request::TestSelection(query) => {
+                let servers = self.servers_snapshot();
+                let name = query.name.clone();
+                self.status = format!("Testing selection query '{name}'...");
+                let results = self.results.clone();
+                let context = ctx.clone();
+                let (token, _handle) = self.runtime.spawn(move |_token| async move {
+                    let outcome = match query::selection(&query, &servers).await {
+                        Ok((loaded, selection)) => Ok(query::summarise(&loaded, &selection)),
+                        Err(error) => Err(error.to_string()),
+                    };
+                    let _ = results.send(JobResult::SelectionTested { name, outcome });
+                    context.request_repaint();
+                });
+                let _ = token;
             }
             Request::CancelJob => self.cancel(),
             Request::ReloadServers => {
@@ -232,37 +264,80 @@ impl App {
                 });
             }
             Request::DiscoverDatabases { server } => {
-                let Some(entry) = self
-                    .servers_snapshot()
-                    .into_iter()
-                    .find(|candidate| candidate.name == server)
-                else {
-                    self.status = format!("Server '{server}' not found.");
-                    return;
+                let registry = self.servers_snapshot();
+                let targets: Vec<ServerConfigEntry> = match &server {
+                    Some(name) => registry
+                        .into_iter()
+                        .filter(|candidate| &candidate.name == name)
+                        .collect(),
+                    None => registry,
                 };
+                if targets.is_empty() {
+                    self.status = match &server {
+                        Some(name) => format!("Server '{name}' not found."),
+                        None => "No server registered.".to_string(),
+                    };
+                    return;
+                }
 
                 // Fora do `spawn`: o `spawn` tem fila única ("Already running") e a descoberta não
                 // pode esperar uma consulta longa terminar para o combo sair do "nenhum banco".
-                self.reference.mark_pending(&server);
-                self.status = format!("Discovering databases on '{server}'...");
+                //
+                // Em melhor esforço: cada servidor emite o **seu** resultado, então um fora do ar
+                // não impede os outros de aparecerem (R6).
+                for entry in &targets {
+                    self.reference.mark_pending(&entry.name);
+                }
+                self.status = match &server {
+                    Some(name) => format!("Discovering databases on '{name}'..."),
+                    None => format!("Discovering databases on {} server(s)...", targets.len()),
+                };
+
+                for entry in targets {
+                    let results = self.results.clone();
+                    let context = ctx.clone();
+                    let (token, _handle) = self.runtime.spawn(move |_token| async move {
+                        let (databases, has_password) = match query::stored_password(&entry.name) {
+                            Ok(password) => (
+                                query::databases(&entry, &password)
+                                    .await
+                                    .map_err(|error| error.to_string()),
+                                true,
+                            ),
+                            Err(error) => (Err(error.to_string()), false),
+                        };
+
+                        let _ = results.send(JobResult::Databases {
+                            server: entry.name,
+                            databases,
+                            has_password,
+                        });
+                        context.request_repaint();
+                    });
+                    let _ = token;
+                }
+            }
+            Request::ApplySelection { query, scope } => {
+                let registry = self.servers_snapshot();
+                let Some(saved) = self.selection_query(&query) else {
+                    self.status = format!("Selection query '{query}' not found.");
+                    return;
+                };
+
+                self.status = format!("Applying selection query '{query}'...");
                 let results = self.results.clone();
                 let context = ctx.clone();
                 let (token, _handle) = self.runtime.spawn(move |_token| async move {
-                    let (databases, has_password) = match query::stored_password(&entry.name) {
-                        Ok(password) => (
-                            query::databases(&entry, &password)
-                                .await
-                                .map_err(|error| error.to_string()),
-                            true,
-                        ),
-                        Err(error) => (Err(error.to_string()), false),
+                    let result = match query::selection(&saved, &registry).await {
+                        Ok((loaded, selection)) => JobResult::Selection {
+                            query: saved.name,
+                            scope,
+                            selection,
+                            ignored_rows: loaded.ignored_rows,
+                        },
+                        Err(error) => JobResult::Failed(error.to_string()),
                     };
-
-                    let _ = results.send(JobResult::Databases {
-                        server: entry.name,
-                        databases,
-                        has_password,
-                    });
+                    let _ = results.send(result);
                     context.request_repaint();
                 });
                 let _ = token;
@@ -307,13 +382,21 @@ impl App {
                 });
             }
             Request::RunQuery {
-                servers,
+                targets,
                 sql,
                 output_directory,
             } => {
                 // A entrada é montada fora do runtime: se faltar senha, a tela avisa na hora.
-                let mut runs = Vec::with_capacity(servers.len());
-                for server in &servers {
+                //
+                // O servidor vem do **cadastro** e as bases são as marcadas na tela (D15): a conexão
+                // continua sendo a do cadastro, e o que a seleção decide é só *quais bases* rodam.
+                let registry = self.servers_snapshot();
+                let mut runs = Vec::with_capacity(targets.len());
+                for (name, databases) in &targets {
+                    let Some(server) = registry.iter().find(|server| &server.name == name) else {
+                        self.status = format!("Server '{name}' not found.");
+                        return;
+                    };
                     let password = match query::stored_password(&server.name) {
                         Ok(password) => password,
                         Err(error) => {
@@ -321,7 +404,7 @@ impl App {
                             return;
                         }
                     };
-                    match query::server_run(server, &password) {
+                    match query::server_run_marked(server, &password, databases) {
                         Ok(run) => runs.push(run),
                         Err(error) => {
                             self.status = error.to_string();
@@ -456,6 +539,7 @@ impl App {
             }
             self.servers.apply(&result);
             self.query.apply(&result);
+            self.settings.apply(&result);
 
             self.status = match &result {
                 JobResult::Servers(servers) => {
@@ -508,6 +592,25 @@ impl App {
                             format!("Could not list the databases of '{server}': {error}")
                         }
                     }
+                }
+                JobResult::SelectionTested { name, outcome } => match outcome {
+                    Ok(outcome) => format!("Selection query '{name}': {}", outcome.summary()),
+                    Err(error) => format!("Selection query '{name}' failed: {error}"),
+                },
+                JobResult::Selection {
+                    query,
+                    selection,
+                    ignored_rows,
+                    ..
+                } => {
+                    let outcome = query::summarise(
+                        &mustel_core::usecases::custom_databases::LoadedSelection {
+                            rows: Vec::new(),
+                            ignored_rows: *ignored_rows,
+                        },
+                        selection,
+                    );
+                    format!("'{query}' applied: {}", outcome.summary())
                 }
                 JobResult::Failed(error) => error.clone(),
             };
@@ -619,9 +722,14 @@ impl eframe::App for App {
                             self.query.reference_database(),
                         )
                         .map(|schema| std::sync::Arc::new(schema.clone()));
-                    self.query.ui(ui, &servers, schema, &self.reference)
+                    let selections = self.settings.selections().to_vec();
+                    self.query
+                        .ui(ui, &servers, &selections, schema, &self.reference)
                 }
-                Screen::Settings => self.settings.ui(ui),
+                Screen::Settings => {
+                    let servers = self.servers_snapshot();
+                    self.settings.ui(ui, &servers)
+                }
             };
 
             if let Some(request) = request {

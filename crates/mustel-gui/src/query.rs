@@ -13,11 +13,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use mustel_core::config::model::SelectionQuery;
 use mustel_core::config::{ConfigStore, ServerConfigEntry};
 use mustel_core::credentials::{CredentialStore, SystemKeyring};
 use mustel_core::error::CoreError;
 use mustel_core::postgres::settings::ConnectionSettings;
 use mustel_core::query::plan::ServerRun;
+use mustel_core::usecases::custom_databases::{self, LoadedSelection, ServerSelection};
 use mustel_core::usecases::query_run::{self, QueryRunRequest};
 
 /// Timeout de comando padrão (o mesmo `--command-timeout` do legado).
@@ -124,6 +126,23 @@ pub fn server_run(server: &ServerConfigEntry, password: &str) -> Result<ServerRu
     })
 }
 
+/// A conexão de um servidor do cadastro rodando **exatamente** as bases marcadas (D15).
+///
+/// Não descobre (`fetch_all_databases: false`, e o pedido manda `all: false`): a seleção da tela é
+/// a lista final. Os `excludePatterns` vão junto porque o plano os aplica **sempre** — uma base
+/// barrada que escapasse da tela ainda assim não chegara ao disco.
+pub fn server_run_marked(
+    server: &ServerConfigEntry,
+    password: &str,
+    databases: &[String],
+) -> Result<ServerRun, InputError> {
+    Ok(ServerRun {
+        databases: databases.to_vec(),
+        fetch_all_databases: false,
+        ..server_run(server, password)?
+    })
+}
+
 /// Senha guardada do servidor no cofre do sistema.
 pub fn stored_password(server: &str) -> Result<String, InputError> {
     match SystemKeyring::new().get(server) {
@@ -154,6 +173,103 @@ pub async fn databases(
         .await
         .map(|report| report.databases)
         .map_err(|error| InputError::Core(error.to_string()))
+}
+
+/// O que uma query de seleção produziu, em números — nunca o conteúdo da connection string (D12).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SelectionOutcome {
+    /// Servidores que receberam base.
+    pub servers: usize,
+    /// Bases marcáveis (não barradas por padrão).
+    pub databases: usize,
+    /// Bases barradas por `excludePatterns` do cadastro (D10).
+    pub blocked: usize,
+    /// Bases com aviso de credencial (D8).
+    pub warnings: usize,
+    /// Linhas descartadas por falta de host/banco.
+    pub ignored_rows: usize,
+}
+
+impl SelectionOutcome {
+    /// Resume no texto do status.
+    ///
+    /// Só contagens: a senha e a connection string nunca entram aqui (D12).
+    pub fn summary(&self) -> String {
+        let mut text = format!(
+            "{} server(s), {} database(s) selected",
+            self.servers, self.databases
+        );
+        if self.blocked > 0 {
+            text.push_str(&format!(", {} blocked by excludePatterns", self.blocked));
+        }
+        if self.warnings > 0 {
+            text.push_str(&format!(", {} without a usable password", self.warnings));
+        }
+        if self.ignored_rows > 0 {
+            text.push_str(&format!(", {} row(s) ignored", self.ignored_rows));
+        }
+        text.push('.');
+        text
+    }
+}
+
+/// Conta o que veio, sem expor nada do conteúdo das linhas.
+pub fn summarise(
+    loaded: &mustel_core::usecases::custom_databases::LoadedSelection,
+    selection: &[mustel_core::usecases::custom_databases::ServerSelection],
+) -> SelectionOutcome {
+    let mut outcome = SelectionOutcome {
+        servers: selection.len(),
+        ignored_rows: loaded.ignored_rows,
+        ..SelectionOutcome::default()
+    };
+    for server in selection {
+        for database in &server.databases {
+            if database.blocked_by.is_some() {
+                outcome.blocked += 1;
+            } else {
+                outcome.databases += 1;
+            }
+            if database.warning.is_some() {
+                outcome.warnings += 1;
+            }
+        }
+    }
+    outcome
+}
+
+/// Roda a query de seleção numa `SelectionQuery` salva e valida contra o cadastro.
+///
+/// **Caminho único:** é o que o `Test` da aba Settings e o `⟳ Apply` da aba Query chamam. Os dois
+/// precisam ver a mesma coisa — inclusive o erro agregado de host fora do cadastro (D9).
+pub async fn selection(
+    query: &SelectionQuery,
+    servers: &[ServerConfigEntry],
+) -> Result<(LoadedSelection, Vec<ServerSelection>), InputError> {
+    let entry = servers
+        .iter()
+        .find(|server| server.name.eq_ignore_ascii_case(&query.server))
+        .ok_or_else(|| {
+            InputError::Config(format!(
+                "server '{}' is not registered; the selection query needs a server from `mustel settings db-servers`",
+                query.server
+            ))
+        })?;
+
+    let password = stored_password(&entry.name)?;
+    let mut settings = server_run(entry, &password)?.settings;
+    settings.database = Some(query.database.clone());
+
+    let client = mustel_core::postgres::client::connect(&settings)
+        .await
+        .map_err(|error| InputError::Core(error.to_string()))?;
+    let loaded = custom_databases::load(&client, &query.sql)
+        .await
+        .map_err(|error| InputError::Core(error.to_string()))?;
+    let selection = custom_databases::validate(&loaded.rows, servers)
+        .map_err(|error| InputError::Core(error.to_string()))?;
+
+    Ok((loaded, selection))
 }
 
 /// Carrega o esquema de um banco do servidor, com a senha já resolvida.
@@ -224,5 +340,83 @@ mod tests {
             InputError::NoPassword("servidor-que-nao-existe-no-cofre".to_string())
         );
         assert!(error.to_string().contains("set-password"));
+    }
+
+    /// A base marcada na tela chega ao plano **explícita**, e a barrada por `excludePatterns` não
+    /// chega de jeito nenhum (D15 + R9).
+    ///
+    /// O teste roda o `plan` de verdade, sem banco: com `fetch_all_databases: false` e `all: false`
+    /// ele usa a lista explícita e aplica os padrões do cadastro.
+    /// CONTRACT: IF-228
+    #[tokio::test]
+    async fn marked_databases_reach_the_plan_and_blocked_ones_do_not() {
+        let registry = vec![ServerConfigEntry {
+            name: "Local".to_string(),
+            host: "localhost".to_string(),
+            username: "postgres".to_string(),
+            exclude_patterns: vec!["template*".to_string(), "postgres".to_string()],
+            fetch_all_databases: true, // o cadastro descobre; a seleção manda bases explícitas
+            ..ServerConfigEntry::default()
+        }];
+
+        let mut state = crate::selection::SelectionState::default();
+        state.sync_registry(&registry);
+        state.discover(
+            &registry[0],
+            &[
+                "dev".to_string(),
+                "prod_a".to_string(),
+                "postgres".to_string(),
+                "template_zero".to_string(),
+            ],
+        );
+        state.set_marked("Local", "dev", true);
+        state.set_marked("Local", "prod_a", true);
+        // A tela não deixa marcar; se alguém forçar, o estado ignora (R9).
+        state.set_marked("Local", "postgres", true);
+
+        let targets = state.targets(&registry);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(
+            targets[0].1,
+            vec!["dev".to_string(), "prod_a".to_string()],
+            "só as marcáveis vão para o pedido"
+        );
+
+        let run = server_run_marked(&registry[0], "segredo", &targets[0].1).expect("monta");
+        assert!(!run.fetch_all_databases, "a seleção é explícita (D15)");
+
+        // Uma base barrada que escapasse da tela ainda assim é filtrada pelo plano.
+        let leaked = server_run_marked(
+            &registry[0],
+            "segredo",
+            &["dev".to_string(), "postgres".to_string()],
+        )
+        .expect("monta");
+
+        let sink = mustel_core::events::NoopSink;
+        let plans = mustel_core::query::plan::plan(&[leaked], false, &HashSet::new(), &sink).await;
+        let databases: Vec<&str> = plans[0]
+            .databases
+            .iter()
+            .map(|target| target.database.as_str())
+            .collect();
+        assert_eq!(
+            databases,
+            vec!["dev"],
+            "`postgres` casa com o padrão e não roda"
+        );
+
+        let plans = mustel_core::query::plan::plan(&[run], false, &HashSet::new(), &sink).await;
+        let databases: Vec<&str> = plans[0]
+            .databases
+            .iter()
+            .map(|target| target.database.as_str())
+            .collect();
+        assert_eq!(
+            databases,
+            vec!["dev", "prod_a"],
+            "o resto chega intacto, na ordem"
+        );
     }
 }

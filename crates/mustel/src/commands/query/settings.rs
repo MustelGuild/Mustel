@@ -25,6 +25,7 @@
 use mustel_core::config::{ConfigStore, ServerConfigEntry, UserDefaults};
 use mustel_core::credentials::{CredentialStore, SystemKeyring};
 use mustel_core::error::CoreError;
+use mustel_core::postgres::connection_string;
 use mustel_core::postgres::settings::ConnectionSettings;
 use mustel_core::postgres::tls::SslMode;
 use mustel_core::query::plan::ServerRun;
@@ -188,9 +189,11 @@ fn resolve_port(override_value: Option<&str>, config_value: u16) -> u16 {
 /// Servidor ad-hoc a partir do `--npgsql-connection-string`.
 ///
 /// Reproduz o `CreateAdHocServer`, inclusive o descarte da **senha** (que por isso volta a ser
-/// resolvida pela precedência normal) e o `Name` = host.
+/// resolvida pela precedência normal) e o `Name` = host. O parser é o do **núcleo** (`connection_string`),
+/// compartilhado com a janela; a diferença é só que aqui a senha lida **não é usada** — paridade com o
+/// legado, que a descarta.
 fn ad_hoc_server(connection_string: &str, args: &QueryRunArgs) -> ServerConfigEntry {
-    let parsed = parse_connection_string(connection_string);
+    let parsed = connection_string::parse(connection_string);
 
     let host = resolve_text(
         args.host.as_deref(),
@@ -225,45 +228,9 @@ fn ad_hoc_server(connection_string: &str, args: &QueryRunArgs) -> ServerConfigEn
 }
 
 /// O que o driver tira da connection string (só o que o legado aproveita).
-#[derive(Debug, Default, PartialEq, Eq)]
-struct ParsedConnectionString {
-    host: Option<String>,
-    port: Option<u16>,
-    database: Option<String>,
-    user: Option<String>,
-    ssl_mode: Option<String>,
-    timeout: Option<u32>,
-}
-
-/// Lê uma connection string no estilo Npgsql (`Chave=Valor;Chave=Valor`).
-///
-/// Chaves desconhecidas (senha, pooling, keepalive, ...) são ignoradas — a senha porque o legado a
-/// descarta, as demais porque não há pool ainda (T34).
-fn parse_connection_string(connection_string: &str) -> ParsedConnectionString {
-    let mut parsed = ParsedConnectionString::default();
-
-    for pair in connection_string.split(';') {
-        let Some((key, value)) = pair.split_once('=') else {
-            continue;
-        };
-        let key = key.trim().to_ascii_lowercase();
-        let value = value.trim();
-        if value.is_empty() {
-            continue;
-        }
-
-        match key.as_str() {
-            "host" | "server" | "data source" => parsed.host = Some(value.to_string()),
-            "port" => parsed.port = value.parse().ok(),
-            "database" | "initial catalog" => parsed.database = Some(value.to_string()),
-            "username" | "user id" | "userid" | "user" => parsed.user = Some(value.to_string()),
-            "sslmode" | "ssl mode" => parsed.ssl_mode = Some(value.to_string()),
-            "timeout" => parsed.timeout = value.parse().ok(),
-            _ => {}
-        }
-    }
-
-    parsed
+#[cfg(test)]
+fn parse_connection_string(connection_string: &str) -> connection_string::ParsedConnectionString {
+    connection_string::parse(connection_string)
 }
 
 #[cfg(test)]
@@ -316,17 +283,12 @@ mod tests {
              SslMode=Disable;Timeout=15;Pooling=false",
         );
 
-        assert_eq!(
-            parsed,
-            ParsedConnectionString {
-                host: Some("127.0.0.1".to_string()),
-                port: Some(55432),
-                database: Some("mustel_test".to_string()),
-                user: Some("postgres".to_string()),
-                ssl_mode: Some("Disable".to_string()),
-                timeout: Some(15),
-            }
-        );
+        assert_eq!(parsed.host.as_deref(), Some("127.0.0.1"));
+        assert_eq!(parsed.port, Some(55432));
+        assert_eq!(parsed.database.as_deref(), Some("mustel_test"));
+        assert_eq!(parsed.user.as_deref(), Some("postgres"));
+        assert_eq!(parsed.ssl_mode.as_deref(), Some("Disable"));
+        assert_eq!(parsed.timeout, Some(15));
     }
 
     #[test]

@@ -57,6 +57,12 @@ pub struct GuiPrefs {
     pub editor_font: Option<String>,
     /// Escala aplicada a todos os tamanhos de texto da janela.
     pub font_scale: f32,
+    /// Queries salvas que a aba **Query** usa para marcar bases em massa.
+    ///
+    /// Fica fora do JSON enquanto a lista está vazia, pela mesma razão da seção `gui`: quem não usa
+    /// a seleção por query não vê o arquivo mudar.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub selections: Vec<SelectionQuery>,
 }
 
 impl Default for GuiPrefs {
@@ -65,8 +71,27 @@ impl Default for GuiPrefs {
             interface_font: None,
             editor_font: None,
             font_scale: DEFAULT_FONT_SCALE,
+            selections: Vec::new(),
         }
     }
+}
+
+/// Uma query salva que decide **quais bases** marcar (aba **Query**).
+///
+/// Não guarda servidor de destino: o resultado da query é casado com o **cadastro** de servidores
+/// (`settings db-servers`), e host fora dele é erro. `server`/`database` dizem onde o SQL roda —
+/// também um servidor do cadastro, com a senha vinda do cofre.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SelectionQuery {
+    /// Nome curto, único sem diferenciar maiúsculas. É o rótulo do combo.
+    pub name: String,
+    /// Servidor **do cadastro** onde o SQL roda.
+    pub server: String,
+    /// Banco desse servidor onde o SQL roda.
+    pub database: String,
+    /// O SQL; devolve as bases por connection string ou por colunas.
+    pub sql: String,
 }
 
 impl GuiPrefs {
@@ -299,6 +324,7 @@ mod tests {
                 interface_font: Some("Segoe UI".to_string()),
                 editor_font: Some("Fira Code".to_string()),
                 font_scale: 1.15,
+                selections: Vec::new(),
             }),
             ..UserConfig::default()
         };
@@ -337,5 +363,63 @@ mod tests {
             DEFAULT_FONT_SCALE,
             "valor corrompido volta ao padrão"
         );
+    }
+
+    /// Quem só usa a fonte não vê a chave `selections` no arquivo (D11).
+    ///
+    /// CONTRACT: IF-229
+    #[test]
+    fn empty_selections_do_not_appear_in_the_file() {
+        let prefs = GuiPrefs {
+            interface_font: Some("Segoe UI".to_string()),
+            ..GuiPrefs::default()
+        };
+        let json = serde_json::to_string_pretty(&prefs).expect("serializes");
+        assert!(
+            !json.contains("selections"),
+            "lista vazia não é gravada: {json}"
+        );
+    }
+
+    /// As queries de seleção sobrevivem à ida e volta, com a ordem preservada.
+    ///
+    /// CONTRACT: IF-229
+    #[test]
+    fn selection_queries_survive_the_round_trip() {
+        let selections = vec![
+            SelectionQuery {
+                name: "Produção".to_string(),
+                server: "configurador".to_string(),
+                database: "configurador".to_string(),
+                sql: "select host, port, database from tenants".to_string(),
+            },
+            SelectionQuery {
+                name: "Homolog".to_string(),
+                server: "Local".to_string(),
+                database: "postgres".to_string(),
+                sql: "select * from tenants where ambiente = 'homolog'".to_string(),
+            },
+        ];
+        let prefs = GuiPrefs {
+            selections: selections.clone(),
+            ..GuiPrefs::default()
+        };
+
+        let json = serde_json::to_string_pretty(&prefs).expect("serializes");
+        assert!(json.contains("\"selections\""), "a lista entra: {json}");
+
+        let back: GuiPrefs = serde_json::from_str(&json).expect("deserializes");
+        assert_eq!(back.selections, selections);
+    }
+
+    /// Arquivo antigo (sem a chave) continua legível: a lista nasce vazia.
+    ///
+    /// CONTRACT: IF-229
+    #[test]
+    fn an_old_file_without_selections_still_loads() {
+        let json = r#"{ "interfaceFont": "Segoe UI", "fontScale": 1.1 }"#;
+        let prefs: GuiPrefs = serde_json::from_str(json).expect("deserializes");
+        assert!(prefs.selections.is_empty());
+        assert_eq!(prefs.interface_font.as_deref(), Some("Segoe UI"));
     }
 }

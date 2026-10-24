@@ -23,6 +23,7 @@ use mustel_core::query::csv_writer::parse_records;
 use crate::request::{JobResult, Request};
 use crate::smooth_scroll::SmoothScroll;
 use crate::{desktop, picker::Picker, sql_completion, sql_editor};
+use mustel_core::config::model::SelectionQuery;
 
 /// Teto de linhas carregadas para a tabela. O arquivo não é truncado — só a leitura da tela.
 pub const MAX_DISPLAY_ROWS: usize = 20_000;
@@ -86,6 +87,12 @@ pub struct State {
     pub output_directory: String,
     /// Nomes marcados na lista de servidores.
     selected: Vec<String>,
+    /// Quais **bases** de quais servidores rodam (R1, R2, R7).
+    selection: crate::selection::SelectionState,
+    /// Cadastro como a tela o conhece (a descoberta precisa dos `excludePatterns` de cada servidor).
+    registry: Vec<ServerConfigEntry>,
+    /// Query de seleção escolhida no combo (`None` = seleção à mão).
+    chosen_query: Option<String>,
     /// Servidor escolhido como **referência do autocomplete**.
     reference_server: String,
     /// Banco de referência do autocomplete.
@@ -126,6 +133,9 @@ impl Default for State {
             sql: "SELECT 1 AS valor".to_string(),
             output_directory: String::new(),
             selected: Vec::new(),
+            selection: crate::selection::SelectionState::default(),
+            registry: Vec::new(),
+            chosen_query: None,
             reference_server: String::new(),
             reference_database: String::new(),
             reference_loaded: None,
@@ -191,13 +201,28 @@ impl State {
         }
     }
 
+    /// Esquece a query escolhida quando ela não existe mais (removida na aba Settings).
+    ///
+    /// Sem isto o combo da aba Query continuava mostrando o nome de uma query que já não existe, e
+    /// o `⟳ Apply` falhava ao ser clicado.
+    pub fn retain_selection_queries(&mut self, selections: &[SelectionQuery]) {
+        let still_there = self.chosen_query.as_deref().is_some_and(|chosen| {
+            selections
+                .iter()
+                .any(|query| query.name.eq_ignore_ascii_case(chosen))
+        });
+        if !still_there {
+            self.chosen_query = None;
+        }
+    }
+
     /// Ajusta a seleção quando a lista de servidores muda (mantém o que ainda existe).
     pub fn sync_servers(&mut self, servers: &[ServerConfigEntry]) {
-        // Nada é marcado por padrão: quem escolhe os alvos é quem vai executar. O CLI pré-seleciona
-        // todos (ou o único) porque lá a escolha é um prompt; aqui a lista está sempre visível e um
-        // "Run query" já marcado é fácil de disparar sem querer.
-        self.selected
-            .retain(|name| servers.iter().any(|server| &server.name == name));
+        self.registry = servers.to_vec();
+        // A seleção de bases é por **nome**: servidor que saiu do cadastro leva as bases dele junto
+        // (a lista não pode mostrar alvo que não existe mais).
+        self.selection.retain_servers(servers);
+        self.selection.sync_registry(servers);
 
         // O servidor de referência pode ter sido removido (ou renomeado) no cadastro. Sem esta
         // limpeza o combo continuava exibindo o nome antigo, o `⟳` tentava carregar um servidor que
@@ -288,6 +313,42 @@ impl State {
             JobResult::Failed(error) => {
                 self.phase = Phase::Done;
                 self.error = Some(error.clone());
+            }
+            // `⟳ Apply`: a seleção do escopo pedido é **substituída** (R1). A validação é a do
+            // núcleo, e o que é barrado por `excludePatterns` entra na lista desabilitado (R9).
+            JobResult::Selection {
+                query,
+                scope,
+                selection,
+                ..
+            } => {
+                self.selection.apply(selection, scope, query);
+            }
+            // `⟳ Discover`: preenche o universo do servidor. Base marcada que sumiu vira aviso (R7).
+            JobResult::Databases {
+                server,
+                databases: Ok(databases),
+                ..
+            } => {
+                let Some(entry) = self
+                    .registry
+                    .iter()
+                    .find(|entry| &entry.name == server)
+                    .cloned()
+                else {
+                    return;
+                };
+                let lost = self.selection.discover(&entry, databases);
+                if !lost.is_empty() {
+                    self.error = Some(format!(
+                        "{} marked database(s) are gone from '{server}': {}",
+                        lost.len(),
+                        lost.iter()
+                            .map(|(_, database)| database.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
             }
             _ => {}
         }
@@ -461,6 +522,7 @@ impl State {
         &mut self,
         ui: &mut egui::Ui,
         servers: &[ServerConfigEntry],
+        selections: &[SelectionQuery],
         reference: &crate::reference::Reference,
     ) -> Option<Request> {
         let mut loaded_request: Option<Request> = None;
@@ -565,39 +627,168 @@ impl State {
         }
 
         ui.separator();
-        ui.label("Servers");
+        ui.horizontal(|ui| {
+            ui.label("Databases");
 
-        // "Todos": um atalho para marcar/desmarcar a lista inteira. Reflete o estado real (marcado
-        // só quando todos estão), então não mente quando o usuário mexe item a item.
-        let all_selected = !servers.is_empty() && self.selected.len() == servers.len();
-        let mut select_all = all_selected;
-        if ui.checkbox(&mut select_all, "Select all").changed() {
-            if select_all {
-                self.selected = servers.iter().map(|server| server.name.clone()).collect();
-            } else {
-                self.selected.clear();
+            // Combo das queries salvas na aba Settings (`— none` = seleção à mão).
+            let chosen = self.chosen_query.clone();
+            let label = chosen.clone().unwrap_or_else(|| "— none —".to_string());
+            egui::ComboBox::from_id_salt("selection_query")
+                .selected_text(label)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.chosen_query, None, "— none —");
+                    for query in selections {
+                        ui.selectable_value(
+                            &mut self.chosen_query,
+                            Some(query.name.clone()),
+                            &query.name,
+                        );
+                    }
+                });
+
+            // `⟳ Apply` substitui a seleção do escopo (R1). Sem query escolhida não há o que
+            // aplicar: o botão fica desabilitado em vez de adivinhar.
+            let can_apply = self.chosen_query.is_some() && !running;
+            if ui
+                .add_enabled(can_apply, egui::Button::new("⟳ Apply to all"))
+                .on_hover_text("Mark the databases the saved query returns, on every server")
+                .clicked()
+                && let Some(query) = &self.chosen_query
+            {
+                request = Some(Request::ApplySelection {
+                    query: query.clone(),
+                    scope: crate::selection::ApplyScope::All,
+                });
             }
-        }
 
-        // Lista curta e rolável: o espaço vertical é da **tabela**, que é a saída do comando.
+            // `⟳ Discover` enche o universo (R6), em melhor esforço por servidor.
+            if ui
+                .add_enabled(!running, egui::Button::new("⟳ Discover all"))
+                .on_hover_text("List the databases of every registered server")
+                .clicked()
+            {
+                request = Some(Request::DiscoverDatabases { server: None });
+            }
+
+            ui.weak(format!("{} selected", self.selection.marked_count()));
+        });
+
+        // Busca e paginação: a seleção é guardada por nome, então filtrar/virar página não perde
+        // nada (R7).
+        ui.horizontal(|ui| {
+            let mut search = self.selection.search().to_string();
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut search)
+                        .hint_text("Search database…")
+                        .desired_width(200.0),
+                )
+                .changed()
+            {
+                self.selection.set_search(search);
+            }
+
+            let page = self.selection.page(servers);
+            let pages = self.selection.page_count(servers);
+            if ui.add_enabled(page > 0, egui::Button::new("‹")).clicked() {
+                self.selection.turn_page(servers, false);
+            }
+            ui.label(format!("{} / {}", page + 1, pages));
+            if ui
+                .add_enabled(page + 1 < pages, egui::Button::new("›"))
+                .clicked()
+            {
+                self.selection.turn_page(servers, true);
+            }
+        });
+
+        // A lista: cabeçalho por servidor (com os botões dele) e as bases embaixo.
         egui::ScrollArea::vertical()
-            .id_salt("query_servers")
-            .max_height(96.0)
+            .id_salt("query_databases")
+            .max_height(150.0)
             .show(ui, |ui| {
-                for server in servers {
-                    let mut checked = self.selected.contains(&server.name);
-                    if ui
-                        .checkbox(
-                            &mut checked,
-                            format!("{} ({}:{})", server.name, server.host, server.port),
-                        )
-                        .changed()
-                    {
-                        if checked {
-                            self.selected.push(server.name.clone());
-                        } else {
-                            self.selected.retain(|name| name != &server.name);
+                let mut current: Option<String> = None;
+                for row in self.selection.page_rows(servers) {
+                    if current.as_deref() != Some(row.server.as_str()) {
+                        let Some(server) = servers.iter().find(|server| server.name == row.server)
+                        else {
+                            continue;
+                        };
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.strong(format!("{} ({}:{})", server.name, server.host, server.port));
+
+                            if ui
+                                .add_enabled(
+                                    self.chosen_query.is_some() && !running,
+                                    egui::Button::new("⟳ Apply"),
+                                )
+                                .on_hover_text("Mark what the saved query returns for this server")
+                                .clicked()
+                                && let Some(query) = &self.chosen_query
+                            {
+                                request = Some(Request::ApplySelection {
+                                    query: query.clone(),
+                                    scope: crate::selection::ApplyScope::Server(
+                                        server.name.clone(),
+                                    ),
+                                });
+                            }
+
+                            if ui
+                                .add_enabled(!running, egui::Button::new("⟳ Discover"))
+                                .clicked()
+                            {
+                                request = Some(Request::DiscoverDatabases {
+                                    server: Some(server.name.clone()),
+                                });
+                            }
+
+                            ui.weak(format!(
+                                "{} of {}",
+                                self.selection.marked_on(&server.name),
+                                self.selection.known_on(&server.name)
+                            ));
+                        });
+                        current = Some(row.server.clone());
+                    }
+
+                    // Base barrada por `excludePatterns`: aparece **desabilitada**, com o padrão no
+                    // tooltip — a exclusão não pode ser silenciosa (R9).
+                    //
+                    // Nome vazio é servidor sem base conhecida: mostra a dica e deixa o `⟳ Discover`
+                    // do cabeçalho como única ação.
+                    if row.database.is_empty() {
+                        ui.weak("no database listed yet — use ⟳ Discover");
+                        continue;
+                    }
+
+                    let mut checked = row.marked;
+                    let response = match &row.info.blocked_by {
+                        Some(pattern) => {
+                            // Base barrada: aparece **desabilitada**, com o padrão no tooltip — a
+                            // exclusão não pode ser silenciosa (R9).
+                            let inside = ui
+                                .add_enabled_ui(false, |ui| {
+                                    ui.checkbox(&mut checked, &row.database)
+                                })
+                                .inner;
+                            inside.on_disabled_hover_text(format!(
+                                "Excluded by the server's excludePatterns: {pattern}"
+                            ))
                         }
+                        None => ui.checkbox(&mut checked, &row.database),
+                    };
+
+                    // Aviso de credencial (D8): a linha não é marcada sozinha, e o motivo aparece
+                    // no tooltip — senão o dono veria uma base a menos sem saber por quê.
+                    let response = match &row.info.warning {
+                        Some(warning) => response.on_hover_text(warning),
+                        None => response,
+                    };
+                    if response.changed() {
+                        self.selection
+                            .set_marked(&row.server, &row.database, checked);
                     }
                 }
             });
@@ -607,22 +798,18 @@ impl State {
         // não é `Copy`, e atribuir dentro do closure o moveria para lá.
         let run_request = ui
             .horizontal(|ui| {
-                let chosen: Vec<ServerConfigEntry> = servers
-                    .iter()
-                    .filter(|server| self.selected.contains(&server.name))
-                    .cloned()
-                    .collect();
+                let targets = self.selection.targets(servers);
 
                 if ui
                     .add_enabled(
-                        !running && !chosen.is_empty(),
+                        !running && !targets.is_empty(),
                         egui::Button::new("Run query"),
                     )
                     .clicked()
                 {
                     // A decisão de pedir confirmação fica numa função só, usada pelo botão e
                     // testável sem janela.
-                    self.request_run(chosen.clone())
+                    self.request_run(targets)
                 } else {
                     None
                 }
@@ -712,6 +899,7 @@ impl State {
         &mut self,
         ui: &mut egui::Ui,
         servers: &[ServerConfigEntry],
+        selections: &[SelectionQuery],
         schema: Option<std::sync::Arc<mustel_core::usecases::schema::Schema>>,
         reference: &crate::reference::Reference,
     ) -> Option<Request> {
@@ -742,7 +930,7 @@ impl State {
                     scroll = scroll.vertical_scroll_offset(offset);
                 }
 
-                scroll.show(ui, |ui| self.form_ui(ui, servers, reference))
+                scroll.show(ui, |ui| self.form_ui(ui, servers, selections, reference))
             })
             .inner;
         let mut request = area.inner;
@@ -751,7 +939,7 @@ impl State {
         // por servidor (o app guarda a resposta e a tela não repete o pedido a cada quadro).
         if request.is_none() && reference.unknown(self.reference_server()) {
             request = Some(Request::DiscoverDatabases {
-                server: self.reference_server().to_string(),
+                server: Some(self.reference_server().to_string()),
             });
         }
 
@@ -815,9 +1003,9 @@ impl State {
     /// Consulta destrutiva **sempre** pede confirmação aqui — a GUI não tem o `--no-confirm` do
     /// CLI, e apagar dado por engano não tem desfazer. O que decide é o `analyzer` do núcleo, o
     /// mesmo que o CLI usa, então a classificação é a mesma dos dois lados.
-    fn request_run(&mut self, chosen: Vec<ServerConfigEntry>) -> Option<Request> {
+    fn request_run(&mut self, targets: Vec<(String, Vec<String>)>) -> Option<Request> {
         let run = Request::RunQuery {
-            servers: chosen.clone(),
+            targets: targets.clone(),
             sql: self.sql.clone(),
             output_directory: self.output_directory.clone(),
         };
@@ -828,18 +1016,9 @@ impl State {
 
         self.confirmation = Some(Confirmation {
             description: analyzer::description(&self.sql).to_string(),
-            servers: chosen.len(),
-            databases: chosen
-                .iter()
-                .map(|server| {
-                    // O legado conta 1 por servidor quando vai descobrir os bancos.
-                    if server.fetch_all_databases {
-                        1
-                    } else {
-                        server.databases.len().max(1)
-                    }
-                })
-                .sum(),
+            servers: targets.len(),
+            // As bases são **explícitas**: o plano roda exatamente as marcadas (D15).
+            databases: targets.iter().map(|(_, databases)| databases.len()).sum(),
             preview: preview_of(&self.sql),
             request: run,
         });
@@ -1129,22 +1308,36 @@ mod tests {
         state.sync_servers(&[server("dev"), server("outro")]);
 
         assert_eq!(state.reference_server, "dev", "primeiro do cadastro");
-        assert!(
-            state.selected.is_empty(),
-            "e continua sem alvo marcado para rodar"
+        assert_eq!(
+            state.selection.marked_count(),
+            0,
+            "e continua sem base marcada para rodar"
         );
     }
 
-    /// Marcar à mão continua valendo, e servidor que sai do cadastro sai da seleção.
+    /// Marcar à mão continua valendo, e servidor que sai do cadastro leva a seleção dele junto.
     #[test]
     fn the_selection_drops_servers_that_went_away() {
         let mut state = State::default();
         state.sync_servers(&[server("dev"), server("outro")]);
-        state.selected = vec!["dev".to_string(), "outro".to_string()];
+        state
+            .selection
+            .discover(&server("dev"), &["a".to_string(), "b".to_string()]);
+        state
+            .selection
+            .discover(&server("outro"), &["c".to_string()]);
+        state.selection.set_marked("dev", "a", true);
+        state.selection.set_marked("outro", "c", true);
+        assert_eq!(state.selection.marked_count(), 2);
 
         state.sync_servers(&[server("dev")]);
 
-        assert_eq!(state.selected, vec!["dev".to_string()]);
+        assert_eq!(state.selection.marked_on("dev"), 1, "o que ficou, ficou");
+        assert_eq!(
+            state.selection.marked_on("outro"),
+            0,
+            "servidor fora do cadastro não tem alvo"
+        );
     }
 
     /// Remover o servidor de referência limpa a escolha, o rótulo e o esquema.
@@ -1309,7 +1502,7 @@ mod tests {
             ..State::default()
         };
 
-        let request = state.request_run(vec![server("dev")]);
+        let request = state.request_run(vec![("dev".to_string(), vec!["dev".to_string()])]);
 
         assert!(request.is_none(), "nada roda antes de confirmar");
         let confirmation = state.confirmation.as_ref().expect("abriu a confirmação");
@@ -1329,7 +1522,7 @@ mod tests {
             ..State::default()
         };
 
-        let request = state.request_run(vec![server("dev")]);
+        let request = state.request_run(vec![("dev".to_string(), vec!["dev".to_string()])]);
 
         assert!(matches!(request, Some(Request::RunQuery { .. })));
         assert!(state.confirmation.is_none());
@@ -1341,19 +1534,41 @@ mod tests {
             sql: "DROP TABLE t".to_string(),
             ..State::default()
         };
-        let auto = ServerConfigEntry {
-            fetch_all_databases: true,
-            databases: vec!["a".to_string(), "b".to_string()],
-            ..server("dev")
-        };
-
-        let _ = state.request_run(vec![auto]);
+        let _ = state.request_run(vec![(
+            "dev".to_string(),
+            vec!["a".to_string(), "b".to_string()],
+        )]);
 
         assert_eq!(
             state.confirmation.expect("abriu").databases,
-            1,
-            "quem descobre os bancos conta 1, como no CLI"
+            2,
+            "a seleção é explícita: conta as bases marcadas, não descobre (D15)"
         );
+    }
+
+    /// Esquecer a query escolhida quando ela sai do cadastro (aba Settings).
+    ///
+    /// Sem isto o combo da aba Query continuava exibindo o nome de uma query que já não existia.
+    /// CONTRACT: IF-230
+    #[test]
+    fn removing_the_query_in_use_resets_the_combo() {
+        let mut state = State {
+            chosen_query: Some("Smoke".to_string()),
+            ..State::default()
+        };
+
+        // Ainda existe (com outra caixa): o combo fica.
+        state.retain_selection_queries(&[SelectionQuery {
+            name: "smoke".to_string(),
+            server: "Local".to_string(),
+            database: "dev".to_string(),
+            sql: "select 1".to_string(),
+        }]);
+        assert_eq!(state.chosen_query.as_deref(), Some("Smoke"));
+
+        // Removida: volta para `— none —`.
+        state.retain_selection_queries(&[]);
+        assert_eq!(state.chosen_query, None);
     }
 
     /// A linha de referência pede a descoberta do servidor que ainda não foi descoberto.
@@ -1369,7 +1584,7 @@ mod tests {
         let mut request = None;
         let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                request = state.ui(ui, &[server("local")], None, &reference);
+                request = state.ui(ui, &[server("local")], &[], None, &reference);
             });
         });
         output.textures_delta.clear();
@@ -1377,7 +1592,7 @@ mod tests {
         assert_eq!(
             request,
             Some(Request::DiscoverDatabases {
-                server: "local".to_string()
+                server: Some("local".to_string())
             }),
             "sem descoberta, a linha pede os bancos do servidor"
         );
@@ -1394,7 +1609,7 @@ mod tests {
         let mut request = None;
         let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                request = state.ui(ui, &[server("local")], None, &known);
+                request = state.ui(ui, &[server("local")], &[], None, &known);
             });
         });
         output.textures_delta.clear();
@@ -1416,7 +1631,7 @@ mod tests {
 
         let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                let _ = state.ui(ui, &[server("dev")], None, &reference);
+                let _ = state.ui(ui, &[server("dev")], &[], None, &reference);
             });
         });
 
@@ -1475,7 +1690,7 @@ mod tests {
             sql: "DELETE FROM t".to_string(),
             ..State::default()
         };
-        let _ = state.request_run(vec![server("dev")]);
+        let _ = state.request_run(vec![("dev".to_string(), vec!["dev".to_string()])]);
         assert!(state.confirmation.is_some());
 
         let output = ctx.run_ui(egui::RawInput::default(), |ctx| {

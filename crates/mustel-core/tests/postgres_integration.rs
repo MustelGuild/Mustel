@@ -412,3 +412,118 @@ async fn the_catalog_loads_tables_columns_and_functions() {
         .await
         .expect("remove os objetos do teste");
 }
+
+/// A query de seleção lê os três formatos que o dono pode escrever (T2): connection string
+/// Npgsql, colunas soltas e `server` explícito — e a porta aceita texto **e** inteiro.
+#[tokio::test]
+/// CONTRACT: IF-223
+async fn a_selection_query_reads_strings_and_loose_columns() {
+    let Some(settings) = settings() else {
+        eprintln!("skipped: set MUSTEL_PG_TEST_URL");
+        return;
+    };
+
+    let client = connect(&settings).await.expect("connect");
+    let table = "mustel_t2_selection";
+
+    client
+        .batch_execute(&format!(
+            "DROP TABLE IF EXISTS {table} CASCADE;
+             CREATE TABLE {table} (
+                 tenant text,
+                 connection_string text,
+                 host text,
+                 database text,
+                 server text
+             );
+             INSERT INTO {table} VALUES
+                 ('string', 'Host=10.0.0.5;Port=5432;Database=producao;Username=ana;Password=segredo',
+                  NULL, NULL, NULL),
+                 ('colunas', NULL, '10.0.0.6', 'homolog', NULL),
+                 ('servidor', NULL, '127.0.0.1', 'dev', 'Local 2'),
+                 ('sem-banco', NULL, '10.0.0.5', NULL, NULL),
+                 ('sem-host', NULL, NULL, 'orfa', NULL),
+                 ('string-com-server',
+                  'Host=127.0.0.1;Port=5432;Database=dev;Username=postgres',
+                  NULL, 'dev', 'Local 2');"
+        ))
+        .await
+        .expect("cria o cenário");
+
+    let loaded = mustel_core::usecases::custom_databases::load(
+        &client,
+        &format!(
+            "SELECT * FROM {table} ORDER BY
+                 CASE tenant WHEN 'string' THEN 1 WHEN 'colunas' THEN 2 WHEN 'servidor' THEN 3 END"
+        ),
+    )
+    .await
+    .expect("roda a seleção");
+
+    assert_eq!(
+        loaded.ignored_rows, 2,
+        "as duas linhas sem host/banco são contadas"
+    );
+
+    let string = &loaded.rows[0];
+    assert_eq!(string.host.as_deref(), Some("10.0.0.5"));
+    assert_eq!(string.port, Some(5432));
+    assert_eq!(string.database.as_deref(), Some("producao"));
+    assert_eq!(string.user.as_deref(), Some("ana"));
+    assert_eq!(string.password.as_deref(), Some("segredo"));
+
+    let columns = &loaded.rows[1];
+    assert_eq!(columns.host.as_deref(), Some("10.0.0.6"));
+    assert_eq!(columns.database.as_deref(), Some("homolog"));
+    assert_eq!(
+        columns.port, None,
+        "sem coluna de porta, a do cadastro decide"
+    );
+
+    let named = &loaded.rows[2];
+    assert_eq!(
+        named.server.as_deref(),
+        Some("Local 2"),
+        "coluna `server` explícita"
+    );
+    assert_eq!(named.host.as_deref(), Some("127.0.0.1"));
+
+    // A coluna `server` vale **ao lado** da connection string: com dois servidores no mesmo host e
+    // porta, é ela que desempata (D9) — a string não sabe o nome do cadastro.
+    let with_string = &loaded.rows[3];
+    assert_eq!(with_string.host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(with_string.database.as_deref(), Some("dev"));
+    assert_eq!(
+        with_string.server.as_deref(),
+        Some("Local 2"),
+        "a coluna `server` sobrevive à leitura por connection string"
+    );
+
+    // A coluna `port` vale como **texto** e como **inteiro**: uma query de cada jeito.
+    for (expression, expected) in [("'5433'::text", 5433u16), ("5433::int", 5433u16)] {
+        let text = mustel_core::usecases::custom_databases::load(
+            &client,
+            &format!(
+                "SELECT '10.0.0.6'::text AS host, {expression} AS port, 'homolog'::text AS database"
+            ),
+        )
+        .await
+        .expect("roda a seleção com porta");
+
+        assert_eq!(text.rows[0].port, Some(expected), "porta como {expression}");
+    }
+
+    for row in &loaded.rows {
+        if let Some(password) = &row.password {
+            assert!(
+                !format!("{row:?}").contains(password),
+                "a senha não aparece em Debug"
+            );
+        }
+    }
+
+    client
+        .batch_execute(&format!("DROP TABLE IF EXISTS {table} CASCADE"))
+        .await
+        .expect("limpa o cenário");
+}

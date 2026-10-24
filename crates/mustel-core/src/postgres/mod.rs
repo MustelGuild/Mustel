@@ -9,6 +9,7 @@
 //! acha os binários do PostgreSQL e [`password`] resolve de onde vem a senha.
 
 pub mod client;
+pub mod connection_string;
 pub mod locator;
 pub mod password;
 pub mod settings;

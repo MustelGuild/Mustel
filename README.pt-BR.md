@@ -25,18 +25,18 @@ uma janela (`mustel gui`), sobre o **mesmo núcleo**.
 
 ## Instalação
 
-Gere o pacote de release da plataforma atual:
+Baixe o arquivo da sua plataforma na [página de releases](https://github.com/MustelGuild/Mustel/releases):
+`mustel-<versão>-x86_64-pc-windows-msvc.zip` ou `mustel-<versão>-x86_64-unknown-linux-gnu.tar.gz`,
+com o `.sha256` ao lado. Extraia e copie o binário para um diretório do seu `PATH`.
+
+Ou instale pelo crates.io (CLI **e** GUI num único binário):
 
 ```bash
-# Windows
-./publish.ps1
-# Linux
-./publish.sh
+cargo install mustel
 ```
 
-Cada um produz `packaging/mustel-<versão>-<alvo>/` (binário, `mustel.example.jsonc`, `LICENSE`,
-`README.txt`), um arquivo compactado (`.zip` no Windows, `.tar.gz` no Unix) e o `.sha256` ao lado.
-Copie o binário para um diretório do seu `PATH`.
+> **Ainda não publicado.** Até a primeira release e o primeiro `cargo publish`, gere o pacote
+> localmente: `./publish.ps1` (Windows) ou `./publish.sh` (Linux), que escrevem em `packaging/`.
 
 **Alvos suportados**: `x86_64-pc-windows-msvc` e `x86_64-unknown-linux-gnu`.
 macOS **não** é suportado por enquanto.
@@ -45,10 +45,6 @@ macOS **não** é suportado por enquanto.
 Debian/Ubuntu. Abrir a janela exige também X11 ou Wayland com OpenGL; o CLI sozinho ainda carrega a
 libdbus na partida.
 
-> `cargo install mustel` e o pacote do winget (`Mustel.CLI`) **ainda não estão publicados** — ver
-> [`MustelPlans/release-pendencias.md`](MustelPlans/release-pendencias.md). Até lá, use o arquivo de
-> release.
-
 ## Comandos
 
 | Grupo | Comandos |
@@ -56,7 +52,7 @@ libdbus na partida.
 | `query` | `query run` (descoberta, paralelismo, export CSV, progresso ao vivo) |
 | `database` | `database backup`, `database restore`, `database pgpass add/list/remove` |
 | `settings` | `settings db-servers ls/add/rm/test/set-password` |
-| `gui` | `mustel gui` — editor de SQL com autocomplete e realce de sintaxe, cadastro de servidores e `query run` numa janela |
+| `gui` | `mustel gui` — editor de SQL com autocomplete e realce de sintaxe, cadastro de servidores e `query run` numa janela; tema claro, escuro ou do sistema |
 
 ### Exemplos
 

@@ -6,7 +6,8 @@
 #   ./publish.sh --no-build   # reempacota o binário já construído
 #
 # A **publicação é manual**: o script só produz o artefato e o SHA256. O equivalente no
-# Windows é o `publish.ps1`, com o mesmo layout de saída.
+# Windows é o `publish.ps1`, com o mesmo layout de saída. No CI, o workflow `release-build`
+# roda este script e publica o resultado na página de release (D27).
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -78,4 +79,4 @@ fi
 echo
 echo "pacote:    $archive"
 [ -n "$sum" ] && echo "sha256:    $sum"
-echo "publicação: manual (D26) — envie o arquivo acima onde precisar"
+echo "publicação: local (D26) — o workflow release-build publica na página de release quando disparado com a tag"

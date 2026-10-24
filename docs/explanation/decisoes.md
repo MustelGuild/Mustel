@@ -2,8 +2,7 @@
 
 > **Por que esta página existe.** Até 2026-10-24 as decisões moravam nos planos de `MustelPlans/`,
 > misturadas com as tarefas. As tarefas viraram código, os planos foram removidos e o **porquê**
-> ficou — aqui. `MustelPlans/` passou a guardar apenas trabalho ainda não executado (hoje, só
-> [`release-pendencias.md`](../../MustelPlans/release-pendencias.md)).
+> ficou — aqui.
 
 Uma decisão não vira código: ela explica **por que** o código é assim. Quem for mudar um
 comportamento começa por aqui — se a decisão que justifica aquele comportamento não existir mais,
@@ -29,7 +28,7 @@ abaixo.
 | `D11` | Migração **ou** Seleção | crates principais × `gui.selections` (`IF-229`/`IF-234`, `config/model.rs`) |
 | `D12` | Migração | `tokio-postgres`, em `crates/mustel-core/src/postgres/**` |
 | `D15` | Migração **ou** Seleção | versão inicial `1.0.0` × bases explícitas (`IF-228`, `gui/query.rs`) |
-| `D24` | Migração | `.github/workflows/release-build.yml` (CI só empacota) |
+| `D24` | Migração | `.github/workflows/release-build.yml` (CI empacota e publica a release) |
 | `D25` | Migração | manifesto `IF-071`/`IF-072` (`--create-if-not-exists`) |
 | `D26` | Migração | `publish.ps1` / `publish.sh` (release manual) |
 
@@ -66,17 +65,17 @@ código implementa e que o número representa:
 | `D14` | Mutações de Git | Exigem autorização explícita do dono | Guard rails do `AGENTS.md` |
 | `D15` | Versão inicial | `1.0.0`; tags `v1.x.y` dirigem o release | Mustel é software novo |
 | `D16` | Oráculo | Binário .NET em `legacy/` é a fonte de verdade; baseline versionado em `fixtures/baseline/` | Onde docs e código divergem, vale o **código observado** |
-| `D17` | Canais de distribuição | crates.io (`mustel-core`, `mustel-gui`, `mustel`) + GitHub Releases + winget `Mustel.CLI` | Nomes verificados livres no crates.io |
+| `D17` | Canais de distribuição | **GitHub Releases** (executável por plataforma, publicado pelo workflow) + **crates.io** (`cargo install mustel`); **sem winget** | Usuário (2026-10-24): "não iremos publicar no winget, no futuro apenas no cargo e no executável na página de release". O `mustel-core`/`mustel-gui` continuam publicados porque são **dependências** do `mustel` — o comando que o usuário roda é só `cargo install mustel` |
 | `D18` | Repositório GitHub | Permanecer em `liphvf/FurLab` durante a migração, renomear depois | Renomear no meio misturaria duas mudanças; **consumado em 2026-10-24** (`MustelGuild/Mustel`) |
 | `D19` | Escopo da migração | Grupos `query`, `database` e `settings` **completos**; demais no backlog | Decisão do usuário |
 | `D20` | Licença | `AGPL-3.0-only` | O que está no `LICENSE`; README/docs/scripts alinhados em 2026-10-24 |
 | `D21` | Backlog | Grupos fora do escopo voltam numa **segunda onda**, depois do 1.0 | Não é descarte |
-| `D22` | Pacote winget antigo | `FurLab.CLI` permanece como está | Não mexer no antigo |
+| `D22` | Pacote winget antigo | `FurLab.CLI` permanece como está; o Mustel **não** publica no winget | Não mexer no antigo, e o canal saiu de escopo (`D17`) |
 | `D23` | Notarização macOS | Fora do escopo; documentar `xattr -d com.apple.quarantine` | macOS está fora do release |
 | `D24` | Automação de CI | **Removida pelo dono** (commit `3c81ff1`): workflows e scaffolding de agentes não existem mais; gate roda à mão | O CI vermelho a cada push atrapalhava o desenvolvimento |
 | `D25` | Criar banco no `restore` | **Falhar por padrão** (paridade) + `--create-if-not-exists`, criando pelo driver | O `CreateDatabaseIfNeeded` do legado, via `psql`, nunca criava nada — divergência 11 |
 | `D26` | Release sem CI | Dois scripts locais (`publish.ps1`, `publish.sh`) geram o pacote + SHA256; **publicação manual** | O dono publica de `packaging/` onde quiser |
-| `D27` | Workflow só para empacotar | Um workflow (`release-build.yml`), apenas `workflow_dispatch`; **nenhuma porta de qualidade** | Compatível com `D24`: o ruído era o gate vermelho, não o empacotamento |
+| `D27` | Workflow empacota **e publica a release** | Um workflow (`release-build.yml`), apenas `workflow_dispatch`, com a **tag como entrada**: builda Windows e Linux, confere que o nome do artefato casa com a tag e **cria a release** com os arquivos e o `.sha256`. **Nenhuma porta de qualidade** | Compatível com `D24`: o ruído era o gate vermelho, não o empacotamento. O `cargo publish` segue manual (é irreversível e exige token) |
 
 ## Autocomplete do editor (`D1`–`D20`)
 
@@ -133,7 +132,7 @@ reutiliza a numeração dos planos antigos — é uma quarta família, nascida d
 | `A1` | Estados do tema | `System`, `Light` e `Dark`, com **`System` como default** | O `egui` já abria seguindo o SO; fixar claro teria mudado a janela de quem usa SO escuro sem ele pedir |
 | `A2` | Persistência | `gui.theme`, **omitido do arquivo** enquanto `System` | Mesmo padrão de `selections`/`selectionList`: quem não mexe não vê o arquivo mudar, e config antiga cai no default sem migração |
 | `A3` | Paleta escura | `Visuals` **nativo** do egui, sem paleta própria | Não existe paleta própria nem no claro; "identidade visual" é outra feature |
-| `A4` | Cores de estado | `danger`/`warning` delegam a `visuals.error_fg_color`/`warn_fg_color`; `alert` tem par claro/escuro com contraste ≥ 4.5:1 | Erro e aviso eram `Color32::RED`/`YELLOW` fixos, escolhidos para fundo claro — no escuro perdiam contraste |
+| `A4` | Cores de estado | `danger`/`warning` delegam a `visuals.error_fg_color`/`warn_fg_color`; `alert` tem par claro/escuro com contraste ≥ 4.5:1 | Erro e aviso eram `Color32::RED`/`YELLOW` fixos, escolhidos para fundo claro — no escuro perdiam contraste. **Efeito visível no tema claro:** o âmbar do alerta escureceu de `(214,158,46)` (~2,4:1) para `(146,105,10)` (~4,65:1), que é o mínimo de leitura; o tom antigo já falhava antes desta feature |
 | `A5` | Escopo e atalho | Tema só da janela; **sem** atalho de teclado | CLI e tabelas ANSI são contrato de paridade; o controle da aba basta |
 
 A referência da aba está em [`reference/settings-aba.md`](../reference/settings-aba.md); a linha de

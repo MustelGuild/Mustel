@@ -21,7 +21,7 @@ repositório falam pt-BR.
 |------|---------|
 | `crates/` | **Mustel** (Rust) — o produto ativo |
 | `fixtures/` | baseline **congelado**: as capturas que o gate reexecuta |
-| `MustelPlans/` | apenas trabalho **não executado** (hoje, as pendências de release) |
+| `MustelPlans/` | planos de implementação **em andamento** (consolidados em `docs/` ao concluir) |
 | `docs/` | documentação do Mustel em quatro quadrantes (Diátaxis) e o manifesto `contrato-de-interface.md` |
 
 Escopo do produto: grupos **`query`**, **`database`** e **`settings`**, mais a GUI em egui. O código
@@ -140,8 +140,10 @@ sai em **stdout** com **1**.
 - O baseline em `fixtures/baseline/` é **contrato congelado** — não há como re-gravar. Mudar
   comportamento significa mudar um teste, com revisão explícita.
 - As skills `furlab-command-manager` valiam apenas para o legado e foram removidas com ele.
-- Os pacotes antigos (`FurLab` no NuGet, `FurLab.CLI` no winget) não são tocados. O Mustel publica
-  `Mustel.CLI` no winget e `mustel`, `mustel-core`, `mustel-gui` no crates.io.
+- Os pacotes antigos (`FurLab` no NuGet, `FurLab.CLI` no winget) não são tocados. O Mustel **não**
+  publica no winget: os canais são o **GitHub Releases** (executável) e o **crates.io**
+  (`cargo install mustel`). `mustel-core` e `mustel-gui` vão ao crates.io como dependências do
+  `mustel`, não como instrução de instalação.
 
 ## Guard Rails (Agent Safety Protocol)
 

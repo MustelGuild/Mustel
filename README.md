@@ -25,18 +25,18 @@ restores databases with `pg_dump`/`pg_restore`, and keeps the server registry �
 
 ## Installation
 
-Build the release package for the current platform:
+Download the archive for your platform from the [releases page](https://github.com/MustelGuild/Mustel/releases):
+`mustel-<version>-x86_64-pc-windows-msvc.zip` or `mustel-<version>-x86_64-unknown-linux-gnu.tar.gz`,
+with the `.sha256` next to it. Extract and copy the binary to a directory on your `PATH`.
+
+Or install from crates.io (CLI **and** GUI in one binary):
 
 ```bash
-# Windows
-./publish.ps1
-# Linux
-./publish.sh
+cargo install mustel
 ```
 
-Each produces `packaging/mustel-<version>-<target>/` (binary, `mustel.example.jsonc`, `LICENSE`,
-`README.txt`), an archive (`.zip` on Windows, `.tar.gz` on Unix) and the `.sha256` next to it.
-Copy the binary to a directory on your `PATH`.
+> **Not published yet.** Until the first release and the `cargo publish` land, build the package
+> locally: `./publish.ps1` (Windows) or `./publish.sh` (Linux), which writes to `packaging/`.
 
 **Supported targets**: `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu`.
 macOS is **not** supported for now.
@@ -45,10 +45,6 @@ macOS is **not** supported for now.
 Debian/Ubuntu. Opening the window additionally needs X11 or Wayland with OpenGL; the CLI alone
 still loads libdbus at start-up.
 
-> `cargo install mustel` and the winget package (`Mustel.CLI`) are **not published yet** — see
-> [`MustelPlans/release-pendencias.md`](MustelPlans/release-pendencias.md). Until then, use the
-> release archive.
-
 ## Commands
 
 | Group | Commands |
@@ -56,7 +52,7 @@ still loads libdbus at start-up.
 | `query` | `query run` (discovery, parallelism, CSV export, live progress) |
 | `database` | `database backup`, `database restore`, `database pgpass add/list/remove` |
 | `settings` | `settings db-servers ls/add/rm/test/set-password` |
-| `gui` | `mustel gui` — SQL editor with autocomplete and syntax highlighting, servers registry and `query run` in a window |
+| `gui` | `mustel gui` — SQL editor with autocomplete and syntax highlighting, servers registry and `query run` in a window; light, dark or system theme |
 
 ### Examples
 

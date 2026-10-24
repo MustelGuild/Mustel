@@ -7,7 +7,8 @@
     configuração de exemplo, LICENSE e o aviso da Fira Code (SIL OFL 1.1), gera o .zip
     e o SHA256 em packaging/.
     A **publicação é manual**: o script só produz o artefato. O equivalente no Unix é
-    o publish.sh, com o mesmo layout de saída.
+    o publish.sh, com o mesmo layout de saída. No CI, o workflow `release-build` roda este
+    script e publica o resultado na página de release (D27).
 
 .PARAMETER NoBuild
     Reempacota o binário já construído, sem rodar o cargo build.
@@ -78,7 +79,7 @@ Fonte embutida: Fira Code, sob SIL OFL 1.1 (ver FiraCode-OFL.txt).
     Write-Host ''
     Write-Host "pacote:  $archive"
     Write-Host "sha256:  $hash"
-    Write-Host 'publicação: manual (D26) — envie o arquivo acima onde precisar'
+    Write-Host 'publicação: local (D26) — o workflow release-build publica na página de release quando disparado com a tag'
 }
 finally {
     Pop-Location

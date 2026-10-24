@@ -167,8 +167,11 @@ impl State {
         self.pending_password.take()
     }
 
-    /// Desenha a tela e devolve o pedido, quando houver.
-    pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Request> {
+    /// A **sidebar**: a lista do cadastro (é ela que escolhe o servidor a editar).
+    ///
+    /// O formulário fica na área principal — a lista é o que se percorre, o formulário é o que se
+    /// preenche.
+    pub fn sidebar_ui(&mut self, ui: &mut egui::Ui) -> Option<Request> {
         let mut request = None;
 
         ui.horizontal(|ui| {
@@ -179,12 +182,65 @@ impl State {
                 self.form = Some(Form::new());
                 self.confirming_remove = None;
             }
-            ui.label(format!("{} server(s)", self.servers.len()));
         });
+        ui.weak(format!("{} server(s)", self.servers.len()));
 
         if let Some(error) = &self.error {
             ui.colored_label(egui::Color32::RED, error);
         }
+
+        ui.separator();
+        let servers = self.servers.clone();
+        // A lista ocupa a altura restante da sidebar: é o conteúdo principal dela.
+        egui::ScrollArea::vertical()
+            .id_salt("servers")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                for server in servers {
+                    // O card ocupa **toda a largura** da sidebar. O `group` encolhe até o conteúdo
+                    // por padrão, então a largura é dada ao `Frame` já descontada a margem dele —
+                    // pedir `available_width()` de dentro do grupo realimentava e o painel crescia
+                    // até o máximo (420).
+                    let frame = egui::Frame::group(ui.style());
+                    let margins = frame.total_margin().sum().x;
+                    let width = (ui.available_width() - margins).max(0.0);
+                    frame.show(ui, |ui| {
+                        ui.set_width(width);
+                        ui.label(&server.name);
+                        ui.weak(format!("{}:{}", server.host, server.port));
+                        ui.horizontal(|ui| {
+                            if ui.button("Edit").clicked() {
+                                self.form = Some(Form::edit(&server));
+                                self.confirming_remove = None;
+                            }
+                            if ui.button("Test").clicked() {
+                                request = Some(Request::TestConnection(server.clone()));
+                            }
+
+                            // Remover pede confirmação no mesmo botão: o cadastro apaga a senha do
+                            // cofre junto, então um clique só seria fácil demais.
+                            let removing = self.confirming_remove.as_deref() == Some(&server.name);
+                            let label = if removing { "Confirm remove" } else { "Remove" };
+                            if ui.button(label).clicked() {
+                                if removing {
+                                    self.confirming_remove = None;
+                                    request = Some(Request::RemoveServer(server.name.clone()));
+                                } else {
+                                    self.confirming_remove = Some(server.name.clone());
+                                }
+                            }
+                        });
+                    });
+                }
+            });
+
+        request
+    }
+
+    /// A **área principal**: o formulário de cadastro/edição e o recado da última operação.
+    pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Request> {
+        let mut request = None;
+
         if let Some(message) = &self.message {
             ui.label(message);
         }
@@ -198,53 +254,9 @@ impl State {
             if keep_open {
                 self.form = Some(form);
             }
+        } else {
+            ui.weak("Pick a server in the list, or add a new one.");
         }
-
-        ui.separator();
-        let servers = self.servers.clone();
-        egui::ScrollArea::vertical()
-            .id_salt("servers")
-            .max_height(260.0)
-            .show(ui, |ui| {
-                for server in servers {
-                    ui.horizontal(|ui| {
-                        ui.monospace(format!(
-                            "{:<14} {}:{} {}",
-                            server.name,
-                            server.host,
-                            server.port,
-                            if server.fetch_all_databases {
-                                "(auto)".to_string()
-                            } else if server.databases.is_empty() {
-                                "(default)".to_string()
-                            } else {
-                                server.databases.join(", ")
-                            }
-                        ));
-
-                        if ui.button("Edit").clicked() {
-                            self.form = Some(Form::edit(&server));
-                            self.confirming_remove = None;
-                        }
-                        if ui.button("Test").clicked() {
-                            request = Some(Request::TestConnection(server.clone()));
-                        }
-
-                        // Remover pede confirmação no mesmo botão: o cadastro apaga a senha do
-                        // cofre junto, então um clique só seria fácil demais.
-                        let removing = self.confirming_remove.as_deref() == Some(&server.name);
-                        let label = if removing { "Confirm remove" } else { "Remove" };
-                        if ui.button(label).clicked() {
-                            if removing {
-                                self.confirming_remove = None;
-                                request = Some(Request::RemoveServer(server.name.clone()));
-                            } else {
-                                self.confirming_remove = Some(server.name.clone());
-                            }
-                        }
-                    });
-                }
-            });
 
         request
     }

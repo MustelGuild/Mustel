@@ -22,12 +22,33 @@ Enquanto a lista está vazia, a chave **não existe** no arquivo.
 
 ## A tela
 
+Servidores e escolha de bases ficam numa **sidebar** à esquerda; a área principal é da execução
+(SQL, saída, `Run query` e resultados). A referência do autocomplete continua **em cima do editor**.
+
 ```text
-[Custom select ▾]  [⟳ Apply to all]  [⟳ Discover all]   312 selected
-▾ Local (127.0.0.1:5432)   [⟳ Apply] [⟳ Discover]   3 of 12
-    ☑ dev   ☑ prod_a   ☐ test_a
-dev: database  [search …]  ‹ 1 2 … ›
+┌────────────────────────────┬───────────────────────────────────────────────┐
+│ ◀  5 selected              │ Referência do autocomplete: [Local] [conf…] ⟳  │
+│                            │ SQL                                           │
+│ Databases [Producao ▼]     │ ┌───────────────────────────────────────────┐ │
+│ [⟳ Apply to all] [⟳ Disc.] │ │ SELECT 1 AS valor                         │ │
+│                            │ └───────────────────────────────────────────┘ │
+│ [ Search database…      ]  │                                               │
+│ ‹ 1/2 ›                    │ Output directory [ ./results ] [📂] [🗂]      │
+│                            │                                               │
+│ Local 127.0.0.1:5432       │ [ Run query ]                                 │
+│ [⟳ Apply] [⟳ Discover] 3/5 │                                               │
+│   ☑ configurador           │ Results                                       │
+│   ☑ dev                    │ ┌───────────────────────────────────────────┐ │
+│   ☐ postgres   (cinza)     │ │ Server │ Database │ valor                   │ │
+│   ☐ template0  (cinza)     │ └───────────────────────────────────────────┘ │
+│   ☑ test2                  │                                               │
+│ ▸ Local 2 127.0.0.1:5432   │                                               │
+└────────────────────────────┴───────────────────────────────────────────────┘
 ```
+
+A sidebar tem **300 px** fixos. O botão `◀` recolhe para uma barra `▶ N selected` na área principal;
+`▶` reabre. A aba **Servers** usa a mesma sidebar — a lista do cadastro fica lá, em cards que ocupam
+a largura toda, e o formulário ocupa a área principal.
 
 | Controle | O que faz |
 |---|---|

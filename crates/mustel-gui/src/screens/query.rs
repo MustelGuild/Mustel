@@ -522,7 +522,6 @@ impl State {
         &mut self,
         ui: &mut egui::Ui,
         servers: &[ServerConfigEntry],
-        selections: &[SelectionQuery],
         reference: &crate::reference::Reference,
     ) -> Option<Request> {
         let mut loaded_request: Option<Request> = None;
@@ -627,6 +626,114 @@ impl State {
         }
 
         ui.separator();
+        // O `horizontal` devolve o pedido em vez de escrever no `request` de fora: um `Option<Request>`
+        // não é `Copy`, e atribuir dentro do closure o moveria para lá.
+        let run_request = ui
+            .horizontal(|ui| {
+                let targets = self.selection.targets(servers);
+
+                if ui
+                    .add_enabled(
+                        !running && !targets.is_empty(),
+                        egui::Button::new("Run query"),
+                    )
+                    .clicked()
+                {
+                    // A decisão de pedir confirmação fica numa função só, usada pelo botão e
+                    // testável sem janela.
+                    self.request_run(targets)
+                } else {
+                    None
+                }
+            })
+            .inner;
+
+        if run_request.is_some() {
+            request = run_request;
+        }
+
+        let cancel_request = ui
+            .horizontal(|ui| {
+                let mut cancel = None;
+                if running && ui.button("Cancel").clicked() {
+                    self.phase = Phase::Idle;
+                    cancel = Some(Request::CancelJob);
+                }
+                if running {
+                    ui.spinner();
+                }
+                if let Some(summary) = &self.summary {
+                    ui.label(summary);
+                }
+                cancel
+            })
+            .inner;
+
+        if cancel_request.is_some() {
+            request = cancel_request;
+        }
+
+        if let Some(error) = &self.error {
+            ui.colored_label(egui::Color32::RED, error);
+        }
+
+        if !self.progress.is_empty() {
+            ui.separator();
+            ui.label("Progress");
+            egui::ScrollArea::vertical()
+                .id_salt("progress")
+                .max_height(120.0)
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    for row in &self.progress {
+                        let line = if row.error.is_empty() {
+                            format!(
+                                "✓ {}/{} — {} rows — {:.1}s",
+                                row.server, row.database, row.rows, row.seconds
+                            )
+                        } else {
+                            format!("✗ {}/{} — {}", row.server, row.database, row.error)
+                        };
+                        ui.monospace(line);
+                    }
+                });
+        }
+
+        if !self.files.is_empty() {
+            ui.separator();
+            for (label, path) in &self.files {
+                ui.horizontal(|ui| {
+                    ui.monospace(format!("{label}: {path}"));
+                    if ui.button("Copy path").clicked() {
+                        ui.ctx().copy_text(path.clone());
+                    }
+                });
+            }
+        }
+
+        loaded_request.or(request)
+    }
+
+    /// Quantas bases estão marcadas (a sidebar mostra o número).
+    pub fn marked_count(&self) -> usize {
+        self.selection.marked_count()
+    }
+
+    /// A **sidebar** da aba Query: de onde vêm as bases e quais vão rodar.
+    ///
+    /// Tudo o que é servidor e escolha de base mora aqui, para a área principal ficar com o que é da
+    /// execução (SQL, saída, resultados). O bloco é o mesmo que antes vivia no formulário; o que
+    /// mudou foi o lugar.
+    pub fn sidebar_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        servers: &[ServerConfigEntry],
+        selections: &[SelectionQuery],
+    ) -> Option<Request> {
+        let mut request = None;
+        let running = self.is_running();
+
+        ui.separator();
         ui.horizontal(|ui| {
             ui.label("Databases");
 
@@ -721,9 +828,10 @@ impl State {
         });
 
         // A lista: cabeçalho por servidor (com os botões dele) e as bases embaixo.
+        // A lista ocupa o que sobrar da sidebar: é o conteúdo principal dela.
         egui::ScrollArea::vertical()
             .id_salt("query_databases")
-            .max_height(150.0)
+            .auto_shrink([false, false])
             .show(ui, |ui| {
                 let mut current: Option<String> = None;
                 for row in self.selection.page_rows(servers) {
@@ -733,9 +841,14 @@ impl State {
                             continue;
                         };
                         ui.add_space(4.0);
+                        // Cabeçalho em **duas linhas**: na largura da sidebar (240–420 px) o nome do
+                        // servidor com os dois botões e o contador não cabia — o "N of M" saía
+                        // cortado na borda.
                         ui.horizontal(|ui| {
-                            ui.strong(format!("{} ({}:{})", server.name, server.host, server.port));
-
+                            ui.strong(&server.name);
+                            ui.weak(format!("{}:{}", server.host, server.port));
+                        });
+                        ui.horizontal(|ui| {
                             if ui
                                 .add_enabled(
                                     self.chosen_query.is_some() && !running,
@@ -777,7 +890,7 @@ impl State {
                     // Nome vazio é servidor sem base conhecida: mostra a dica e deixa o `⟳ Discover`
                     // do cabeçalho como única ação.
                     if row.database.is_empty() {
-                        ui.weak("no database listed yet — use ⟳ Discover");
+                        ui.weak("no database listed yet");
                         continue;
                     }
 
@@ -811,93 +924,7 @@ impl State {
                 }
             });
 
-        ui.separator();
-        // O `horizontal` devolve o pedido em vez de escrever no `request` de fora: um `Option<Request>`
-        // não é `Copy`, e atribuir dentro do closure o moveria para lá.
-        let run_request = ui
-            .horizontal(|ui| {
-                let targets = self.selection.targets(servers);
-
-                if ui
-                    .add_enabled(
-                        !running && !targets.is_empty(),
-                        egui::Button::new("Run query"),
-                    )
-                    .clicked()
-                {
-                    // A decisão de pedir confirmação fica numa função só, usada pelo botão e
-                    // testável sem janela.
-                    self.request_run(targets)
-                } else {
-                    None
-                }
-            })
-            .inner;
-
-        if run_request.is_some() {
-            request = run_request;
-        }
-
-        let cancel_request = ui
-            .horizontal(|ui| {
-                let mut cancel = None;
-                if running && ui.button("Cancel").clicked() {
-                    self.phase = Phase::Idle;
-                    cancel = Some(Request::CancelJob);
-                }
-                if running {
-                    ui.spinner();
-                }
-                if let Some(summary) = &self.summary {
-                    ui.label(summary);
-                }
-                cancel
-            })
-            .inner;
-
-        if cancel_request.is_some() {
-            request = cancel_request;
-        }
-
-        if let Some(error) = &self.error {
-            ui.colored_label(egui::Color32::RED, error);
-        }
-
-        if !self.progress.is_empty() {
-            ui.separator();
-            ui.label("Progress");
-            egui::ScrollArea::vertical()
-                .id_salt("progress")
-                .max_height(120.0)
-                .stick_to_bottom(true)
-                .show(ui, |ui| {
-                    for row in &self.progress {
-                        let line = if row.error.is_empty() {
-                            format!(
-                                "✓ {}/{} — {} rows — {:.1}s",
-                                row.server, row.database, row.rows, row.seconds
-                            )
-                        } else {
-                            format!("✗ {}/{} — {}", row.server, row.database, row.error)
-                        };
-                        ui.monospace(line);
-                    }
-                });
-        }
-
-        if !self.files.is_empty() {
-            ui.separator();
-            for (label, path) in &self.files {
-                ui.horizontal(|ui| {
-                    ui.monospace(format!("{label}: {path}"));
-                    if ui.button("Copy path").clicked() {
-                        ui.ctx().copy_text(path.clone());
-                    }
-                });
-            }
-        }
-
-        loaded_request.or(request)
+        request
     }
 
     /// Desenha a tela: o formulário rola, a tabela de resultados fica com a fatia de baixo.
@@ -917,7 +944,6 @@ impl State {
         &mut self,
         ui: &mut egui::Ui,
         servers: &[ServerConfigEntry],
-        selections: &[SelectionQuery],
         schema: Option<std::sync::Arc<mustel_core::usecases::schema::Schema>>,
         reference: &crate::reference::Reference,
     ) -> Option<Request> {
@@ -948,7 +974,7 @@ impl State {
                     scroll = scroll.vertical_scroll_offset(offset);
                 }
 
-                scroll.show(ui, |ui| self.form_ui(ui, servers, selections, reference))
+                scroll.show(ui, |ui| self.form_ui(ui, servers, reference))
             })
             .inner;
         let mut request = area.inner;
@@ -1589,6 +1615,86 @@ mod tests {
         assert_eq!(state.chosen_query, None);
     }
 
+    /// A escolha de bases saiu do formulário: ela é da **sidebar** (R1/R2 continuam valendo).
+    ///
+    /// O teste desenha a sidebar e o formulário separados e confere onde cada rótulo caiu — a
+    /// divisão "servidores e bases à esquerda, execução à direita" é o desenho pedido pelo dono.
+    /// CONTRACT: IF-233
+    #[test]
+    fn the_database_choice_lives_in_the_sidebar_and_the_sql_in_the_main_area() {
+        let ctx = egui::Context::default();
+        let mut state = State::default();
+        state.sync_servers(&[server("dev")]);
+        let reference = crate::reference::Reference::default();
+
+        let mut sidebar: Vec<(String, f32)> = Vec::new();
+        let mut main: Vec<(String, f32)> = Vec::new();
+
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let _ = state.sidebar_ui(ui, &[server("dev")], &[]);
+            });
+        });
+        collect_text(&output.shapes, &mut sidebar);
+        output.textures_delta.clear();
+
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let _ = state.ui(ui, &[server("dev")], None, &reference);
+            });
+        });
+        collect_text(&output.shapes, &mut main);
+        output.textures_delta.clear();
+
+        // Rótulos que só a escolha de bases tem. (`dev` fica de fora: ele também aparece na linha
+        // de referência do autocomplete, que continua na área principal de propósito.)
+        for expected in ["Databases", "Search database…", "⟳ Discover all", ":5432"] {
+            assert!(
+                sidebar.iter().any(|(text, _)| text == expected),
+                "a sidebar tem {expected:?}: {sidebar:?}"
+            );
+            assert!(
+                !main.iter().any(|(text, _)| text == expected),
+                "o formulário não repete {expected:?}: {main:?}"
+            );
+        }
+
+        for expected in ["SQL", "Run query"] {
+            assert!(
+                main.iter().any(|(text, _)| text == expected),
+                "a área principal tem {expected:?}"
+            );
+            assert!(
+                !sidebar.iter().any(|(text, _)| text == expected),
+                "a sidebar não tem {expected:?}: {sidebar:?}"
+            );
+        }
+    }
+
+    /// A referência do autocomplete **continua** acima do editor de SQL.
+    /// CONTRACT: IF-233
+    #[test]
+    fn the_reference_row_stays_in_the_main_area() {
+        let ctx = egui::Context::default();
+        let mut state = State::default();
+        state.sync_servers(&[server("dev")]);
+        let reference = crate::reference::Reference::default();
+
+        let mut main: Vec<(String, f32)> = Vec::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let _ = state.ui(ui, &[server("dev")], None, &reference);
+            });
+        });
+        collect_text(&output.shapes, &mut main);
+        output.textures_delta.clear();
+
+        assert!(
+            main.iter().any(|(text, _)| text.starts_with("Refer")),
+            "a referência do autocomplete fica na área principal: {main:?}"
+        );
+    }
+
     /// A linha de referência pede a descoberta do servidor que ainda não foi descoberto.
     ///
     /// CONTRACT: IF-211
@@ -1602,7 +1708,7 @@ mod tests {
         let mut request = None;
         let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                request = state.ui(ui, &[server("local")], &[], None, &reference);
+                request = state.ui(ui, &[server("local")], None, &reference);
             });
         });
         output.textures_delta.clear();
@@ -1627,7 +1733,7 @@ mod tests {
         let mut request = None;
         let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                request = state.ui(ui, &[server("local")], &[], None, &known);
+                request = state.ui(ui, &[server("local")], None, &known);
             });
         });
         output.textures_delta.clear();
@@ -1649,7 +1755,7 @@ mod tests {
 
         let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                let _ = state.ui(ui, &[server("dev")], &[], None, &reference);
+                let _ = state.ui(ui, &[server("dev")], None, &reference);
             });
         });
 

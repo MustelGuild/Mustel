@@ -46,6 +46,14 @@ struct Running {
 }
 
 /// A aplicação.
+/// Largura da sidebar de servidores/bases.
+///
+/// **Fixa** (`exact_size`): com `resizable` + `default_size` o `Panel` do egui cresce para caber o
+/// conteúdo e a sidebar ia parar no teto do intervalo (420) — mais de um quarto da janela. A janela
+/// mínima é 640 px a 1,0x, então 300 deixa a área do SQL utilizável; recolhida, a sidebar sai de
+/// cena e a barra `▶` fica na área principal.
+const SIDEBAR_WIDTH: f32 = 300.0;
+
 pub struct App {
     runtime: Runtime,
     /// O contexto do `egui`, guardado para pedir repaint de fora do desenho (ao encadear jobs).
@@ -69,6 +77,8 @@ pub struct App {
     reference: crate::reference::Reference,
     /// Aba Settings: preferências de aparência.
     settings: settings_screen::State,
+    /// A sidebar de servidores/bases está aberta?
+    sidebar_open: bool,
 }
 
 impl App {
@@ -134,6 +144,7 @@ impl App {
             servers: servers_screen::State::new(servers),
             query,
             settings,
+            sidebar_open: true,
         })
     }
 
@@ -149,6 +160,25 @@ impl App {
             .iter()
             .find(|query| query.name.eq_ignore_ascii_case(name))
             .cloned()
+    }
+
+    /// O que a sidebar desenha, conforme a aba.
+    ///
+    /// Na aba **Query** é a escolha de bases (query salva, busca, servidores e checkboxes); na aba
+    /// **Servers** é a lista do cadastro. As duas usam o mesmo painel esquerdo.
+    fn sidebar_request(
+        &mut self,
+        ui: &mut egui::Ui,
+        servers: &[ServerConfigEntry],
+    ) -> Option<Request> {
+        match self.screen {
+            Screen::Query => {
+                let selections = self.settings.selections().to_vec();
+                self.query.sidebar_ui(ui, servers, &selections)
+            }
+            Screen::Servers => self.servers.sidebar_ui(ui),
+            Screen::Settings => None,
+        }
     }
 
     /// Executa um pedido de tela.
@@ -710,7 +740,63 @@ impl eframe::App for App {
             ui.separator();
 
             let servers = self.servers_snapshot();
-            let request = match self.screen {
+
+            // Sidebar: **servidores e escolha de bases** moram à esquerda; a área principal fica com
+            // o que é da execução (SQL, saída, resultados). A aba Settings não tem sidebar — é um
+            // formulário só. `show_collapsible` cuida da animação e deixa uma alça para reabrir.
+            let mut request = None;
+            if matches!(self.screen, Screen::Query | Screen::Servers) {
+                // `show_collapsible` anima o painel e deixa uma alça na borda quando recolhido. Ele
+                // escreve em `expanded` só quando o **arrasto da alça** muda o estado; o botão
+                // `◀`/`▶` alterna `sidebar_open` direto. Por isso o valor do fechamento é descartado
+                // e o do campo é que vale — escrever o do fechamento desfazia o clique.
+                if self.sidebar_open {
+                    let mut toggled = false;
+                    let sidebar = egui::Panel::left("app_sidebar")
+                        .exact_size(SIDEBAR_WIDTH)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                // `◀`/`▶` (e não `«`/`»`): os guillemets saíam como caixinha na
+                                // fonte embutida e o botão parecia um ícone quebrado.
+                                if ui
+                                    .small_button("◀")
+                                    .on_hover_text("Hide the servers panel")
+                                    .clicked()
+                                {
+                                    toggled = true;
+                                }
+                                // O contador fica no topo: é o número que decide se dá para rodar.
+                                // Na aba Servers ele não significa nada (a lista é o cadastro).
+                                if self.screen == Screen::Query {
+                                    ui.weak(format!("{} selected", self.query.marked_count()));
+                                }
+                            });
+                            self.sidebar_request(ui, &servers)
+                        });
+
+                    if toggled {
+                        self.sidebar_open = false;
+                    }
+                    request = sidebar.inner;
+                } else {
+                    // Fechada, o botão de reabrir tem de existir **fora** do painel: dentro dele
+                    // ninguém o veria (era o que deixava a sidebar impossível de voltar).
+                    ui.horizontal(|ui| {
+                        if ui
+                            .small_button("▶")
+                            .on_hover_text("Show the servers panel")
+                            .clicked()
+                        {
+                            self.sidebar_open = true;
+                        }
+                        if self.screen == Screen::Query {
+                            ui.weak(format!("{} selected", self.query.marked_count()));
+                        }
+                    });
+                }
+            }
+
+            let main_request = match self.screen {
                 Screen::Servers => self.servers.ui(ui),
                 Screen::Query => {
                     // O esquema carregado vai como `Arc`: a tela guarda uma cópia para o desenho e o
@@ -722,15 +808,14 @@ impl eframe::App for App {
                             self.query.reference_database(),
                         )
                         .map(|schema| std::sync::Arc::new(schema.clone()));
-                    let selections = self.settings.selections().to_vec();
-                    self.query
-                        .ui(ui, &servers, &selections, schema, &self.reference)
+                    self.query.ui(ui, &servers, schema, &self.reference)
                 }
                 Screen::Settings => {
                     let servers = self.servers_snapshot();
                     self.settings.ui(ui, &servers)
                 }
             };
+            request = main_request.or(request);
 
             if let Some(request) = request {
                 self.dispatch(request, &ctx);

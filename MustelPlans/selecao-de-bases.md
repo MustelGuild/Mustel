@@ -581,3 +581,48 @@ Append-only.
   então uma query batizada de `(none)` não confunde. Verificado na janela: a lista mostra `(none)`
   destacado, `Producao` e `Homologacao`, e nenhum quadrado sem rótulo.
   Teste novo: `an_item_without_text_is_not_drawn`.
+- `[2026-10-23]` **Proposta de layout: servidores e escolha de bases numa sidebar** (a pedido do dono,
+  que pediu o desenho antes da implementação — **não implementado ainda**). Desenho entregue na
+  conversa: sidebar à esquerda com as quatro seções (query de seleção com `Apply to all`/`Discover
+  all` e o contador; referência do autocomplete com os dois combos; busca + paginador; blocos por
+  servidor com `Apply`/`Discover` da linha, "N of M" e as bases), e a área principal só com SQL,
+  diretório de saída, `Run query` e a tabela de resultados. Pontos em aberto para o dono: (a) a aba
+  **Servers** também ganha sidebar? (b) `Run query` fica na área principal ou no pé da sidebar? (c)
+  a referência do autocomplete muda para a sidebar? Medidas consideradas: janela mínima 640x480 a
+  1.0x, sidebar de 300 px (240–420, arrastável) e recolhível.
+- `[2026-10-23]` **Sidebar implementada (IF-233).** O dono aprovou o desenho com três respostas: a
+  aba **Servers** usa a mesma sidebar (a lista vai para lá e o formulário ocupa a área principal), o
+  `Run query` fica na área principal e a **referência do autocomplete continua acima do editor**.
+  Feito com `egui::Panel::left` (o `egui` 0.37 unificou `SidePanel`/`TopBottomPanel` em `Panel`, e o
+  painel agora vive dentro da `Ui` do `CentralPanel`): 300 px padrão, arrastável 240–420,
+  `show_collapsible` para a animação. As telas foram divididas em `sidebar_ui` (escolha de bases na
+  Query; lista do cadastro em Servers) e `ui` (execução).
+  **Dois defeitos encontrados na verificação e corrigidos:** (a) o botão `◀` invertia
+  `sidebar_open`, mas o valor capturado antes do fechamento era escrito de volta em seguida e
+  desfazia o clique — agora o botão tem precedência e o valor do fechamento só vale para o arrasto da
+  alça; (b) recolhida, o botão de reabrir estava **dentro** do painel e desaparecia com ele — agora
+  a barra `▶ N selected` é desenhada fora, na área principal. Também troquei `«`/`»` por `◀`/`▶`
+  (os guillemets saíam como caixinha na fonte embutida) e separei o cabeçalho do servidor em duas
+  linhas, porque "N of M" saía cortado na borda da sidebar. Na aba Servers o contador
+  "N selected" é omitido (não significa nada ali).
+  **Verificado na janela:** sidebar com `◀ 0 selected`, combo, busca, paginação e blocos por
+  servidor sem truncamento; recolher mostra a barra `▶`; reabrir restaura o estado; a aba Servers
+  mostra a lista em cards e o formulário na área principal; a aba Settings segue sem sidebar.
+  Testes: `the_database_choice_lives_in_the_sidebar_and_the_sql_in_the_main_area` e
+  `the_reference_row_stays_in_the_main_area`.
+- `[2026-10-23]` **Cards de servidor na largura da sidebar + largura da sidebar corrigida.** O dono
+  pediu que cada card ocupasse toda a largura da sidebar. Feito com `Frame::group` + `set_width` da
+  largura **descontada a margem do próprio frame** — pedir `available_width()` de dentro do grupo
+  realimenta e o painel cresce.
+  Investigando isso, descobri **um bug meu da rodada anterior**: com `resizable(true)` +
+  `default_size(300)` o `Panel` do egui **cresce para caber o conteúdo**, então a sidebar abria com
+  **420 px** (o teto do intervalo) e, sem `size_range`, com **657 px** — mais de um quarto da janela,
+  longe dos 300 do desenho. Medido com log temporário (`panel_width`): 420/657 constantes desde o
+  primeiro quadro; com um único rótulo, o painel respeitava 283 de conteúdo. Como o crescimento é do
+  `Panel` e não do meu conteúdo, a largura passou a ser **fixa** com `exact_size(300)` — o
+  arrasto-para-redimensionar saiu junto (o `egui` não oferece "fixo até o usuário arrastar" sem
+  reabrir o crescimento). A recolher/expandir continua igual.
+  Também encurtei a dica "no database listed yet — use ⟳ Discover" para "no database listed yet",
+  que cortava na borda dos 300 px. **Verificado na janela:** abas Query e Servers com sidebar de
+  300 px, cards de `Local` e `Producao-SP` ocupando a largura toda e iguais entre si, e a barra `▶ 0
+  selected` ao recolher.

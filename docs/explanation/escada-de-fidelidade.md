@@ -32,7 +32,18 @@ depende, é N4.**
 
 O detalhe de cada decisão está em [`contrato-de-interface.md`](../contrato-de-interface.md): uma linha
 por decisão, com o teste que a prova. As diferenças conscientes de N4 moram em
-`fixtures/known-divergences.md`.
+[Diferenças deliberadas](diferencas-deliberadas.md).
+
+### Como cada nível é comparado
+
+| Item | Nível | Regra |
+|---|---|---|
+| exit code | **contrato** | igual ao produto anterior, sempre |
+| artefatos (config) | **contrato** | JSON equivalente, com `encryptedPassword`/`password` removidos |
+| artefatos (pgpass) | **contrato** | conteúdo **byte a byte** |
+| flags longas nos casos de ajuda | **contrato** | toda flag do produto anterior precisa existir no Mustel; extras são informativas |
+| stdout/stderr | aviso **N4** | a redação difere por framework; pulado quando a saída do antigo não é UTF-8 |
+| comando não migrado | **reprovava** | não se aplica mais: não há mais stub, e `Skipped` reprova |
 
 ## O que a escada **não** cobre
 
@@ -40,4 +51,5 @@ por decisão, com o teste que a prova. As diferenças conscientes de N4 moram em
   produto, não paridade.
 - Fluxos que exigem console dos dois lados (prompts): comparados por teste de PTY no Mustel e por
   smoke manual, não pelo baseline.
-- Performance: medida e registrada em `fixtures/perf/`, mas não é nível de paridade.
+- Performance: não é nível de paridade, e não é medida por teste. O custo de partida da GUI e o build
+  enxuto (`--no-default-features`, 7,8 ms × 63 ms) estão no `README.md`.

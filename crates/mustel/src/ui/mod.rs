@@ -6,7 +6,7 @@
 //!
 //! Regra de ouro: nada aqui pode **travar** quando não há terminal. Toda função que depende de
 //! interação chama [`ensure_interactive`] antes e falha com mensagem clara — o legado, nesse cenário,
-//! quebrava com erro de console (ver `fixtures/known-divergences.md`).
+//! quebrava com erro de console (ver `docs/explanation/diferencas-deliberadas.md`).
 
 pub mod progress;
 pub mod prompts;

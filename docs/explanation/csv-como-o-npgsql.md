@@ -58,7 +58,7 @@ de um banco, é a ordem da consulta.
 
 No caminho de sucesso não há diferença em relação ao produto anterior: com 1, 2 ou 3 bancos o arquivo
 sai byte a byte igual. A diferença só aparece nos dois casos acima, e ambos estão registrados em
-`fixtures/known-divergences.md` (item 15).
+[Diferenças deliberadas](diferencas-deliberadas.md) (item 15).
 
 O consolidado é montado **no fim**, a partir dos arquivos por servidor, unindo as colunas na ordem em
 que aparecem pela primeira vez.

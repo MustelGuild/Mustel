@@ -2,7 +2,7 @@
 //!
 //! O FurLab removia comentários com a regex `//.*?$|/\*[\s\S]*?\*/`, que também apagava `//`
 //! **dentro de strings** (ex.: um host `http://db` viraria `http:`). Aqui o stripper é consciente de
-//! strings — divergência aceita e registrada em `fixtures/known-divergences.md`.
+//! strings — divergência aceita e registrada em `docs/explanation/diferencas-deliberadas.md`.
 
 /// Remove comentários de linha (`//`) e de bloco (`/* */`) preservando o conteúdo das strings.
 pub fn strip_comments(input: &str) -> String {

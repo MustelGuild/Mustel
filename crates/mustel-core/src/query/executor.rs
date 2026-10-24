@@ -21,7 +21,7 @@
 //!   [`csv_writer::merge_consolidated`]);
 //! - consulta que falha é tentada de novo até 3 vezes (Polly), só para erro de Postgres ou timeout.
 //!
-//! O que muda de propósito (registrado em `fixtures/known-divergences.md`): as linhas vão para o arquivo
+//! O que muda de propósito (registrado em `docs/explanation/diferencas-deliberadas.md`): as linhas vão para o arquivo
 //! **conforme chegam**, [`CHUNK_ROWS`] por vez, então a memória não cresce com o tamanho do resultado
 //! — o legado materializa o resultado de cada banco antes de escrever. Duas consequências: uma falha
 //! **no meio** de um resultado deixa no arquivo as linhas já gravadas (o legado descartaria todas) e

@@ -86,7 +86,7 @@ pub fn output_directory(args: &QueryRunArgs, defaults: &UserDefaults) -> String 
 ///
 /// A conexão sai sem banco definido (o núcleo troca o banco de cada alvo e o da descoberta); é o que
 /// evita resolver a senha de novo a cada banco — e por isso o prompt de senha aparece no máximo uma
-/// vez por servidor (divergência 17 em `fixtures/known-divergences.md`).
+/// vez por servidor (diferença 17 em `docs/explanation/diferencas-deliberadas.md`).
 pub fn server_run(server: &ServerConfigEntry, args: &QueryRunArgs) -> Result<ServerRun, CoreError> {
     Ok(ServerRun {
         name: server.name.clone(),

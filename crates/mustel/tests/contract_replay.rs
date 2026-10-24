@@ -209,7 +209,7 @@ fn support_isolates_the_environment() {
 /// `error-database-restore-file-missing`: no legado o comando quebrava no prompt de senha antes de
 /// validar o arquivo (e em modo não-interativo morria com "failed to read input"). O Mustel resolve a
 /// senha pela via normal e, **tendo** senha, valida o arquivo e falha com exit 2 e o caminho absoluto.
-/// Divergência deliberada registrada em `fixtures/known-divergences.md` item 11.
+/// Divergência deliberada registrada em `docs/explanation/diferencas-deliberadas.md` item 11.
 ///
 /// A senha vai por `-W` de propósito: sem ela o comando pararia no prompt, que é o caminho que o
 /// harness não consegue comparar (e que o teste abaixo cobre explicitamente).
@@ -248,7 +248,7 @@ fn divergent_restore_missing_file_is_a_clear_usage_error() {
 /// ("failed to read input in non-interactive mode"). O Mustel falha claro: sem terminal e sem senha
 /// no cofre, ele **não trava** e sai 40 explicando o que fazer.
 ///
-/// Divergência deliberada registrada em `known-divergences.md` item 13. O que este teste prende é o
+/// Divergência deliberada registrada em `docs/explanation/diferencas-deliberadas.md` item 13. O que este teste prende é o
 /// "não trava" — se alguém reintroduzir um prompt bloqueante, o processo do teste nunca retorna.
 #[test]
 fn divergent_test_offline_fails_without_prompting() {

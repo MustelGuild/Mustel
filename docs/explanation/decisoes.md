@@ -20,8 +20,8 @@ abaixo.
 
 | ID | Numeração | Onde aparece |
 |---|---|---|
-| `D5` | Migração | divergência 6 em [`known-divergences`](../../fixtures/known-divergences.md) (GUI em egui, não Tauri) |
-| `D6` | Migração | doc-comments de `crates/**`, manifesto, divergência 1 (keyring) |
+| `D5` | Migração | diferença 6 em [diferenças deliberadas](diferencas-deliberadas.md) (GUI em egui, não Tauri) |
+| `D6` | Migração | doc-comments de `crates/**`, manifesto, diferença 1 (keyring) |
 | `D7` | Seleção de bases | manifesto `IF-226` (credencial da linha) |
 | `D8` | Seleção de bases | manifesto `IF-226`, `custom_databases.rs` (aviso de credencial) |
 | `D9` | Migração | `mustel-gui/**`, manifesto `IF-001`/`IF-180`/`IF-224` (binário único, núcleo em processo) |
@@ -128,8 +128,8 @@ código implementa e que o número representa:
 - **Tarefas** (`T1`–`T48` e afins): viraram código; o registro de execução vive no histórico do Git.
 - **Questões abertas** (`Q1`–`Q12`): todas fechadas; a resposta de cada uma é a origem registrada na
   tabela da migração.
-- **`DIV1`–`DIV18`**: continuam em [`fixtures/known-divergences.md`](../../fixtures/known-divergences.md),
-  junto com a lista branca de resíduos do nome antigo e as regras de comparação.
+- **`DIV1`–`DIV18`**: continuam em [Diferenças deliberadas](diferencas-deliberadas.md), junto com a
+  lista branca de resíduos do nome antigo e as observações do binário anterior.
 - **Contrato do CLI**: não é decisão, é superfície verificada — vive em
   [`contrato-de-interface.md`](../contrato-de-interface.md), uma linha por `IF-NNN` com o teste que
   a prova.

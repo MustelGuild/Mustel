@@ -203,7 +203,8 @@ pub fn compare_case(
         });
     }
 
-    // 4. artefatos — contrato duro, com as normalizações registradas em known-divergences.
+    // 4. artefatos — contrato duro, com as normalizações registradas em
+    // `docs/explanation/diferencas-deliberadas.md`.
     for artifact in &baseline.artifacts {
         checks.push(compare_artifact(artifact, artifacts));
     }

@@ -20,7 +20,7 @@ repositório falam pt-BR.
 | Área | O que é |
 |------|---------|
 | `crates/` | **Mustel** (Rust) — o produto ativo |
-| `fixtures/` | baseline **congelado**, relatórios de divergência e números de performance |
+| `fixtures/` | baseline **congelado**: as capturas que o gate reexecuta |
 | `MustelPlans/` | apenas trabalho **não executado** (hoje, as pendências de release) |
 | `docs/` | documentação do Mustel em quatro quadrantes (Diátaxis) e o manifesto `contrato-de-interface.md` |
 
@@ -50,7 +50,7 @@ crates/
 ├── mustel-gui/      lib egui usada pelo subcomando `gui`
 └── mustel-testkit/  fixtures do baseline + comparação de contrato (bins de captura/diagnóstico)
 legacy/              (removido em 2026-10-22; recuperável pelo histórico do Git)
-fixtures/            baseline/ (contrato congelado), perf/, known-divergences.md
+fixtures/            baseline/ — as 47 capturas congeladas que o gate reexecuta
 docs/                contrato-de-interface.md, tutorials/, how-to/, reference/, explanation/
 ```
 
@@ -106,7 +106,8 @@ precedência:
    (`IF-NNN`), origem e o teste que a prova.
 2. `fixtures/baseline/*.json` — as **47 capturas congeladas** do comportamento antigo; o binário .NET
    **não** é necessário para comparar (o `oracle-compare` apenas relê o baseline).
-3. `fixtures/known-divergences.md` — as divergências aceitas, com justificativa.
+3. [`docs/explanation/diferencas-deliberadas.md`](docs/explanation/diferencas-deliberadas.md) — as
+diferenças deliberadas, com justificativa.
 
 A escada de fidelidade (detalhe em
 [`docs/explanation/escada-de-fidelidade.md`](docs/explanation/escada-de-fidelidade.md)):
@@ -116,7 +117,7 @@ A escada de fidelidade (detalhe em
 | N1 | mesma árvore de comandos, flags, defaults; inválidos rejeitados do mesmo jeito | sim |
 | N2 | mesmos artefatos byte a byte, mesmos exit codes | sim |
 | N3 | mesmos fluxos interativos (perguntas, ordem, atalhos, defaults) | sim |
-| N4 | formatação textual (`--help`, cores, tabelas, redação de erros) | não — registrar em `fixtures/known-divergences.md` |
+| N4 | formatação textual (`--help`, cores, tabelas, redação de erros) | não — registrar em [`docs/explanation/diferencas-deliberadas.md`](docs/explanation/diferencas-deliberadas.md) |
 
 **O gate é `cargo test --workspace`.** Ele roda o replay das 47 capturas (`contract_replay`), os
 snapshots de texto (`contract_text`), a cobertura do manifesto (`contract_manifest`) e a cobertura de

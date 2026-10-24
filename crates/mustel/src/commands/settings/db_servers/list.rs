@@ -24,7 +24,7 @@ pub fn run() -> Result<i32, CoreError> {
 
     if servers.is_empty() {
         // O legado diz `'fur settings db-servers add'`; aqui o binário é o `mustel` (divergência
-        // aceita e registrada em `fixtures/known-divergences.md`).
+        // aceita e registrada em `docs/explanation/diferencas-deliberadas.md`).
         println!("No servers configured. Use 'mustel settings db-servers add' to add one.");
         return Ok(0);
     }

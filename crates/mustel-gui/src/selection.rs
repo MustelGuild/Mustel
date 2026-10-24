@@ -115,6 +115,8 @@ pub struct SelectionState {
     server_filter: Option<String>,
     /// Quantas linhas da lista plana já foram reveladas quando a paginação está ligada.
     revealed: usize,
+    /// A lista mostra **só as marcadas**? (visão, não ação: `Select all`/`Clear` não mudam)
+    show_only_marked: bool,
 }
 
 /// O que o `Select all` fez, para a tela poder contar o que ficou de fora.
@@ -168,13 +170,17 @@ impl SelectionState {
         self.marked.values().map(BTreeSet::len).sum()
     }
 
-    /// Quantas das bases **listadas** (filtro × busca) estão marcadas.
+    /// Quantas das bases **listadas** (filtro × busca, e só as marcadas quando o toggle está
+    /// ligado) estão marcadas.
     ///
     /// É o "N de M" do cabeçalho da lista, e por isso os dois números saem do mesmo conjunto: o
     /// marcado do escopo inteiro sobre um total filtrado produzia `3 of 1` assim que uma busca
-    /// deixava uma linha só.
+    /// deixava uma linha só. Com o `Show only marked` ligado, é o que a lista mostra (tudo marcado).
     pub fn marked_in_filter(&self, servers: &[ServerConfigEntry]) -> usize {
-        self.rows(servers).iter().filter(|row| row.marked).count()
+        self.display_rows(servers)
+            .iter()
+            .filter(|row| row.marked)
+            .count()
     }
 
     /// Quantas bases estão marcadas num servidor.
@@ -437,6 +443,21 @@ impl SelectionState {
         rows
     }
 
+    /// As linhas que a tela **desenha**: filtro × busca, e só as marcadas quando o
+    /// `Show only marked` está ligado.
+    ///
+    /// A distinção importa: o `Select all`/`Clear` continuam agindo sobre [`rows`](Self::rows) — a
+    /// visão é um recorte da tela, não uma mudança de significado dos botões. Se o toggle mexesse na
+    /// ação, "Select all" com o filtro ligado só remarcaria o que já estava marcado.
+    fn display_rows(&self, servers: &[ServerConfigEntry]) -> Vec<Row> {
+        let rows = self.rows(servers);
+        if self.show_only_marked {
+            rows.into_iter().filter(|row| row.marked).collect()
+        } else {
+            rows
+        }
+    }
+
     /// As linhas que a tela desenha, respeitando a paginação.
     ///
     /// `page_size = None` (o padrão) desenha tudo. Com busca ativa, também desenha tudo.
@@ -445,7 +466,7 @@ impl SelectionState {
         servers: &[ServerConfigEntry],
         page_size: Option<usize>,
     ) -> Vec<Row> {
-        let rows = self.rows(servers);
+        let rows = self.display_rows(servers);
         match page_size {
             Some(size) if self.search.trim().is_empty() => {
                 let limit = self.revealed.max(size);
@@ -463,7 +484,7 @@ impl SelectionState {
         if !self.search.trim().is_empty() {
             return 0;
         }
-        let total = self.rows(servers).len();
+        let total = self.display_rows(servers).len();
         total.saturating_sub(self.revealed.max(size))
     }
 
@@ -473,6 +494,32 @@ impl SelectionState {
     /// — senão o primeiro "carregar mais" não acrescentaria nada.
     pub fn reveal_more(&mut self, page_size: usize, servers: &[ServerConfigEntry]) {
         self.revealed = self.visible_rows(servers, Some(page_size)).len() + page_size;
+    }
+
+    /// A lista mostra só as marcadas?
+    pub fn show_only_marked(&self) -> bool {
+        self.show_only_marked
+    }
+
+    /// Liga/desliga o "só as marcadas". Troca de visão volta ao primeiro pedaço da paginação.
+    pub fn set_show_only_marked(&mut self, value: bool) {
+        if self.show_only_marked != value {
+            self.show_only_marked = value;
+            self.revealed = 0;
+        }
+    }
+
+    /// Esquece o seletor de **todos** os servidores (a vassoura do combo).
+    ///
+    /// Não desmarca nada: o que a query marcou continua marcado, só deixa de ser atribuído a ela.
+    /// Independe do filtro — a vassoura é sobre "todos", não sobre o escopo da tela.
+    pub fn forget_all_selectors(&mut self) {
+        self.server_selectors.clear();
+    }
+
+    /// Quantos servidores têm seletor guardado (para o botão só aparecer quando há o que limpar).
+    pub fn selectors_count(&self) -> usize {
+        self.server_selectors.len()
     }
 
     /// Esquece o seletor do **escopo** (a linha "nenhum" do combo).
@@ -1022,6 +1069,106 @@ mod tests {
         assert_eq!(
             summary.excluded, 1,
             "o `template0` é contado como barrado, mesmo sem padrão"
+        );
+    }
+
+    /// A vassoura esquece o seletor de **todos** os servidores — e não desmarca nada.
+    /// CONTRACT: IF-240
+    #[test]
+    fn the_broom_forgets_every_selector_without_unmarking() {
+        let mut state = SelectionState::default();
+        let servers = servers();
+        state.sync_registry(&servers);
+
+        for name in ["Local", "Produção"] {
+            state.apply(
+                &[selection(name, &["dev"])],
+                &ApplyScope::Server(name.to_string()),
+                "todas",
+            );
+        }
+        assert_eq!(state.selectors_count(), 2);
+        assert_eq!(state.marked_count(), 2);
+
+        // Mesmo com filtro num servidor, a vassoura é sobre **todos**.
+        state.set_server_filter(Some("Local".to_string()));
+        state.forget_all_selectors();
+
+        assert_eq!(
+            state.selectors_count(),
+            0,
+            "nenhum servidor fica com seletor"
+        );
+        assert_eq!(state.selector_for("Local"), None);
+        assert_eq!(state.selector_for("Produção"), None);
+        assert_eq!(state.selector_for_all(&servers), None);
+        assert_eq!(state.marked_count(), 2, "a seleção continua marcada");
+    }
+
+    /// `Show only marked` é **visão**: esconde as não marcadas sem mudar o alvo dos botões.
+    /// CONTRACT: IF-239
+    #[test]
+    fn showing_only_marked_hides_rows_but_does_not_change_the_actions() {
+        let mut state = SelectionState::default();
+        let servers = servers();
+        state.sync_registry(&servers);
+        state.discover(&servers[0], catalog(["dev", "prod_a", "test_a"]));
+        state.discover(&servers[1], catalog(["dev"]));
+        state.set_marked("Local", "dev", true);
+
+        assert_eq!(state.visible_rows(&servers, None).len(), 4);
+        assert_eq!(state.marked_in_filter(&servers), 1);
+
+        state.set_show_only_marked(true);
+        let rows = state.visible_rows(&servers, None);
+        assert_eq!(rows.len(), 1, "só a marcada aparece");
+        assert_eq!(rows[0].database, "dev");
+        assert_eq!(
+            state.marked_in_filter(&servers),
+            1,
+            "o cabeçalho fala do que a lista mostra"
+        );
+
+        // `Select all` continua marcando tudo o que o **filtro** alcança, não só o que está à vista.
+        let summary = state.select_all_visible(&servers);
+        assert_eq!(
+            summary.marked, 4,
+            "as 4 marcáveis do escopo inteiro (o toggle não estreita a ação)"
+        );
+        assert_eq!(state.marked_count(), 4);
+        assert_eq!(
+            state.visible_rows(&servers, None).len(),
+            4,
+            "agora todas aparecem"
+        );
+
+        // Desligar volta a mostrar tudo.
+        state.set_show_only_marked(false);
+        assert_eq!(state.visible_rows(&servers, None).len(), 4);
+    }
+
+    /// Esquecer o seletor do escopo e esquecer **todos** são coisas diferentes.
+    /// CONTRACT: IF-240
+    #[test]
+    fn the_none_row_and_the_broom_differ_in_scope() {
+        let mut state = SelectionState::default();
+        let servers = servers();
+        state.sync_registry(&servers);
+        for name in ["Local", "Produção"] {
+            state.apply(
+                &[selection(name, &["dev"])],
+                &ApplyScope::Server(name.to_string()),
+                "todas",
+            );
+        }
+
+        state.set_server_filter(Some("Local".to_string()));
+        state.forget_scope_selector(&servers);
+        assert_eq!(state.selector_for("Local"), None);
+        assert_eq!(
+            state.selector_for("Produção"),
+            Some("todas"),
+            "a linha `(none)` mexe só no escopo"
         );
     }
 

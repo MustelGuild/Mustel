@@ -98,6 +98,10 @@ de senha **nunca** entram automaticamente, e o status diz quantas estão marcada
 
 > `103 marked · from 'Producao'`
 
+O toggle **Show only marked**, na mesma linha do status, esconde as bases não marcadas — é
+**visão**, não ação: `Select all` e `Clear` continuam valendo para o filtro × busca inteiro, e o
+cabeçalho da lista passa a contar só o que está à vista (`3 of 3`).
+
 O recado da última ação vem embaixo, e só conta o que ficou de fora:
 
 > `2 skipped (excluded by excludePatterns) · 1 skipped (no password)`
@@ -122,6 +126,10 @@ filtro atual.
 A linha `(none)` **esquece o rótulo** do escopo: a seleção continua exatamente como estava. O
 rótulo é "de onde veio", não uma promessa de que a seleção ainda seja só aquela — marcar uma base
 à mão não apaga o nome do seletor.
+
+Ao lado do combo, o botão `∅` é a **vassoura**: esquece o seletor de **todos** os servidores de uma
+vez (não desmarca nada, e age mesmo com o filtro num servidor). Ele fica apagado quando não há
+seletor para limpar.
 
 ### Falha ao aplicar
 

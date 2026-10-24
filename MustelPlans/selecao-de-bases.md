@@ -802,3 +802,25 @@ Append-only.
   2 por servidor), `Select all` continuou 206, a lista mostrou `template0`/`template1` × `Local`/
   `Local 2` apagados (`0 of 4`), e aplicar a `todas` agora deixa o total em **212** — antes ia a 213.
   Teste novo: `the_catalog_brings_templates_and_the_count_does_not_move`; workspace com 554 testes.
+- `[2026-10-24]` **Duas melhorias na sidebar: `Show only marked` e a vassoura do seletor.**
+  O dono pediu o toggle ao lado do `Clear` e **pediu para pensar num lugar melhor** — escolhi a
+  linha do status (`N marked · from '…'`), não a dos botões, por dois motivos: `Select all`/`Clear`
+  **agem** na seleção e o toggle só muda a **visão** (um ao lado do outro convidava a clicar em
+  `Clear` sem querer), e a linha do status já fala do número que o toggle recorta. Na prática:
+  `3 marked · from 'todas'   ☐ Show only marked`.
+  O toggle mexe só no **display** (`display_rows`): `visible_rows`, `hidden` e `marked_in_filter`
+  passam por ele, mas `selectable_visible` (o alvo de `Select all`/`Clear`) continua em `rows()`.
+  Isso é regra, não detalhe: se o toggle mexesse na ação, `Select all` com o toggle ligado só
+  remarcaria o que já estava marcado. Teste:
+  `showing_only_marked_hides_rows_but_does_not_change_the_actions` (com o toggle ligado, `Select
+  all` marca as 4 do escopo, e não só a que estava à vista).
+  A **vassoura** ficou ao lado do combo de seletor e esquece o seletor de **todos** os servidores
+  (`forget_all_selectors`), em contraste com a linha `(none)`, que esquece só o do escopo; não
+  desmarca nada e fica apagada quando não há o que limpar. Ícone: **`∅`**, não `🧹` — só o Fira
+  Code está embutido e não tem o emoji da vassoura (sairia como caixa); o `∅` (conjunto vazio) está
+  na fonte e diz o que o botão faz. Testes: `the_broom_forgets_every_selector_without_unmarking` e
+  `the_none_row_and_the_broom_differ_in_scope`.
+  **Verificado na janela** com a config real (cópia): com o toggle ligado a lista caiu para as 3
+  marcadas e o cabeçalho ficou `3 of 3` (com `Select all 205` intacto); a vassoura zerou o combo, o
+  status perdeu o `· from 'todas'` e manteve `3 marked`, com o recado "selector forgotten on every
+  server · selection unchanged". `IF-239` e `IF-240` no manifesto; workspace com 557 testes.

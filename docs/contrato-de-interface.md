@@ -240,11 +240,13 @@
 | IF-236 | R2 | B | o combo de **servidor** mostra o total de bases de cada servidor ao lado do nome (`Local 104`), e `0` quando aquele servidor ainda não foi descoberto; o número é o **catálogo do servidor** (`pg_database` inteiro, inclusive `template0`/`template1`): bases que o servidor recusa como alvo (`datistemplate` ou `datallowconn = false`) aparecem **apagadas**, com o motivo, e contam — por isso aplicar um seletor **não** muda a contagem; a contagem é só de exibição — não entra na busca nem no valor do filtro | combo "Server" da aba Query | crates/mustel-gui/src/search_combo.rs::tests::the_note_is_drawn_next_to_the_name; crates/mustel-gui/src/search_combo.rs::tests::the_note_is_shown_but_not_searchable; crates/mustel-gui/src/selection.rs::tests::the_catalog_brings_templates_and_the_count_does_not_move; crates/mustel-gui/src/selection.rs::tests::a_database_only_the_selector_knows_is_listed_blocked_and_counted | coberta |
 | IF-237 | R1/R2 | B | na aba **Query** o combo **Query Selector** (antes `Databases`) **aplica na hora**: escolher um seletor substitui a seleção do escopo e o botão `Apply Selector` deixa de existir; cada servidor lembra o **próprio** seletor — com filtro num servidor vale o dele, com todos iguais o combo mostra o nome comum, com diferentes fica **vazio** e escolher passa a valer para todos; a linha `(none)` só esquece o rótulo e **nunca** desmarca; o `⟳` da descoberta fica ao lado do combo de servidor (escopo = filtro), a lista daquele combo mostra `seletor · bases` com o seletor truncado em 20 caracteres, e o status diz quantas estão marcadas e de onde vieram (`103 marked · from "Producao"`) | sidebar da aba Query: combo Query Selector, combo Server e status | crates/mustel-gui/src/selection.rs::tests::each_server_remembers_its_own_selector; crates/mustel-gui/src/selection.rs::tests::forgetting_the_selector_does_not_unmark_anything; crates/mustel-gui/src/selection.rs::tests::applying_reports_what_it_marked_and_what_it_skipped; crates/mustel-gui/src/screens/query.rs::tests::choosing_a_selector_applies_it_in_the_current_scope; crates/mustel-gui/src/screens/query.rs::tests::the_server_note_truncates_the_selector_and_keeps_the_count; crates/mustel-gui/src/screens/query.rs::tests::removing_the_query_in_use_resets_the_combo | coberta |
 | IF-238 | R1 | B | falha ao aplicar um seletor **mantém** a seleção anterior e mostra um alerta dispensável no `✕` logo abaixo do combo (nome da query, erro agregado e `Selection unchanged.`), que some quando a próxima aplicação dá certo | sidebar da aba Query, abaixo do combo Query Selector | crates/mustel-gui/src/screens/query.rs::tests::a_failed_apply_keeps_the_selection_and_raises_the_alert; crates/mustel-gui/src/screens/query.rs::tests::the_apply_alert_sits_under_the_selector_combo | coberta |
+| IF-239 | R2 | B | a linha do status da sidebar (`N marked · from '…'`) tem o toggle **Show only marked**, que **esconde** as bases não marcadas sem mudar o alvo do `Select all`/`Clear` (visão, não ação): o cabeçalho da lista passa a contar só o que está à vista (`3 of 3`) e o toggle volta ao primeiro pedaço da paginação | linha "N marked" da aba Query | crates/mustel-gui/src/selection.rs::tests::showing_only_marked_hides_rows_but_does_not_change_the_actions | coberta |
+| IF-240 | R1 | B | ao lado do combo **Query Selector** há um botão que esquece o seletor de **todos** os servidores (a linha `(none)` esquece só o do escopo); ele não desmarca nada, age mesmo com o filtro num servidor e fica apagado quando não há seletor para limpar | combo Query Selector da aba Query | crates/mustel-gui/src/selection.rs::tests::the_broom_forgets_every_selector_without_unmarking; crates/mustel-gui/src/selection.rs::tests::the_none_row_and_the_broom_differ_in_scope | coberta |
 
 ## Resumo
 
-- **Total de linhas:** 165
-- **`coberta`:** 162
+- **Total de linhas:** 167
+- **`coberta`:** 164
 - **`pendente`:** 0
 - **`nao-coberta`:** 3 (IF-025 pool até o T34; IF-141 prompt por servidor; IF-163 superfície nova do Mustel)
 
@@ -252,6 +254,8 @@
 > linhas: o autocomplete acrescentou IF-202..IF-208 e, nesta correção, IF-209 e IF-210).
 > Contagem conferida de novo em 2026-10-24: IF-237/IF-238 (combo que aplica e alerta de falha)
 > entraram cobertas; a sidebar passou de 300 para 400 px e a janela mínima de 640x480 para 880x560 (IF-220 continua sendo a linha do tamanho mínimo).
+> Contagem conferida em 2026-10-24 (2): IF-239 (toggle "Show only marked") e IF-240 (vassoura
+> do combo de seletor) entraram cobertas.
 > As linhas `pendente` são as que o restante do plano fecha: T5/T6 (replay), T8 (texto), T9 (exit
 > codes), T10 (cofre), T11 (binário único), T13 (divergências), T14 (prompts). O plano só fecha com
 > zero `pendente`.

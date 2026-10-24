@@ -228,6 +228,13 @@ const SELECTOR_NOTE_CHARS: usize = 20;
 /// Largura reservada para o botão colado no combo (o `⟳` do servidor, o `⟳` do progresso).
 const ICON_WIDTH: f32 = 28.0;
 
+/// A vassoura do combo de seletor: esquece o seletor de **todos** os servidores.
+///
+/// `🧹` não existe no Fira Code (a fonte embutida); `✕` já significa "dispensar" e `⌫` confunde
+/// com apagar texto. O `∅` (conjunto vazio) está na fonte e diz o que o botão faz — deixa o escopo
+/// **sem** seletor.
+const BROOM: &str = "∅";
+
 /// Largura mínima da lista aberta do combo de servidor: `Homologacao-Tenant… · 104`.
 const SERVER_POPUP_WIDTH: f32 = 400.0;
 
@@ -879,10 +886,12 @@ impl State {
         // descobre justamente o recorte escolhido).
         ui.label("Server");
         // O combo ocupa a linha, menos o botão ao lado.
-        let combo_width = (ui.available_width() - ICON_WIDTH).max(160.0);
+        let server_combo_width = (ui.available_width() - ICON_WIDTH).max(160.0);
         // A lista aberta é mais larga que o botão: as linhas levam `seletor · bases` e a nota não
         // pode ser espremida (por isso os 400 px, mesmo numa sidebar de 400).
-        let popup_width = (combo_width + ICON_WIDTH).max(SERVER_POPUP_WIDTH);
+        let popup_width = (server_combo_width + ICON_WIDTH).max(SERVER_POPUP_WIDTH);
+        // A linha do seletor tem até três botões depois do combo: spinner, vassoura.
+        let selector_combo_width = (ui.available_width() - 2.0 * ICON_WIDTH).max(160.0);
         ui.horizontal(|ui| {
             // O botão mostra a contagem do escopo, igual ao "All servers (208)".
             let current = match self.selection.server_filter() {
@@ -934,7 +943,7 @@ impl State {
                 &items,
                 true,
                 crate::search_combo::Size {
-                    button: combo_width,
+                    button: server_combo_width,
                     popup: popup_width,
                 },
             ) {
@@ -985,7 +994,7 @@ impl State {
                 &items,
                 self.applying.is_none() && !running,
                 crate::search_combo::Size {
-                    button: combo_width,
+                    button: selector_combo_width,
                     popup: popup_width,
                 },
             ) {
@@ -1002,6 +1011,21 @@ impl State {
                 ui.spinner().on_hover_text(format!("Applying '{query}'..."));
             } else if running {
                 ui.spinner().on_hover_text("Running the query...");
+            }
+
+            // A vassoura esquece o seletor de **todos** os servidores (a linha `(none)` do combo só
+            // esquece o do escopo). Fica apagada quando não há seletor nenhum para limpar.
+            if ui
+                .add_enabled(
+                    self.selection.selectors_count() > 0 && self.applying.is_none() && !running,
+                    egui::Button::new(BROOM),
+                )
+                .on_hover_text("Forget the selector on every server (the selection stays)")
+                .clicked()
+            {
+                self.selection.forget_all_selectors();
+                self.selection_message =
+                    Some("selector forgotten on every server · selection unchanged".to_string());
             }
         });
 
@@ -1094,7 +1118,22 @@ impl State {
         if let Some(origin) = self.selection.scope_origin(servers) {
             status.push_str(&format!(" · from '{origin}'"));
         }
-        ui.label(status);
+        // O toggle de **visão** fica nesta linha, ao lado do número que ele recorta, e não junto de
+        // `Select all`/`Clear`: aqueles **agem** na seleção, este só muda o que a lista mostra — um
+        // ao lado do outro convidava a clicar em `Clear` sem querer.
+        ui.horizontal(|ui| {
+            ui.label(status);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let mut only = self.selection.show_only_marked();
+                if ui
+                    .checkbox(&mut only, "Show only marked")
+                    .on_hover_text("Hide the databases that are not marked")
+                    .changed()
+                {
+                    self.selection.set_show_only_marked(only);
+                }
+            });
+        });
         if let Some(message) = &self.selection_message {
             ui.weak(message);
         }

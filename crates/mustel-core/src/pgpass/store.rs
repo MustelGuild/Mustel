@@ -10,7 +10,7 @@
 //!   linha (semântica de `File.WriteAllLines`); comentários e linhas em branco são preservados;
 //! - `remove` de entrada inexistente **não** escreve nada (o arquivo fica byte a byte como estava).
 //!
-//! Duas diferenças deliberadas, registradas em `oracle/known-divergences.md`:
+//! Duas diferenças deliberadas, registradas em `fixtures/known-divergences.md`:
 //!
 //! 1. no Unix o arquivo fica com modo `0600` (o legado usa o padrão do processo) — é um arquivo de
 //!    senhas em texto claro e é o modo que o `libpq` exige;

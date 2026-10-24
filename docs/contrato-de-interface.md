@@ -7,13 +7,13 @@
 > **Como é verificado.** `crates/mustel/tests/contract_manifest.rs` lê esta tabela e exige, nas duas
 > direções: (a) o `fn` citado em `Teste` existe no arquivo citado; (b) todo marcador `CONTRACT: IF-NNN`
 > no código tem uma linha aqui. `crates/mustel/tests/contract_replay.rs` roda as 47 capturas de
-> `oracle/baseline/`. O gate é `cargo test --workspace`.
+> `fixtures/baseline/`. O gate é `cargo test --workspace`.
 
 ## Convenções
 
 - **ID**: `IF-NNN`, único e nunca reutilizado. A origem vai em `Origem` e segue este mapa:
   `D*` → [decisões de engenharia](explanation/decisoes.md) (três numerações: migração, autocomplete,
-  seleção de bases — veja a tabela de resolução lá); `DIV*` → `oracle/known-divergences.md`;
+  seleção de bases — veja a tabela de resolução lá); `DIV*` → `fixtures/known-divergences.md`;
   `N1`–`N4` → [escada de fidelidade](explanation/escada-de-fidelidade.md); `T*` → tarefa do plano de
   migração já encerrado (histórico do Git, sem definição vigente).
 - **Classe**:
@@ -202,8 +202,8 @@
 
 | ID | Origem | Classe | Decisão | Onde se observa | Teste | Status |
 |----|--------|--------|---------|-----------------|-------|--------|
-| IF-190 | CD14 | A | todo comando migrado tem pelo menos um caso no baseline congelado | `oracle/baseline/*` | crates/mustel/tests/contract_surface.rs::every_migrated_command_has_a_baseline_case | coberta |
-| IF-191 | CD14 | A | toda flag longa do `--help` é exercitada por um caso do baseline ou tem a cobertura declarada | `mustel <cmd> --help` cruzado com `oracle/baseline/*` | crates/mustel/tests/contract_surface.rs::every_long_flag_is_exercised_or_declared | coberta |
+| IF-190 | CD14 | A | todo comando migrado tem pelo menos um caso no baseline congelado | `fixtures/baseline/*` | crates/mustel/tests/contract_surface.rs::every_migrated_command_has_a_baseline_case | coberta |
+| IF-191 | CD14 | A | toda flag longa do `--help` é exercitada por um caso do baseline ou tem a cobertura declarada | `mustel <cmd> --help` cruzado com `fixtures/baseline/*` | crates/mustel/tests/contract_surface.rs::every_long_flag_is_exercised_or_declared | coberta |
 | IF-192 | CD16 | A | todo link relativo da documentação (`docs/**`, READMEs) resolve para um arquivo existente | links em `docs/**/*.md` e `README*.md` | crates/mustel-core/tests/contract_decisions.rs::documentation_links_resolve | coberta |
 | IF-200 | GUI | B | o formulário rola quando não cabe, e a tabela de resultados fica com uma fatia fixa | janela alta ou pequena com SQL longo | crates/mustel-gui/src/screens/query.rs::tests::the_results_panel_takes_a_share_and_leaves_the_form_the_rest; crates/mustel-gui/src/screens/query.rs::tests::without_results_the_form_has_the_whole_window | coberta |
 | IF-201 | GUI | B | o botão "ir ao fim" só aparece quando o formulário transborda, e rola suavemente até o fim | janela pequena com SQL longo | crates/mustel-gui/src/smooth_scroll.rs::tests::it_reaches_the_target_and_stops; crates/mustel-gui/src/smooth_scroll.rs::tests::it_is_frame_rate_independent | coberta |

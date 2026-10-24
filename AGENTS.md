@@ -20,13 +20,13 @@ repositório falam pt-BR.
 | Área | O que é |
 |------|---------|
 | `crates/` | **Mustel** (Rust) — o produto ativo |
-| `oracle/` | baseline **congelado**, relatórios de divergência e números de performance |
+| `fixtures/` | baseline **congelado**, relatórios de divergência e números de performance |
 | `MustelPlans/` | apenas trabalho **não executado** (hoje, as pendências de release) |
 | `docs/` | documentação do Mustel em quatro quadrantes (Diátaxis) e o manifesto `contrato-de-interface.md` |
 
 Escopo do produto: grupos **`query`**, **`database`** e **`settings`**, mais a GUI em egui. O código
 .NET do produto anterior foi **removido** do repositório em 2026-10-22; o comportamento dele sobrevive
-como contrato em `oracle/baseline/` e em `docs/contrato-de-interface.md`.
+como contrato em `fixtures/baseline/` e em `docs/contrato-de-interface.md`.
 
 ## Stack
 
@@ -50,7 +50,7 @@ crates/
 ├── mustel-gui/      lib egui usada pelo subcomando `gui`
 └── mustel-testkit/  fixtures do baseline + comparação de contrato (bins de captura/diagnóstico)
 legacy/              (removido em 2026-10-22; recuperável pelo histórico do Git)
-oracle/              baseline/ (contrato congelado), perf/, known-divergences.md
+fixtures/            baseline/ (contrato congelado), perf/, known-divergences.md
 docs/                contrato-de-interface.md, tutorials/, how-to/, reference/, explanation/
 ```
 
@@ -104,9 +104,9 @@ precedência:
 
 1. `docs/contrato-de-interface.md` — o **manifesto**: uma linha por decisão de superfície, com ID
    (`IF-NNN`), origem e o teste que a prova.
-2. `oracle/baseline/*.json` — as **47 capturas congeladas** do comportamento antigo; o binário .NET
+2. `fixtures/baseline/*.json` — as **47 capturas congeladas** do comportamento antigo; o binário .NET
    **não** é necessário para comparar (o `oracle-compare` apenas relê o baseline).
-3. `oracle/known-divergences.md` — as divergências aceitas, com justificativa.
+3. `fixtures/known-divergences.md` — as divergências aceitas, com justificativa.
 
 A escada de fidelidade (detalhe em
 [`docs/explanation/escada-de-fidelidade.md`](docs/explanation/escada-de-fidelidade.md)):
@@ -116,7 +116,7 @@ A escada de fidelidade (detalhe em
 | N1 | mesma árvore de comandos, flags, defaults; inválidos rejeitados do mesmo jeito | sim |
 | N2 | mesmos artefatos byte a byte, mesmos exit codes | sim |
 | N3 | mesmos fluxos interativos (perguntas, ordem, atalhos, defaults) | sim |
-| N4 | formatação textual (`--help`, cores, tabelas, redação de erros) | não — registrar em `oracle/known-divergences.md` |
+| N4 | formatação textual (`--help`, cores, tabelas, redação de erros) | não — registrar em `fixtures/known-divergences.md` |
 
 **O gate é `cargo test --workspace`.** Ele roda o replay das 47 capturas (`contract_replay`), os
 snapshots de texto (`contract_text`), a cobertura do manifesto (`contract_manifest`) e a cobertura de
@@ -136,7 +136,7 @@ sai em **stdout** com **1**.
 
 - O diretório `legacy/` **não existe mais** (removido em 2026-10-22, sem tag: recuperável pelo
   histórico do Git, no commit anterior à remoção).
-- O baseline em `oracle/baseline/` é **contrato congelado** — não há como re-gravar. Mudar
+- O baseline em `fixtures/baseline/` é **contrato congelado** — não há como re-gravar. Mudar
   comportamento significa mudar um teste, com revisão explícita.
 - As skills `furlab-command-manager` valiam apenas para o legado e foram removidas com ele.
 - Os pacotes antigos (`FurLab` no NuGet, `FurLab.CLI` no winget) não são tocados. O Mustel publica

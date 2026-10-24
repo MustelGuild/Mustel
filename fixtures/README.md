@@ -8,7 +8,7 @@ congelado aqui. Este diretório guarda as evidências dessa observação.
 > re-capturar.
 
 ```
-oracle/
+fixtures/
 ├── baseline/             (versionado) uma captura por caso — o contrato congelado
 ├── perf/                 números de performance (.NET como baseline)
 └── known-divergences.md  divergências aceitas + lista branca de resíduos do nome legado
@@ -24,7 +24,7 @@ cargo test --workspace
 cargo run -p mustel-testkit --bin oracle-compare -- --report
 ```
 
-Cada captura (`oracle/baseline/<slug>.json`) registra: argumentos, **exit code**, `stdout`/`stderr`
+Cada captura (`fixtures/baseline/<slug>.json`) registra: argumentos, **exit code**, `stdout`/`stderr`
 (como texto *lossy* para leitura **e** em base64, porque a saída de tabela do antigo não era UTF-8) e
 os artefatos gerados (hash SHA-256 + conteúdo quando é texto).
 

@@ -20,7 +20,7 @@ abaixo.
 
 | ID | Numeração | Onde aparece |
 |---|---|---|
-| `D5` | Migração | divergência 6 em [`known-divergences`](../../oracle/known-divergences.md) (GUI em egui, não Tauri) |
+| `D5` | Migração | divergência 6 em [`known-divergences`](../../fixtures/known-divergences.md) (GUI em egui, não Tauri) |
 | `D6` | Migração | doc-comments de `crates/**`, manifesto, divergência 1 (keyring) |
 | `D7` | Seleção de bases | manifesto `IF-226` (credencial da linha) |
 | `D8` | Seleção de bases | manifesto `IF-226`, `custom_databases.rs` (aviso de credencial) |
@@ -65,7 +65,7 @@ código implementa e que o número representa:
 | `D13` | Convenções do repositório | CLI em **inglês**; plano/docs/conversa em **pt-BR**; commits em inglês | Regra vigente no `AGENTS.md` |
 | `D14` | Mutações de Git | Exigem autorização explícita do dono | Guard rails do `AGENTS.md` |
 | `D15` | Versão inicial | `1.0.0`; tags `v1.x.y` dirigem o release | Mustel é software novo |
-| `D16` | Oráculo | Binário .NET em `legacy/` é a fonte de verdade; baseline versionado em `oracle/baseline/` | Onde docs e código divergem, vale o **código observado** |
+| `D16` | Oráculo | Binário .NET em `legacy/` é a fonte de verdade; baseline versionado em `fixtures/baseline/` | Onde docs e código divergem, vale o **código observado** |
 | `D17` | Canais de distribuição | crates.io (`mustel-core`, `mustel-gui`, `mustel`) + GitHub Releases + winget `Mustel.CLI` | Nomes verificados livres no crates.io |
 | `D18` | Repositório GitHub | Permanecer em `liphvf/FurLab` durante a migração, renomear depois | Renomear no meio misturaria duas mudanças; **consumado em 2026-10-24** (`MustelGuild/Mustel`) |
 | `D19` | Escopo da migração | Grupos `query`, `database` e `settings` **completos**; demais no backlog | Decisão do usuário |
@@ -128,7 +128,7 @@ código implementa e que o número representa:
 - **Tarefas** (`T1`–`T48` e afins): viraram código; o registro de execução vive no histórico do Git.
 - **Questões abertas** (`Q1`–`Q12`): todas fechadas; a resposta de cada uma é a origem registrada na
   tabela da migração.
-- **`DIV1`–`DIV18`**: continuam em [`oracle/known-divergences.md`](../../oracle/known-divergences.md),
+- **`DIV1`–`DIV18`**: continuam em [`fixtures/known-divergences.md`](../../fixtures/known-divergences.md),
   junto com a lista branca de resíduos do nome antigo e as regras de comparação.
 - **Contrato do CLI**: não é decisão, é superfície verificada — vive em
   [`contrato-de-interface.md`](../contrato-de-interface.md), uma linha por `IF-NNN` com o teste que

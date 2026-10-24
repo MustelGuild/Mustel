@@ -4,13 +4,13 @@ Este arquivo é a memória do que é **aceito** na migração para Rust: as dive
 (nível N4) entre o Mustel e o FurLab (.NET, o oráculo) e as ocorrências de nome legado que permanecem
 no repositório de propósito.
 
-> **Estado desde 2026-10-22:** o diretório `legacy/` foi removido. O baseline de `oracle/baseline/` é
+> **Estado desde 2026-10-22:** o diretório `legacy/` foi removido. O baseline de `fixtures/baseline/` é
 > **contrato congelado** e não pode mais ser re-gravado. As menções a caminhos `legacy/...` nos
 > doc-comments são rastreabilidade histórica do porte.
 >
 > **Estado desde 2026-10-24:** o diretório `openspec/` também foi removido — era o ferramental do
 > produto .NET (17 specs + propostas arquivadas). O contrato dessas features sobrevive onde ele sempre
-> valeu de fato: no manifesto `docs/contrato-de-interface.md` e nas 47 capturas de `oracle/baseline/`.
+> valeu de fato: no manifesto `docs/contrato-de-interface.md` e nas 47 capturas de `fixtures/baseline/`.
 
 ## 1. Lista branca de resíduos `furlab` / `fur`
 
@@ -20,11 +20,11 @@ termo aparece apenas nos lugares abaixo.
 | Caminho | Por que permanece |
 |---------|-------------------|
 | `crates/**` (doc comments) | citam o FurLab/FurLab.CLI para rastrear o porte (“contrato `Program.cs` do FurLab”, “Porte de `PgPassService.cs`”). É rastreabilidade da paridade: apagar tornaria mais difícil conferir o código contra o contrato |
-| `oracle/baseline/*.json` | são **capturas do oráculo**: a saída do `fur` inclui o nome do binário e da config, e elas são o contrato congelado — não podem ser reescritas |
+| `fixtures/baseline/*.json` | são **capturas do oráculo**: a saída do `fur` inclui o nome do binário e da config, e elas são o contrato congelado — não podem ser reescritas |
 | `AGENTS.md` | descreve a paridade com o legado e o estado do baseline congelado |
 | `README.md`, `README.pt-BR.md` | explicam de onde o Mustel veio (produto anterior) |
-| `oracle/perf/baseline.md`, `oracle/perf/final.md`, `oracle/README.md`, `oracle/known-divergences.md` | documentam o oráculo e as medições por nome |
-| `oracle/baseline/help-root.json` | **captura congelada**: a ajuda do binário antigo listava `opencode`, `claude`, `file`; o arquivo é o contrato e não pode ser reescrito |
+| `fixtures/perf/baseline.md`, `fixtures/perf/final.md`, `fixtures/README.md`, `fixtures/known-divergences.md` | documentam o oráculo e as medições por nome |
+| `fixtures/baseline/help-root.json` | **captura congelada**: a ajuda do binário antigo listava `opencode`, `claude`, `file`; o arquivo é o contrato e não pode ser reescrito |
 
 ## 2. Divergências N4 (formatação) aceitas
 
@@ -46,7 +46,7 @@ Nenhuma registrada até aqui.
 | 6 | `mustel gui` e `mustel --version` não existem no legado | Superfície nova do produto Mustel (D5/T6) | Ignorar na comparação da árvore de comandos |
 | 7 | A mensagem de configuração vazia do `settings db-servers ls` orienta `'mustel settings db-servers add'`; o legado diz `'fur settings db-servers add'` | Nome do binário mudou (D10) | Texto é N4; o comparador cobre o conteúdo por tokens ASCII, e "mustel"/"fur" são adições registradas aqui |
 | 8 | No **Unix** o `pgpass.conf` fica com modo `0600`; o legado deixa o modo padrão do processo (0644 com umask comum) | É um arquivo de **senha em texto claro**, e `0600` é o que o `libpq` exige para aceitá-lo no Unix | Nenhum: o comparador olha o **conteúdo**, não as permissões. No Windows as duas implementações usam a ACL herdada |
-| 9 | Caminho do `pgpass.conf`: `%APPDATA%\postgresql\pgpass.conf` no Windows e `$XDG_CONFIG_HOME`/`~/.config` no Unix (**inclusive no macOS**), redirecionável por `MUSTEL_PGPASS_FILE` | O caminho é **paridade**, não divergência: é o que `SpecialFolder.ApplicationData` do .NET devolve por SO — não é a convenção do `libpq` (`~/.pgpass`) nem `~/Library/Application Support` no macOS. Já a variável de ambiente é alavanca de teste/harness, como `MUSTEL_CONFIG_DIR` (D10) | O harness isola os dois lados: `MUSTEL_PGPASS_FILE` aponta o arquivo do Mustel para `oracle/workdir/` e o arquivo do legado (que **não** respeita variável de ambiente) é semeado/restaurado |
+| 9 | Caminho do `pgpass.conf`: `%APPDATA%\postgresql\pgpass.conf` no Windows e `$XDG_CONFIG_HOME`/`~/.config` no Unix (**inclusive no macOS**), redirecionável por `MUSTEL_PGPASS_FILE` | O caminho é **paridade**, não divergência: é o que `SpecialFolder.ApplicationData` do .NET devolve por SO — não é a convenção do `libpq` (`~/.pgpass`) nem `~/Library/Application Support` no macOS. Já a variável de ambiente é alavanca de teste/harness, como `MUSTEL_CONFIG_DIR` (D10) | O harness isola os dois lados: `MUSTEL_PGPASS_FILE` aponta o arquivo do Mustel para `fixtures/workdir/` e o arquivo do legado (que **não** respeita variável de ambiente) é semeado/restaurado |
 | 11 | `database restore` ganhou **`--create-if-not-exists`** (não existe no legado) | Decisão do usuário (2026-10-18): sem a flag o comportamento **continua fiel** — restaurar para banco inexistente falha; com a flag, o banco é criado **pelo driver** (D12) antes do `pg_restore` | O legado tentava criar num passo por `psql` que **nunca** dispara (ele só cria quando o `psql` sai com código 3, e um `SELECT` sem linhas sai com 0), então a flag não tem contraparte a comparar. O caminho padrão segue comparável e igual |
 | 12 | `query run`: datas/horas e números saem **fixos na convenção en-US** (`10/18/2026 10:52:15 AM`, `1500.75`, `10:52 AM`) | No .NET esses textos vêm da **cultura da máquina** (`DateTime.ToString()`, `DateOnly`, `TimeOnly`), que não tem equivalente em Rust. A máquina onde o oráculo foi medido é en-US | Numa máquina pt-BR o legado escreveria `18/10/2026`, `1500,75` e `10:52`. Vale para `query run`; se algum dia a comparação rodar numa máquina assim, a diferença é esperada e conhecida |
 | 13 | `query run --all`: a **descoberta honra o `-W`** (e o cofre), enquanto o legado passa `settings: null` para ela e só obtém a senha pelo `EncryptedPassword` do cadastro — havendo senha no cadastro ele **não** pergunta; não havendo, **pede no console** | O `BuildConnectionStringForServer(server, "postgres", null)` do legado é o bug: ele descarta as flags justamente no passo de descoberta. O Mustel resolve a senha pela precedência normal | É o que torna `--all` utilizável fora de um terminal mesmo sem senha gravada (o legado trava no prompt). **Correção de alcance (fechamento do T33)**: a comparação da descoberta **é possível** — basta o cadastro do legado ter senha válida; foi assim que os dois lados foram conferidos (`t31` → `mustel_test`, `localhost` → `dev`, `postgres`/templates excluídos pelos padrões, CSV byte-idêntico). O que não dá é comparar o caminho **sem** senha no cadastro |

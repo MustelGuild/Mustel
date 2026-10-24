@@ -2,10 +2,10 @@
 /target/
 **/*.rs.bk
 
-# Contrato congelado: o baseline (`oracle/baseline/`) é **versionado**; estes não são.
-oracle/bin/
-oracle/workdir/
-oracle/reports/
+# Contrato congelado: o baseline (`fixtures/baseline/`) é **versionado**; estes não são.
+fixtures/bin/
+fixtures/workdir/
+fixtures/reports/
 
 # Saída das execuções de `query run` (o default do cadastro é `./results`)
 results/

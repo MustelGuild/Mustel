@@ -18,7 +18,7 @@
 //!   sai `No accessible databases found across selected servers.` e exit **0**;
 //! - a senha segue `-W` → cofre (pelo **nome do servidor**) → prompt, com o texto
 //!   `Password for '<servidor>': `, resolvida **uma vez por servidor** (a entrada vai pronta para o
-//!   núcleo; divergência 17 em `oracle/known-divergences.md`).
+//!   núcleo; divergência 17 em `fixtures/known-divergences.md`).
 
 use std::path::PathBuf;
 use std::sync::Arc;

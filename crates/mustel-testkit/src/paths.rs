@@ -13,12 +13,12 @@ pub fn repo_root() -> PathBuf {
 
 /// Diretório do baseline versionado.
 pub fn baseline_dir() -> PathBuf {
-    repo_root().join("oracle").join("baseline")
+    repo_root().join("fixtures").join("baseline")
 }
 
 /// Diretório de trabalho dos fixtures (ignorado pelo Git).
 pub fn workspace_dir() -> PathBuf {
-    repo_root().join("oracle").join("workdir")
+    repo_root().join("fixtures").join("workdir")
 }
 
 /// Caminho do binário do Mustel, se existir (`MUSTEL_BIN` tem precedência).

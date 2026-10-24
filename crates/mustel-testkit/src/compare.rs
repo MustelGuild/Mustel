@@ -1,6 +1,6 @@
 //! Comparação entre o baseline do oráculo e o binário do Mustel.
 //!
-//! Regras (derivadas dos fatos observados no T9 — ver `oracle/README.md`):
+//! Regras (derivadas dos fatos observados no T9 — ver `fixtures/README.md`):
 //! - **exit code** e **artefatos** são o contrato duro (N1/N2): diferença = falha;
 //! - **stdout/stderr** é aviso (N4): a redação difere porque o framework é outro; além disso a saída
 //!   de tabela do legado não é UTF-8, então esses casos pulam a comparação de texto;

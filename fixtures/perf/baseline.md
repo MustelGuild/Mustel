@@ -14,7 +14,7 @@ está disponível na máquina da migração). Cada linha é a mediana de 30 exec
 - oráculo (`C:\Users\liphv\Documents\DEV\FurLab\.delta\worktrees\00z7a7nyr8qy\FurLab\oracle\bin\FurLab.CLI.exe`): **158 KB** (162304 bytes)
 - `mustel` release (`C:\Users\liphv\Documents\DEV\FurLab\.delta\worktrees\00z7a7nyr8qy\FurLab\target\release\mustel.exe`): **12.9 MB** (13502464 bytes)
 
-> **Cuidado ao comparar tamanho.** O que está publicado em `oracle/bin` é a saída de
+> **Cuidado ao comparar tamanho.** O que está publicado em `fixtures/bin` é a saída de
 > `dotnet publish` **framework-dependent**: o executável é pequeno porque **não** carrega o
 > runtime — ele exige o .NET instalado (dezenas de MB) na máquina do usuário. O binário do
 > Mustel é auto-contido por natureza. A comparação justa é contra o artefato self-contained

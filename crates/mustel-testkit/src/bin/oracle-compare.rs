@@ -1,4 +1,4 @@
-//! Compara o Mustel com o baseline do oráculo e gera `oracle/reports/<ts>/report.md`.
+//! Compara o Mustel com o baseline do oráculo e gera `fixtures/reports/<ts>/report.md`.
 //!
 //! Uso:
 //! ```text
@@ -203,7 +203,7 @@ fn deliberate_divergence(slug: &str) -> Option<&'static str> {
     match slug {
         "error-database-restore-file-missing" | "error-db-servers-test-offline" => Some(
             "divergência deliberada: sem senha em modo não-interativo o legado quebra no prompt; o \
-             Mustel falha claro (ver oracle/known-divergences.md)",
+             Mustel falha claro (ver fixtures/known-divergences.md)",
         ),
         _ => None,
     }

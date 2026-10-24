@@ -2,7 +2,7 @@
 //!
 //! O FurLab usa tabela do Spectre (bordas arredondadas); usamos `Style::rounded()` para ficar próximo.
 //! A formatação exata é nível N4 do contrato — a tabela do legado sai em codepage do console, o que
-//! já impede comparação byte a byte (ver `oracle/README.md`).
+//! já impede comparação byte a byte (ver `fixtures/README.md`).
 
 use tabled::builder::Builder;
 use tabled::settings::object::Columns;

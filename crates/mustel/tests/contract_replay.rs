@@ -1,6 +1,6 @@
 //! Camada 1 do contrato: replay das capturas do oráculo dentro de `cargo test`.
 //!
-//! Cada caso de `oracle/baseline/` vira um teste nomeado. A comparação usa
+//! Cada caso de `fixtures/baseline/` vira um teste nomeado. A comparação usa
 //! `mustel_testkit::compare::compare_case` — a **mesma** implementação que o harness usa — contra o
 //! binário atual, em um sandbox isolado. Nenhum passo precisa do binário .NET.
 //!
@@ -209,7 +209,7 @@ fn support_isolates_the_environment() {
 /// `error-database-restore-file-missing`: no legado o comando quebrava no prompt de senha antes de
 /// validar o arquivo (e em modo não-interativo morria com "failed to read input"). O Mustel resolve a
 /// senha pela via normal e, **tendo** senha, valida o arquivo e falha com exit 2 e o caminho absoluto.
-/// Divergência deliberada registrada em `oracle/known-divergences.md` item 11.
+/// Divergência deliberada registrada em `fixtures/known-divergences.md` item 11.
 ///
 /// A senha vai por `-W` de propósito: sem ela o comando pararia no prompt, que é o caminho que o
 /// harness não consegue comparar (e que o teste abaixo cobre explicitamente).

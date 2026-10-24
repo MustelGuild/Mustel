@@ -15,7 +15,7 @@
 Mustel is a Rust rewrite of a .NET CLI that used to be called FurLab. The three command groups of the
 product — `query`, `database` and `settings` — are migrated, and the graphical interface ships in the
 same binary. The old .NET implementation was removed from the repository; its observable behaviour is
-frozen as a **test contract** under `oracle/baseline/`, and every case runs in `cargo test`.
+frozen as a **test contract** under `fixtures/baseline/`, and every case runs in `cargo test`.
 
 ## Description
 
@@ -109,7 +109,7 @@ script it, build with `--no-default-features` to get the lean CLI (7.8 ms instea
 
 Behaviour is pinned by two layers inside `cargo test`:
 
-- `oracle/baseline/*.json` — 47 frozen captures of the old binary, replayed against `mustel`
+- `fixtures/baseline/*.json` — 47 frozen captures of the old binary, replayed against `mustel`
   (`contract_replay`);
 - [`docs/contrato-de-interface.md`](docs/contrato-de-interface.md) — one line per interface decision,
   each pointing at the test that proves it (`contract_manifest`).

@@ -1,6 +1,6 @@
 //! Suporte compartilhado dos testes de contrato.
 //!
-//! Cada caso do baseline (`oracle/baseline/<slug>.json`) é reexecutado contra o binário atual em um
+//! Cada caso do baseline (`fixtures/baseline/<slug>.json`) é reexecutado contra o binário atual em um
 //! sandbox próprio: a configuração do Mustel e o `pgpass.conf` apontam para um diretório temporário, de
 //! modo que nenhum arquivo real do usuário é lido ou escrito.
 //!

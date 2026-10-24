@@ -32,7 +32,7 @@ depende, é N4.**
 
 O detalhe de cada decisão está em [`contrato-de-interface.md`](../contrato-de-interface.md): uma linha
 por decisão, com o teste que a prova. As diferenças conscientes de N4 moram em
-`oracle/known-divergences.md`.
+`fixtures/known-divergences.md`.
 
 ## O que a escada **não** cobre
 
@@ -40,4 +40,4 @@ por decisão, com o teste que a prova. As diferenças conscientes de N4 moram em
   produto, não paridade.
 - Fluxos que exigem console dos dois lados (prompts): comparados por teste de PTY no Mustel e por
   smoke manual, não pelo baseline.
-- Performance: medida e registrada em `oracle/perf/`, mas não é nível de paridade.
+- Performance: medida e registrada em `fixtures/perf/`, mas não é nível de paridade.

@@ -42,3 +42,8 @@ thiserror = "2"
 tempfile = "3"
 # Só para o teste de integração gated ler a `MUSTEL_PG_TEST_URL` com o mesmo parser do driver.
 tokio-postgres = "0.7"
+
+[package.metadata.release]
+# Release é bump+commit+tag: a publicação no crates.io é passo explícito (docs/how-to/publicar-release.md).
+publish = false
+push = false

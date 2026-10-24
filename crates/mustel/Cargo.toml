@@ -35,3 +35,8 @@ serde_json = "1"
 # Os testes de contrato reutilizam o schema do baseline e as regras de comparação do harness:
 # uma única implementação de "o que é contrato" (CD5). Sem ciclo — o testkit só depende do core.
 mustel-testkit = { path = "../mustel-testkit" }
+
+[package.metadata.release]
+# Release é bump+commit+tag: a publicação no crates.io é passo explícito (docs/how-to/publicar-release.md).
+publish = false
+push = false

@@ -23,17 +23,27 @@ herdam com `version.workspace = true`, então não há versão para sincronizar 
 ## 1. Incrementar a versão e criar a tag
 
 ```bash
-cargo release patch --dry-run    # mostra o que faria; NÃO altera nada
-cargo release patch --execute    # faz: bump + Cargo.lock + dependências internas + commit + tag
+cargo release patch            # ensaio: mostra o plano e NÃO altera nada (dry-run é o padrão)
+cargo release patch --execute  # faz: bump + Cargo.lock + dependências internas + commit + tag
 ```
 
-`patch` pode ser `minor`, `major` ou uma versão explícita (`cargo release 1.2.0 --execute`). O
-`cargo-release` está configurado em `[workspace.metadata.release]` para:
+`patch` pode ser `minor`, `major` ou uma versão explícita (`cargo release 1.2.0 --execute`).
+
+**Antes do `--execute`, a árvore precisa estar limpa** — inclusive sem arquivo não rastreado. O
+`cargo release` recusa rodar com qualquer mudança pendente (é o que impede publicar um código que
+não está no commit).
+
+O `cargo-release` está configurado em `[workspace.metadata.release]` (e `[package.metadata.release]`
+nos três crates) para:
 
 - usar **versão compartilhada** no workspace;
 - criar a tag `v<versao>` — o mesmo formato que o workflow espera;
 - atualizar as dependências internas (`mustel-core`, `mustel-gui`) junto;
 - **não** publicar no crates.io e **não** empurrar para o remoto (são passos separados, abaixo).
+
+> A saída do ensaio imprime `Publishing mustel-core, mustel-gui, mustel` **mesmo com**
+> `publish = false`. É rótulo da etapa, impresso antes do filtro: nenhum `cargo publish` roda (o
+> código só executa quando a lista de pacotes a publicar não está vazia).
 
 Se você rodar fora do branch `main`, ele recusa — é a guarda de `allow-branch`.
 

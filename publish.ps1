@@ -51,6 +51,7 @@ try {
     Copy-Item $binary $stage
     Copy-Item (Join-Path $root 'mustel.example.jsonc') $stage
     Copy-Item (Join-Path $root 'LICENSE') $stage
+    Copy-Item (Join-Path $root 'crates\mustel-gui\assets\fonts\FiraCode-OFL.txt') $stage
 
     $readme = @"
 Mustel $version ($triple)
@@ -61,7 +62,8 @@ Mustel $version ($triple)
    Linux/macOS: \$XDG_CONFIG_HOME/Mustel/mustel.jsonc (ou ~/.config/Mustel/mustel.jsonc)
 3. 'mustel --help' lista os comandos.
 
-Licença: GPL-3.0-only (ver LICENSE).
+Licença: AGPL-3.0-only (ver LICENSE).
+Fonte embutida: Fira Code, sob SIL OFL 1.1 (ver FiraCode-OFL.txt).
 "@
     Set-Content -Path (Join-Path $stage 'README.txt') -Value $readme -Encoding utf8
 

@@ -137,8 +137,17 @@ um PR, rode `cargo fmt`, `cargo clippy -- -D warnings` e `cargo test --workspace
 
 ## Licença
 
-Este projeto é licenciado sob a **GNU General Public License v3.0** (`GPL-3.0-only`) — ver o arquivo
-[LICENSE](./LICENSE) para detalhes. Os manifestos do Cargo declaram `license = "GPL-3.0-only"`.
+Este projeto é licenciado sob a **GNU Affero General Public License v3.0** (`AGPL-3.0-only`) — ver o
+arquivo [LICENSE](./LICENSE) para detalhes. Os manifestos do Cargo declaram `license = "AGPL-3.0-only"`.
+
+## Avisos de terceiros
+
+A GUI embute a fonte **Fira Code**
+([`crates/mustel-gui/assets/fonts/FiraCode-Regular.ttf`](crates/mustel-gui/assets/fonts/FiraCode-Regular.ttf)),
+distribuída sob a **SIL Open Font License 1.1**. Nada aqui a relicencia: a fonte continua OFL-1.1
+enquanto o programa é AGPL-3.0. O texto da licença e o copyright acompanham a fonte
+([`FiraCode-OFL.txt`](crates/mustel-gui/assets/fonts/FiraCode-OFL.txt)) e vão dentro de todo pacote
+de release.
 
 ---
 

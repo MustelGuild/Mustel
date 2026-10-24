@@ -11,8 +11,8 @@ members = [
 version = "1.0.0"
 edition = "2024"
 rust-version = "1.98"
-license = "GPL-3.0-only"
-repository = "https://github.com/liphvf/FurLab"
+license = "AGPL-3.0-only"
+repository = "https://github.com/MustelGuild/Mustel"
 authors = ["liphvf"]
 
 [workspace.lints.rust]

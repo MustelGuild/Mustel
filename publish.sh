@@ -39,6 +39,7 @@ mkdir -p "$stage"
 cp "target/release/mustel" "$stage/"
 cp mustel.example.jsonc "$stage/"
 cp LICENSE "$stage/"
+cp crates/mustel-gui/assets/fonts/FiraCode-OFL.txt "$stage/"
 cat > "$stage/README.txt" <<EOF
 Mustel $version ($triple)
 
@@ -54,7 +55,8 @@ Para abrir a janela, o ambiente precisa também de X11 ou Wayland com OpenGL.
 Quem usa só o CLI não precisa da janela, mas a libdbus continua necessária porque
 é carregada na inicialização.
 
-Licença: GPL-3.0-only (ver LICENSE).
+Licença: AGPL-3.0-only (ver LICENSE).
+Fonte embutida: Fira Code, sob SIL OFL 1.1 (ver FiraCode-OFL.txt).
 EOF
 
 archive="$stage.tar.gz"

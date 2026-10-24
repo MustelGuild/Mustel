@@ -47,7 +47,7 @@ do sistema, via `fontique` (a mesma biblioteca que o `egui` já usa para fallbac
 A Fira Code é distribuída sob a **SIL Open Font License 1.1**, que permite expressamente
 *bundled, embedded, redistributed and/or sold with any software*. As obrigações são: manter o
 copyright e o texto da licença junto de cada cópia, não vender a fonte sozinha, e não relicenciar a
-fonte. O Mustel é GPL-3.0; a fonte continua OFL-1.1 — as duas convivem porque a fonte é um **asset
+fonte. O Mustel é AGPL-3.0; a fonte continua OFL-1.1 — as duas convivem porque a fonte é um **asset
 separado**, com a licença ao lado:
 
 - `crates/mustel-gui/assets/fonts/FiraCode-Regular.ttf`

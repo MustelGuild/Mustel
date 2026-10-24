@@ -96,7 +96,7 @@ backlog na seção 10 — mantendo dois produtos vivos até que sejam migrados o
 | D17 | Canais de distribuição                    | crates.io (`mustel-core`, `mustel-gui`, `mustel`) + GitHub Releases + winget `Mustel.CLI` | Usuário (Q2); nomes verificados livres no crates.io em 2026-10-14 |
 | D18 | Repositório GitHub                        | Mantém `liphvf/FurLab` nesta migração; rename depois                     | Usuário (Q3)                                                          |
 | D19 | Escopo da migração                        | Grupos `query`, `database` e `settings` **completos**; demais grupos no backlog (seção 10), permanecendo no FurLab .NET | Usuário (Q6): "seria os comandos de forma completa: query, database, settings" |
-| D20 | Licença                                   | `GPL-3.0-only` (o que está no `LICENSE`); README/docs corrigidos (afirmavam MIT) | Usuário (Q9): "vamos usar o que está no LICENSE"                        |
+| D20 | Licença                                   | `AGPL-3.0-only` (o que está no `LICENSE` desde `65a9a16`); README/docs/scripts alinhados | Usuário (Q9) + commit `65a9a16` (2026-10-24)                          |
 | D21 | Backlog                                   | Grupos fora do escopo serão migrados numa **segunda onda**, depois do 1.0 (não é descarte) | Usuário (Q11): "será feito depois"                                    |
 | D22 | Pacote winget antigo                      | `FurLab.CLI` permanece como está; nenhuma ação sobre ele                 | Usuário (Q12): "não mexer no antigo pacote"                           |
 | D23 | Notarização/code-signing macOS            | Fora do escopo; documentar `xattr -d com.apple.quarantine` no README     | Default mantido (não confirmado explicitamente em Q12)                |
@@ -656,7 +656,7 @@ Executar sempre que mudanças forem feitas no workspace Rust:
   `cargo test -p mustel-core --test postgres_integration` — verde
 - **Publicação (crates.io):** `cargo publish --dry-run -p mustel-core -p mustel-gui -p mustel` sem erro;
   `cargo install --path crates/mustel --force` seguido de `mustel --version`
-- **Licença:** `cargo deny check licenses` (ou equivalente) sem incompatibilidade; `license = "GPL-3.0-only"`
+- **Licença:** `cargo deny check licenses` (ou equivalente) sem incompatibilidade; `license = "AGPL-3.0-only"`
   nos três crates publicados
 - **Diagnostics do editor:** rodar os diagnostics (rust-analyzer/clippy) nos arquivos alterados
 - **Grep de resíduos:** `grep -ri "furlab" --exclude-dir={.git,legacy,openspec,docs,MustelPlans}` deve retornar
@@ -707,7 +707,7 @@ Itens **não decididos**. O agente **não adivinha**: ou resolve com informaçã
 - [x] **Q6** — Escopo: grupos `query`, `database` e `settings` completos; demais grupos no backlog (seção 10).
 - [x] **Q7** — NuGet `FurLab` para de ser publicado.
 - [x] **Q8** — Sem import do `furlab.jsonc`; config nova começa vazia.
-- [x] **Q9** — Licença: `GPL-3.0-only` (o que está no `LICENSE`).
+- [x] **Q9** — Licença: `AGPL-3.0-only` (o que está no `LICENSE`).
 - [x] **Q10** — `mustel-testkit` com `publish = false`.
 - [x] **Q11** — Backlog: **segunda onda de migração**, depois do 1.0 ("será feito depois") → D21.
 - [x] **Q12** — Pacote winget `FurLab.CLI`: não mexer (D22). Notarização de macOS: default mantido — fora do escopo, com instrução de quarentena (D23).
@@ -1055,3 +1055,21 @@ O Docker Desktop também foi iniciado nesta rodada (o daemon estava parado) para
   coordenada errada me fez concluir que o combo “não abria”. Capturar **1:1** e medir a faixa da linha
   pela contagem de tinta por linha (para achar a banda dos widgets) resolveu — vale para a skill.
   `cargo test --workspace` = **485 testes, 0 falhas**.
+- `[2026-10-24]` **Licença propagada para `AGPL-3.0-only`.** O commit `65a9a16` trocou o `LICENSE`
+  pelo texto da GNU Affero GPL v3 — conferido palavra a palavra contra o texto canônico da FSF: só
+  difere no apêndice, preenchido com “Mustel / 2026 / MustelGuild”. Só que **nenhuma referência
+  acompanhou**: `Cargo.toml` (herdado pelos quatro crates), os dois READMEs, o `README.txt` gerado por
+  `publish.ps1`/`publish.sh`, `docs/explanation/fontes.md`, o preâmbulo de `FiraCode-OFL.txt` e as
+  decisões D20/Q9 deste plano continuavam dizendo `GPL-3.0-only`. Todos alinhados para `AGPL-3.0-only`
+  — mesma convenção de antes (sem “or later”), que é o que o texto do `LICENSE` permite afirmar.
+  Verificado: `cargo metadata` mostra `license = "AGPL-3.0-only"` nos quatro pacotes e
+  `cargo package --list -p mustel-core` continua empacotando. As entradas de log anteriores a esta
+  data ficam como estão: registram que o `LICENSE` era `GPL-3.0` naquele momento.
+- `[2026-10-24]` **Aviso da Fira Code no pacote de release e crédito nos READMEs.** O OFL permitia
+  embutir a fonte no binário (a FAQ 1.10 dispensa o texto da licença quando ela vai dentro de um
+  programa), mas o `.zip`/`.tar.gz` só levava `LICENSE` + `README.txt`: quem baixava o pacote não
+  recebia o crédito da fonte. Agora `publish.ps1`/`publish.sh` copiam
+  `crates/mustel-gui/assets/fonts/FiraCode-OFL.txt` para o `stage`, o `README.txt` do pacote cita a
+  fonte e os dois READMEs ganharam a seção “Third-party notices”/“Avisos de terceiros”. O preâmbulo
+  do `FiraCode-OFL.txt` passou para **inglês** — o corpo da licença já era, então o arquivo agora é
+  um documento inteiro em um idioma só.

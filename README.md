@@ -137,8 +137,18 @@ The repository guide for contributors and agents is [`AGENTS.md`](AGENTS.md). Pl
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0** (`GPL-3.0-only`) — see the
-[LICENSE](./LICENSE) file for details. The Cargo manifests declare it as `license = "GPL-3.0-only"`.
+This project is licensed under the **GNU Affero General Public License v3.0** (`AGPL-3.0-only`) — see
+the [LICENSE](./LICENSE) file for details. The Cargo manifests declare it as
+`license = "AGPL-3.0-only"`.
+
+## Third-party notices
+
+The GUI embeds the **Fira Code** font
+([`crates/mustel-gui/assets/fonts/FiraCode-Regular.ttf`](crates/mustel-gui/assets/fonts/FiraCode-Regular.ttf)),
+distributed under the **SIL Open Font License 1.1**. Nothing here relicenses it: the font stays
+OFL-1.1 while the program is AGPL-3.0. The license text and copyright notice travel with the font
+([`FiraCode-OFL.txt`](crates/mustel-gui/assets/fonts/FiraCode-OFL.txt)) and inside every release
+package.
 
 ---
 

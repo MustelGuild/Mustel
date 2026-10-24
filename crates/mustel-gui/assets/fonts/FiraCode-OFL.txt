@@ -1,9 +1,13 @@
 Copyright (c) 2014, The Fira Code Project Authors (https://github.com/tonsky/FiraCode)
 
-Este arquivo acompanha `FiraCode-Regular.ttf`, embutido no binário do Mustel para o editor de SQL.
-A fonte permanece sob a SIL Open Font License 1.1 (a licença abaixo), que permite embutir e
-redistribuir junto com software desde que o copyright e o texto da licença acompanhem cada cópia.
-Nada aqui relicencia a fonte: o programa é GPL-3.0, a fonte continua OFL-1.1.
+This file accompanies `FiraCode-Regular.ttf`, embedded in the Mustel binary for the SQL editor.
+The font remains under the SIL Open Font License 1.1 (reproduced below), which expressly allows
+bundling and redistribution with any software, as long as the copyright and the license text
+accompany each copy. Nothing here relicenses the font: the program is AGPL-3.0, the font stays
+OFL-1.1.
+
+Note: OFL FAQ question 1.10 already exempts a font bundled inside a program from carrying the
+license text. This file is shipped on purpose anyway, so the credit travels with the binary.
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

@@ -1076,19 +1076,6 @@ impl eframe::App for App {
                 }
                 ui.separator();
                 ui.label(&self.status);
-                // Colapsado, o painel **não é um painel**: vira o ícone inline, alinhado à direita,
-                // como o `›` da sidebar esquerda. Um `Panel` aqui desenharia a divisória de altura
-                // inteira, que era o que deixava a direita com "cara de linha".
-                if self.screen == Screen::Query && !self.ai.open {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if crate::icons::button(ui, crate::icons::Icon::Sparkles)
-                            .on_hover_text("Show the AI panel")
-                            .clicked()
-                        {
-                            request = Some(Request::ToggleAiPanel);
-                        }
-                    });
-                }
                 if let Some(running) = &self.running {
                     ui.spinner();
                     ui.label(format!("[{}]", running.label));
@@ -1136,21 +1123,10 @@ impl eframe::App for App {
                         self.sidebar_open = false;
                     }
                     request = sidebar.inner.or(request);
-                } else {
-                    // Fechada, o botão de reabrir tem de existir **fora** do painel: dentro dele
-                    // ninguém o veria (era o que deixava a sidebar impossível de voltar).
-                    ui.horizontal(|ui| {
-                        if crate::icons::button(ui, crate::icons::Icon::ChevronRight)
-                            .on_hover_text("Show the servers panel")
-                            .clicked()
-                        {
-                            self.sidebar_open = true;
-                        }
-                        if self.screen == Screen::Query {
-                            ui.weak(format!("{} selected", self.query.marked_count()));
-                        }
-                    });
                 }
+                // Recolhida, a alça que reabre é desenhada **dentro** da área de conteúdo, na
+                // mesma linha da alça do painel da IA (`reopen_handles`): uma linha por alça
+                // deixava a de baixo numa banda vazia e ela lia como desalinhada.
             }
 
             // **Painel da IA** (aba Query): irmão do esquerdo, criado antes do conteúdo central.
@@ -1191,7 +1167,7 @@ impl eframe::App for App {
 
             // **Padding entre a sidebar e o conteúdo.** Sem ele o texto da área principal encosta na
             // linha divisória do painel. Só existe quando a sidebar está visível: em Settings, ou com
-            // a barra `▶`, o conteúdo usa a largura toda.
+            // a sidebar recolhida na alça `›`, o conteúdo usa a largura toda.
             let gap = if self.sidebar_open && matches!(self.screen, Screen::Query | Screen::Servers)
             {
                 CONTENT_GAP
@@ -1203,27 +1179,48 @@ impl eframe::App for App {
                     left: gap,
                     ..egui::Margin::ZERO
                 })
-                .show(ui, |ui| match self.screen {
-                    Screen::Servers => self.servers.ui(ui),
-                    Screen::Query => {
-                        // O esquema carregado vai como `Arc`: a tela guarda uma cópia para o desenho
-                        // e o cache continua dono do original.
-                        let schema = self
-                            .schemas
-                            .get(
-                                self.query.reference_server(),
-                                self.query.reference_database(),
-                            )
-                            .map(|schema| std::sync::Arc::new(schema.clone()));
-                        // A paginação da lista vem da seção `gui` — o mesmo objeto que a aba Settings
-                        // edita, então mexer lá vale no quadro seguinte.
-                        let page_size = crate::screens::query::page_size(&self.gui_prefs());
-                        self.query.set_page_size(page_size);
-                        // O dono da lista é o app: a tela só desenha e devolve o pedido.
-                        self.query.set_saved_queries(self.saved_queries.clone());
-                        self.query.ui(ui, &servers, schema, &self.reference)
+                .show(ui, |ui| {
+                    // Recolhidos, os painéis **não são painéis**: viram alças no topo da área de
+                    // conteúdo — `›` à esquerda (sidebar) e `✦` à direita (IA). Um `Panel` aqui
+                    // desenharia a divisória de altura inteira.
+                    let sidebar_closed = !self.sidebar_open
+                        && matches!(self.screen, Screen::Query | Screen::Servers);
+                    let ai_closed = self.screen == Screen::Query && !self.ai.open;
+                    let marked = if self.screen == Screen::Query {
+                        Some(self.query.marked_count())
+                    } else {
+                        None
+                    };
+                    let (reopen_sidebar, reopen_ai) =
+                        reopen_handles(ui, sidebar_closed, ai_closed, marked);
+                    if reopen_sidebar {
+                        self.sidebar_open = true;
                     }
-                    Screen::Settings => self.settings.ui(ui),
+                    if reopen_ai {
+                        request = Some(Request::ToggleAiPanel);
+                    }
+                    match self.screen {
+                        Screen::Servers => self.servers.ui(ui),
+                        Screen::Query => {
+                            // O esquema carregado vai como `Arc`: a tela guarda uma cópia para o desenho
+                            // e o cache continua dono do original.
+                            let schema = self
+                                .schemas
+                                .get(
+                                    self.query.reference_server(),
+                                    self.query.reference_database(),
+                                )
+                                .map(|schema| std::sync::Arc::new(schema.clone()));
+                            // A paginação da lista vem da seção `gui` — o mesmo objeto que a aba Settings
+                            // edita, então mexer lá vale no quadro seguinte.
+                            let page_size = crate::screens::query::page_size(&self.gui_prefs());
+                            self.query.set_page_size(page_size);
+                            // O dono da lista é o app: a tela só desenha e devolve o pedido.
+                            self.query.set_saved_queries(self.saved_queries.clone());
+                            self.query.ui(ui, &servers, schema, &self.reference)
+                        }
+                        Screen::Settings => self.settings.ui(ui),
+                    }
                 });
             request = main.inner.or(request);
 
@@ -1237,10 +1234,242 @@ impl eframe::App for App {
     }
 }
 
+/// Alças que reabrem os painéis recolhidos, na **mesma linha** do topo da área de conteúdo.
+///
+/// Devolve `(reabrir a sidebar, reabrir o painel da IA)`; a linha só existe quando há alça para
+/// desenhar. As duas dividem **uma** linha, uma em cada ponta: com uma linha por alça, a de baixo
+/// caía numa banda vazia (nada à esquerda dela) e lia como desalinhada — foi o que apareceu com os
+/// dois painéis recolhidos.
+///
+/// `marked` é a contagem que acompanha a alça da sidebar: ela só aparece com a sidebar recolhida,
+/// porque aberta o número já está no topo do painel dela (desenhá-lo aqui o duplicava).
+///
+/// `Align::CENTER` vale aqui porque o `horizontal` dá à linha a altura de um controle. Sozinho no
+/// conteúdo (sem a linha), o mesmo `Center` levava o botão para o meio da altura livre: y 693 no
+/// diagnóstico, contra y 43 quando ele é ancorado no topo.
+fn reopen_handles(
+    ui: &mut egui::Ui,
+    sidebar_closed: bool,
+    ai_closed: bool,
+    marked: Option<usize>,
+) -> (bool, bool) {
+    let mut reopen_sidebar = false;
+    let mut reopen_ai = false;
+
+    // Sem alça, sem linha: uma linha vazia no topo empurraria o conteúdo para baixo sem dizer nada.
+    if sidebar_closed || ai_closed {
+        ui.horizontal(|ui| {
+            if sidebar_closed
+                && crate::icons::button(ui, crate::icons::Icon::ChevronRight)
+                    .on_hover_text("Show the servers panel")
+                    .clicked()
+            {
+                reopen_sidebar = true;
+            }
+            if sidebar_closed && let Some(marked) = marked {
+                ui.weak(format!("{marked} selected"));
+            }
+            if ai_closed {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if crate::icons::button(ui, crate::icons::Icon::Sparkles)
+                        .on_hover_text("Show the AI panel")
+                        .clicked()
+                    {
+                        reopen_ai = true;
+                    }
+                });
+            }
+        });
+    }
+
+    (reopen_sidebar, reopen_ai)
+}
+
 /// Abre o cadastro do caminho padrão e roda `action`; erro de configuração vira `JobResult::Failed`.
 fn with_store(action: impl FnOnce(&ConfigStore) -> JobResult) -> JobResult {
     match ConfigStore::with_default_path() {
         Ok(store) => action(&store),
         Err(error) => JobResult::Failed(mustel_core::error::CoreError::from(error).to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// O que a linha de alças pintou: textos com a posição, altura consumida e o que foi clicado.
+    struct Painted {
+        texts: Vec<(String, egui::Pos2)>,
+        height: f32,
+        row: f32,
+        clicked: (bool, bool),
+    }
+
+    /// Desenha `reopen_handles` numa janela de 800 px de largura, com a fonte de ícones de verdade.
+    ///
+    /// Dois quadros: o primeiro monta o atlas da fonte dos ícones, e só o segundo tem a métrica
+    /// definitiva dos glifos.
+    fn render_handles(sidebar_closed: bool, ai_closed: bool, marked: Option<usize>) -> Painted {
+        let ctx = egui::Context::default();
+        let mut definitions = egui::FontDefinitions::default();
+        crate::icons::install(&mut definitions);
+        ctx.set_fonts(definitions);
+
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(800.0, 600.0),
+            )),
+            ..Default::default()
+        };
+
+        let mut painted = Painted {
+            texts: Vec::new(),
+            height: 0.0,
+            row: 0.0,
+            clicked: (false, false),
+        };
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(input.clone(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let top = ui.cursor().top();
+                    painted.row = ui.spacing().interact_size.y;
+                    painted.clicked = reopen_handles(ui, sidebar_closed, ai_closed, marked);
+                    // Avanço do cursor, não `min_rect`: o retângulo mínimo do painel é a janela
+                    // inteira e não diz quanta altura a linha comeu.
+                    painted.height = ui.cursor().top() - top;
+                });
+            });
+            painted.texts.clear();
+            collect_text(&output.shapes, &mut painted.texts);
+            output.textures_delta.clear();
+        }
+        painted
+    }
+
+    /// A posição do único glifo do ícone pedido.
+    fn glyph_at(painted: &Painted, icon: crate::icons::Icon) -> egui::Pos2 {
+        let needle = icon.glyph().to_string();
+        let found: Vec<egui::Pos2> = painted
+            .texts
+            .iter()
+            .filter(|(text, _)| *text == needle)
+            .map(|(_, pos)| *pos)
+            .collect();
+        assert_eq!(
+            found.len(),
+            1,
+            "um só {icon:?} na linha: {:#?}",
+            painted.texts
+        );
+        found[0]
+    }
+
+    /// As duas alças dos painéis recolhidos dividem **uma linha**: o `›` da sidebar à esquerda e o
+    /// `✦` da IA na ponta direita.
+    ///
+    /// A regressão: com uma alça por linha, o `✦` caía numa banda vazia abaixo do `›` (nada à
+    /// esquerda dele) e lia como desalinhado — foi assim com os dois painéis recolhidos.
+    /// CONTRACT: IF-247
+    #[test]
+    fn both_reopen_handles_share_the_top_row() {
+        let painted = render_handles(true, true, Some(3));
+
+        let chevron = glyph_at(&painted, crate::icons::Icon::ChevronRight);
+        let sparkle = glyph_at(&painted, crate::icons::Icon::Sparkles);
+
+        assert!(
+            (chevron.y - sparkle.y).abs() <= 2.0,
+            "as duas alças têm de estar na mesma linha: {chevron:?} vs {sparkle:?}"
+        );
+        assert!(chevron.x < 40.0, "o `›` abre a linha: {chevron:?}");
+        assert!(
+            sparkle.x > 700.0,
+            "o `✦` fecha a linha, na ponta direita: {sparkle:?}"
+        );
+        assert!(
+            painted.height < 2.0 * painted.row,
+            "a linha das alças não ocupa duas: {} (linha = {})",
+            painted.height,
+            painted.row
+        );
+        assert_eq!(painted.clicked, (false, false), "nada foi clicado");
+        assert!(
+            painted.texts.iter().any(|(text, _)| text == "3 selected"),
+            "a contagem acompanha a alça da sidebar recolhida: {:#?}",
+            painted.texts
+        );
+    }
+
+    /// Recolhida só a sidebar, a alça da IA continua na mesma linha do `›`.
+    ///
+    /// É o estado em que o desalinhamento não aparecia (o `›` morava fora da área de conteúdo);
+    /// agora ele não pode mudar de linha só porque a sidebar fechou. E a contagem **não** se
+    /// repete aqui: com a sidebar aberta, `0 selected` já está no topo do painel dela.
+    #[test]
+    fn the_ai_handle_keeps_the_row_when_the_sidebar_is_open() {
+        let painted = render_handles(false, true, Some(0));
+
+        let sparkle = glyph_at(&painted, crate::icons::Icon::Sparkles);
+        assert!(
+            sparkle.x > 700.0,
+            "o `✦` fica na ponta direita da linha: {sparkle:?}"
+        );
+        assert!(
+            painted.height < 2.0 * painted.row,
+            "uma linha só, sem a alça da sidebar: {} (linha = {})",
+            painted.height,
+            painted.row
+        );
+        assert!(
+            !painted
+                .texts
+                .iter()
+                .any(|(text, _)| text.contains("selected")),
+            "a contagem não se repete com a sidebar aberta: {:#?}",
+            painted.texts
+        );
+    }
+
+    /// Sem painel recolhido não há alça nem **linha**: o conteúdo começa no topo.
+    #[test]
+    fn no_collapsed_panel_means_no_row() {
+        let painted = render_handles(false, false, None);
+
+        let chevron = crate::icons::Icon::ChevronRight.glyph().to_string();
+        let sparkle = crate::icons::Icon::Sparkles.glyph().to_string();
+        assert!(
+            !painted
+                .texts
+                .iter()
+                .any(|(text, _)| *text == chevron || *text == sparkle),
+            "nenhuma alça desenhada: {:#?}",
+            painted.texts
+        );
+        assert!(
+            painted.height < painted.row,
+            "nenhuma linha consumida: {} (linha = {})",
+            painted.height,
+            painted.row
+        );
+    }
+
+    /// Junta `(texto, posição)` de todo `Shape::Text`, descendo nos grupos.
+    fn collect_text(shapes: &[egui::epaint::ClippedShape], out: &mut Vec<(String, egui::Pos2)>) {
+        fn walk(shape: &egui::Shape, out: &mut Vec<(String, egui::Pos2)>) {
+            match shape {
+                egui::Shape::Text(text) => out.push((text.galley.text().to_string(), text.pos)),
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for clipped in shapes {
+            walk(&clipped.shape, out);
+        }
     }
 }

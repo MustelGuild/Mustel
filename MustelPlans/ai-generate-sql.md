@@ -75,7 +75,7 @@ Decisões travadas na exploração (2026-10-24). O agente **não reabre** sem ap
 | D7 | Perfis | **Vários**: `gui.ai.profiles[]` + `activeProfile` | Pedido do dono; provedores diferentes convivem |
 | D8 | Chave | **Por perfil**, cofre `mustel.ai`, conta = `profile.id` | Provedores diferentes têm chaves diferentes; id estável sobrevive a renomear |
 | D9 | Seção no arquivo | `gui.ai` só aparece quando há perfil (`skip_serializing_if`) | Mesma regra do resto de `gui` |
-| D10 | Botão | `AI Generate SQL` (`sparkles`) é o **título do painel**; o ícone `sparkles` no cabeçalho esconde, e o botão no alto da aba reabre | Pedido do dono: o gesto mora no painel, não ao lado do `Run query` |
+| D10 | Botão | `AI Generate SQL` (`sparkles`) é o **título do painel**; o ícone `sparkles` no cabeçalho esconde, e o `sparkles` da linha do topo da área do editor reabre (a mesma linha da alça `›` da sidebar recolhida) | Pedido do dono: o gesto mora no painel, não ao lado do `Run query` |
 | D11 | Forma da UI | **Painel à direita** na aba Query, 360 px, recolhível, fechado por padrão | Conversa é longa e o editor precisa ficar à vista |
 | D12 | Fluxo | Turnos: intenção → resposta com SQL → `Ask for a change` → … | Pedido do dono; iterar é o valor |
 | D13 | Entrada no editor | `Insert in editor` **substitui todo o conteúdo** do editor (não insere no cursor); rótulo avisa quando o editor não está vazio | É o gesto pedido pelo dono; trabalhar por diff de texto seria outra feature |
@@ -603,3 +603,25 @@ Append-only.
   é só um botão inline no conteúdo (`›`). O painel da IA passou a fazer igual — fechado, desenha um
   `sparkles` inline alinhado à direita na barra; nenhum painel, nenhuma linha. Verificado na janela:
   colapsa para o botão no canto e reabre no clique.
+- `[2026-10-25]` **Três ajustes de UI** (pedidos do dono):
+  1. o ícone `sparkles` saiu da frente do título (o botão de colapso já carrega a identidade);
+  2. o botão colapsado saiu da barra de abas e foi para o **topo da área do editor**, alinhado à
+     direita — o mesmo lugar do `›` da sidebar esquerda. Bug achado no caminho: com
+     `Layout::right_to_left(Align::Center)` o botão era posicionado no **meio** da altura livre
+     (medido: y 693); `Align::TOP` o fixa no topo (y 43);
+  3. a caixa de prompt virou `TextEdit::multiline` com `desired_rows(2)`: começa com duas linhas e
+     cresce com o texto (verificado digitando uma frase que ocupou 3 linhas).
+  `cargo test --workspace` → 643 testes, clippy e fmt limpos; instrumentação removida.
+- `[2026-10-25]` **Alças na mesma linha** (reportado pelo dono: “está desalinhado quando os 2 painéis
+  são escondidos”). Medido na janela (1:1, contando tinta por linha): com os dois recolhidos, a tinta
+  do `›` ficava em y 77..87 e a do `✦` em y 98..111 — uma **segunda** linha, 21 px abaixo, com
+  uma banda vazia atravessada, porque cada alça abria a própria linha (`ui.horizontal` para a
+  sidebar, um `with_layout` solto no conteúdo para a IA). A regra agora é uma só: `reopen_handles` desenha as
+  duas alças numa linha (uma em cada ponta) e só cria a linha quando há alça para mostrar. Efeito
+  colateral coerente: a linha passou a viver **dentro** da área de conteúdo, então o painel da IA
+  aberto com a sidebar recolhida começa no topo (antes começava abaixo da linha do `›`).
+  A contagem `N selected` acompanha o `›`: aberta a sidebar, ela não se repete no conteúdo (foi o
+  primeiro erro da mudança, visto na captura). Testes novos em `app.rs` medem a linha pintada (mesmo
+  y, pontas opostas, uma linha de altura); mutação conferida — com o `✦` numa linha própria o
+  teste falha com `[16.0 10.0] vs [770.8 31.0]`. Depois da correção a tinta das duas alças fica em
+  y 77..87 / y 76..89.

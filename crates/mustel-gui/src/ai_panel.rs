@@ -201,11 +201,6 @@ pub fn ui(
     ui.horizontal(|ui| {
         // O título é o nome do botão que abria o painel: o gesto saiu da linha do `Run query` e
         // virou o próprio painel (o ícone à direita esconde, e o handle da barra traz de volta).
-        let size = ui.text_style_height(&egui::TextStyle::Heading);
-        ui.label(
-            egui::RichText::new(crate::icons::Icon::Sparkles.glyph().to_string())
-                .font(crate::icons::font_id(size)),
-        );
         ui.heading("AI Generate SQL");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if crate::icons::button(ui, crate::icons::Icon::Sparkles)
@@ -397,11 +392,13 @@ pub fn ui(
             "Ask for a change…"
         };
         // Largura **finita**: `f32::INFINITY` num painel estreito faz o `TextEdit` pedir a largura
-        // toda e o layout cresce além do painel (transbordava sobre o editor).
+        // toda e o layout cresce além do painel (transbordava sobre o editor). Multilinha com duas
+        // linhas de partida: a caixa acompanha o texto (é uma conversa, não um campo de busca).
         ui.add_enabled(
             !sending,
-            egui::TextEdit::singleline(&mut chat.input)
+            egui::TextEdit::multiline(&mut chat.input)
                 .hint_text(hint)
+                .desired_rows(2)
                 .desired_width((width - 80.0).max(120.0)),
         );
         if ui
@@ -680,13 +677,19 @@ mod tests {
                 .any(|text| text == &crate::icons::Icon::Close.glyph().to_string()),
             "o botão de fechar (`x-mark`) não mora mais no cabeçalho: {texts:?}"
         );
-        assert!(
+        // O título é **só texto**: o ícone antes dele saiu (o botão de colapso já carrega a
+        // identidade do painel).
+        assert_eq!(
             texts
                 .iter()
                 .filter(|text| *text == &crate::icons::Icon::Sparkles.glyph().to_string())
-                .count()
-                >= 2,
-            "sparkles no título e no canto: {texts:?}"
+                .count(),
+            1,
+            "um único sparkles, o do botão de colapso: {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|text| text == "AI Generate SQL"),
+            "e o título continua sendo o nome: {texts:?}"
         );
     }
 

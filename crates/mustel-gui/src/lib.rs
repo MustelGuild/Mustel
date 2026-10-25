@@ -20,6 +20,7 @@
 //! `egui` (verificado no T41).
 
 pub mod actions;
+pub mod ai_panel;
 pub mod app;
 pub mod desktop;
 pub mod events;

@@ -172,6 +172,11 @@ impl State {
         self.selectors.apply(result);
 
         match result {
+            // Resultados do painel da IA não são desta tela.
+            JobResult::Ddl { .. }
+            | JobResult::SqlGenerated { .. }
+            | JobResult::AiProfilesSaved
+            | JobResult::AiTested { .. } => {}
             JobResult::Servers(servers) => {
                 self.servers = servers.clone();
                 self.error = None;

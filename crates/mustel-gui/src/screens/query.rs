@@ -389,6 +389,21 @@ impl State {
         self.error = None;
     }
 
+    /// Substitui **todo** o texto do editor (o `Insert in editor` do painel da IA).
+    ///
+    /// D13: substitui, não concatena nem insere no cursor. O vínculo com a query salva é desfeito —
+    /// o texto agora é outro, e `Save` deve voltar a pedir um nome.
+    pub fn replace_editor_text(&mut self, text: String) {
+        self.sql = text;
+        self.saved.source = None;
+        self.saved.loaded_sql = String::new();
+    }
+
+    /// O editor tem texto? (o painel usa para o rótulo `Replace editor text`)
+    pub fn editor_has_text(&self) -> bool {
+        !self.sql.trim().is_empty()
+    }
+
     /// Aplica um evento de progresso vindo do núcleo.
     pub fn push_progress(&mut self, row: ProgressRow) {
         self.progress.push(row);
@@ -1097,7 +1112,7 @@ Selection unchanged."
             .horizontal(|ui| {
                 let targets = self.selection.targets(servers);
 
-                if ui
+                let run = if ui
                     .add_enabled(
                         !running && !targets.is_empty(),
                         egui::Button::new("Run query"),
@@ -1109,7 +1124,18 @@ Selection unchanged."
                     self.request_run(targets)
                 } else {
                     None
+                };
+
+                // O painel da IA mora ao lado do que **escreve** no editor, mas é ação: fica aqui,
+                // com rótulo, e alterna o painel em vez de abrir modal (D10/D11).
+                if crate::icons::button_text(ui, crate::icons::Icon::Sparkles, "AI Generate SQL")
+                    .on_hover_text("Chat with an AI to write this query")
+                    .clicked()
+                {
+                    return Some(Request::ToggleAiPanel);
                 }
+
+                run
             })
             .inner;
 

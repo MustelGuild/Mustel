@@ -34,6 +34,10 @@ pub enum Icon {
     FolderOpen,
     /// Abrir fora do app (gerenciador de arquivos).
     OpenExternal,
+    /// IA: gerar SQL / abrir o painel da conversa.
+    Sparkles,
+    /// Copiar para a área de transferência.
+    Copy,
     /// Certo.
     Check,
     /// Errado.
@@ -83,6 +87,8 @@ impl Icon {
             Icon::Folder => "folder",
             Icon::FolderOpen => "folder-open",
             Icon::OpenExternal => "arrow-top-right-on-square",
+            Icon::Sparkles => "sparkles",
+            Icon::Copy => "clipboard",
             Icon::Check => "check",
             Icon::Cross => "x-mark",
             Icon::Forget => "arrow-uturn-left",
@@ -265,7 +271,7 @@ mod tests {
         );
     }
 
-    const ALL: [Icon; 22] = [
+    const ALL: [Icon; 24] = [
         Icon::Refresh,
         Icon::Close,
         Icon::Warning,
@@ -285,6 +291,8 @@ mod tests {
         Icon::Server,
         Icon::Settings,
         Icon::OpenExternal,
+        Icon::Sparkles,
+        Icon::Copy,
         Icon::ThemeSystem,
         Icon::ThemeLight,
         Icon::ThemeDark,

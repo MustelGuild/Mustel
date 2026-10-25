@@ -98,3 +98,33 @@ atualizada. Arrastar o slider de tamanho só mostra a prévia enquanto o botão 
 gravação acontece ao soltá-lo — arrastar não escreve o arquivo a cada pixel. Clicar numa opção de
 **tema** é escolha concluída, então também grava e aplica no mesmo quadro; `Restore defaults` volta o
 tema para `system` e a chave sai do arquivo.
+
+## AI
+
+Perfis de provedor OpenAI-compatible usados pelo painel da aba Query. A lista mostra o perfil **ativo**
+(radio), o modelo e a base; cada linha tem `Edit`, `Test` e `Remove` (em **dois** toques).
+
+| Campo | O que é |
+|---|---|
+| `Name` | rótulo do perfil no combo |
+| `Base URL` | base do endpoint, sem `/chat/completions` (ex.: `https://api.openai.com/v1`) |
+| `Model` | modelo pedido no corpo |
+| `Temperature` | `0.0`–`2.0`, padrão `0.10`; ausente do arquivo quando é o padrão |
+| `API key` | vai para o **cofre do sistema** (serviço `mustel.ai`), nunca para o `mustel.jsonc` |
+
+O `id` do perfil vem do nome na criação e é a conta no cofre: renomear não perde a chave, e remover o
+perfil apaga a chave dele. `Test` faz uma chamada mínima e mostra o resultado (ou o erro do provedor).
+
+```jsonc
+"gui": {
+  "ai": {
+    "activeProfile": "rapido",
+    "profiles": [
+      { "id": "rapido", "name": "Rápido",
+        "baseUrl": "https://api.openai.com/v1", "model": "gpt-4o-mini" }
+    ]
+  }
+}
+```
+
+> Azure OpenAI não é suportado: ele usa `api-key` no lugar de `Bearer` e o deployment no path.

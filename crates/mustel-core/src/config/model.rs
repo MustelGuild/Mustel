@@ -104,6 +104,99 @@ pub struct GuiPrefs {
     /// mexe, como o resto de `gui`.
     #[serde(skip_serializing_if = "SelectionListPrefs::is_default")]
     pub selection_list: SelectionListPrefs,
+    /// Integração com a IA que escreve SQL (painel da aba **Query**).
+    ///
+    /// Ausente do arquivo enquanto não houver perfil: quem não usa a IA não vê o `mustel.jsonc`
+    /// mudar. A **chave** nunca mora aqui (vai para o cofre).
+    #[serde(skip_serializing_if = "AiPrefs::is_default")]
+    pub ai: AiPrefs,
+}
+
+/// Temperatura padrão do modelo: baixa, para SQL estável sem travar o modelo.
+pub const DEFAULT_AI_TEMPERATURE: f32 = 0.1;
+
+/// Faixa aceita de temperatura (a mesma dos provedores OpenAI-compatible).
+pub const AI_TEMPERATURE_RANGE: std::ops::RangeInclusive<f32> = 0.0..=2.0;
+
+/// A integração de IA: a lista de perfis e qual está ativo.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AiPrefs {
+    /// Perfis configurados (nome, endpoint, modelo, temperatura).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub profiles: Vec<AiProfile>,
+    /// `id` do perfil em uso. Vazio quando nenhum foi escolhido.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub active_profile: String,
+}
+
+impl AiPrefs {
+    /// É o padrão? (o que fica fora do arquivo: sem perfis).
+    pub fn is_default(&self) -> bool {
+        self.profiles.is_empty() && self.active_profile.is_empty()
+    }
+
+    /// O perfil ativo, se ele existir na lista.
+    ///
+    /// Se o `active_profile` apontar para um perfil removido à mão, cai no **primeiro** — melhor
+    /// usar um perfil do que nenhum, e a tela mostra qual foi escolhido.
+    pub fn active(&self) -> Option<&AiProfile> {
+        self.profiles
+            .iter()
+            .find(|profile| profile.id == self.active_profile)
+            .or_else(|| self.profiles.first())
+    }
+}
+
+/// Um provedor OpenAI-compatible configurado (`/chat/completions`).
+///
+/// O `id` é **estável** e é a conta no cofre (`mustel.ai`): renomear o perfil na tela não perde a
+/// chave. `name` é só o rótulo que aparece no combo.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AiProfile {
+    /// Identificador estável (conta do cofre).
+    pub id: String,
+    /// Rótulo mostrado na janela.
+    pub name: String,
+    /// Base do endpoint, sem `/chat/completions`.
+    pub base_url: String,
+    /// Modelo pedido no corpo.
+    pub model: String,
+    /// Temperatura do pedido (D26). Ausente do arquivo quando é o padrão.
+    #[serde(skip_serializing_if = "is_default_ai_temperature")]
+    pub temperature: f32,
+}
+
+impl Default for AiProfile {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: String::new(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: String::new(),
+            temperature: DEFAULT_AI_TEMPERATURE,
+        }
+    }
+}
+
+impl AiProfile {
+    /// A temperatura, cortada na faixa aceita.
+    ///
+    /// Arquivo editado à mão (ou `NaN`, se alguém escreveu lixo) não pode virar pedido inválido:
+    /// acima de `2.0` corta em `2.0`, abaixo de `0.0` corta em `0.0`, `NaN` volta ao padrão.
+    pub fn clamped_temperature(&self) -> f32 {
+        if self.temperature.is_nan() {
+            return DEFAULT_AI_TEMPERATURE;
+        }
+        self.temperature
+            .clamp(*AI_TEMPERATURE_RANGE.start(), *AI_TEMPERATURE_RANGE.end())
+    }
+}
+
+/// `true` quando a temperatura é o padrão (é o que omite a chave do arquivo).
+fn is_default_ai_temperature(value: &f32) -> bool {
+    (*value - DEFAULT_AI_TEMPERATURE).abs() < f32::EPSILON
 }
 
 /// Paginação da lista de bases (aba **Query**).
@@ -161,6 +254,7 @@ impl Default for GuiPrefs {
             selections: Vec::new(),
             saved_queries: Vec::new(),
             selection_list: SelectionListPrefs::default(),
+            ai: AiPrefs::default(),
         }
     }
 }
@@ -431,6 +525,7 @@ mod tests {
                 selections: Vec::new(),
                 saved_queries: Vec::new(),
                 selection_list: Default::default(),
+                ai: Default::default(),
             }),
             ..UserConfig::default()
         };
@@ -565,6 +660,115 @@ mod tests {
             DEFAULT_FONT_SCALE,
             "valor corrompido volta ao padrão"
         );
+    }
+
+    /// A seção `ai` só existe no arquivo quando há perfil, e a ida-e-volta preserva tudo.
+    /// CONTRACT: IF-247
+    #[test]
+    fn the_ai_section_round_trips_and_stays_out_when_empty() {
+        let empty = GuiPrefs::default();
+        let json = serde_json::to_string(&empty).expect("serializa");
+        assert!(
+            !json.contains("\"ai\""),
+            "sem perfil, a seção não aparece: {json}"
+        );
+
+        let prefs = GuiPrefs {
+            ai: AiPrefs {
+                profiles: vec![AiProfile {
+                    id: "rapido".to_string(),
+                    name: "Rápido".to_string(),
+                    base_url: "https://api.openai.com/v1".to_string(),
+                    model: "gpt-4o-mini".to_string(),
+                    temperature: 0.7,
+                }],
+                active_profile: "rapido".to_string(),
+            },
+            ..GuiPrefs::default()
+        };
+        let json = serde_json::to_string(&prefs).expect("serializa");
+        assert!(json.contains("\"activeProfile\":\"rapido\""), "{json}");
+        assert!(
+            json.contains("\"baseUrl\":\"https://api.openai.com/v1\""),
+            "{json}"
+        );
+        assert!(json.contains("\"temperature\":0.7"), "{json}");
+
+        let parsed: GuiPrefs = serde_json::from_str(&json).expect("lê de volta");
+        assert_eq!(parsed, prefs);
+        assert_eq!(
+            parsed.ai.active().map(|profile| profile.id.as_str()),
+            Some("rapido")
+        );
+    }
+
+    /// `temperature` no padrão **não** aparece no arquivo; ausente lê como `0.1`.
+    #[test]
+    fn the_default_temperature_stays_out_of_the_file() {
+        let prefs = GuiPrefs {
+            ai: AiPrefs {
+                profiles: vec![AiProfile {
+                    id: "a".to_string(),
+                    name: "A".to_string(),
+                    model: "m".to_string(),
+                    ..AiProfile::default()
+                }],
+                active_profile: "a".to_string(),
+            },
+            ..GuiPrefs::default()
+        };
+        let json = serde_json::to_string(&prefs).expect("serializa");
+        assert!(!json.contains("temperature"), "padrão fica fora: {json}");
+
+        // Ausente lê como o padrão.
+        let parsed: GuiPrefs = serde_json::from_str(&json).expect("lê");
+        assert_eq!(parsed.ai.profiles[0].temperature, DEFAULT_AI_TEMPERATURE);
+
+        // E um arquivo **sem** a seção inteira continua legível.
+        let old = r#"{"fontScale":1.0,"theme":"dark"}"#;
+        let parsed: GuiPrefs = serde_json::from_str(old).expect("arquivo antigo");
+        assert!(parsed.ai.profiles.is_empty());
+    }
+
+    /// Temperatura fora da faixa é cortada na leitura; `NaN` volta ao padrão.
+    #[test]
+    fn the_temperature_is_clamped_when_read() {
+        let temperature = |value: f32| {
+            AiProfile {
+                temperature: value,
+                ..AiProfile::default()
+            }
+            .clamped_temperature()
+        };
+
+        assert_eq!(temperature(0.7), 0.7);
+        assert_eq!(temperature(5.0), 2.0, "acima do teto, corta no teto");
+        assert_eq!(temperature(-1.0), 0.0, "abaixo do piso, corta no piso");
+        assert_eq!(temperature(f32::NAN), DEFAULT_AI_TEMPERATURE);
+    }
+
+    /// O perfil ativo que sumiu da lista cai no primeiro (não deixa a IA sem perfil).
+    #[test]
+    fn a_missing_active_profile_falls_back_to_the_first() {
+        let prefs = AiPrefs {
+            profiles: vec![
+                AiProfile {
+                    id: "a".to_string(),
+                    name: "A".to_string(),
+                    ..AiProfile::default()
+                },
+                AiProfile {
+                    id: "b".to_string(),
+                    name: "B".to_string(),
+                    ..AiProfile::default()
+                },
+            ],
+            active_profile: "sumiu".to_string(),
+        };
+        assert_eq!(prefs.active().map(|profile| profile.id.as_str()), Some("a"));
+
+        let none = AiPrefs::default();
+        assert!(none.active().is_none());
     }
 
     /// A seção `selectionList` é lida do arquivo (ida e volta), e ausente = desligada.

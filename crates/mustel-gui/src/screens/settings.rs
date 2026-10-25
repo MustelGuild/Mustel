@@ -45,6 +45,35 @@ pub struct State {
     families: Option<Vec<String>>,
     /// Aviso do que não pôde ser aplicado (fonte ausente).
     warning: Option<String>,
+    /// Perfis de IA (aba Settings › AI). Desta tela: é ela que edita a lista.
+    ai_profiles: Vec<mustel_core::config::model::AiProfile>,
+    /// `id` do perfil ativo.
+    ai_active: String,
+    /// Formulário de perfil aberto (`None` = fechado).
+    ai_form: Option<AiForm>,
+    /// Perfil esperando o segundo toque para remover.
+    ai_confirming_remove: Option<String>,
+    /// Último recado da seção de IA ("Profile saved", erro do `Test`).
+    ai_message: Option<String>,
+}
+
+/// O formulário de um perfil de IA (nome, endpoint, modelo, temperatura e chave).
+#[derive(Debug, Clone, Default)]
+struct AiForm {
+    /// `id` do perfil em edição (`None` = perfil novo).
+    original: Option<String>,
+    /// Rótulo mostrado no combo.
+    name: String,
+    /// Base do endpoint.
+    base_url: String,
+    /// Modelo.
+    model: String,
+    /// Temperatura.
+    temperature: f32,
+    /// Chave digitada (vazia = manter a que está no cofre).
+    key: String,
+    /// Já existe chave guardada para este perfil?
+    key_present: bool,
 }
 
 impl State {
@@ -55,6 +84,12 @@ impl State {
             theme: prefs.map(|prefs| prefs.theme).unwrap_or_default(),
             selection_list: prefs
                 .map(|prefs| prefs.selection_list.clone())
+                .unwrap_or_default(),
+            ai_profiles: prefs
+                .map(|prefs| prefs.ai.profiles.clone())
+                .unwrap_or_default(),
+            ai_active: prefs
+                .map(|prefs| prefs.ai.active_profile.clone())
                 .unwrap_or_default(),
             ..Self::default()
         }
@@ -74,7 +109,15 @@ impl State {
     ///
     /// Nada aqui é da aparência: descoberta de bases e `Test` do seletor vivem em
     /// `screens::selectors`. O método fica porque o app chama `apply` em todas as telas.
-    pub fn apply(&mut self, _result: &crate::request::JobResult) {}
+    pub fn apply(&mut self, result: &crate::request::JobResult) {
+        // O `Test` de perfil devolve o recado para a seção de IA (a lista continua na tela).
+        if let crate::request::JobResult::AiTested { result, .. } = result {
+            self.ai_message = Some(match result {
+                Ok(message) => message.clone(),
+                Err(error) => error.clone(),
+            });
+        }
+    }
 
     /// A seção `gui` completa do estado: aparência **e** queries salvas.
     ///
@@ -86,12 +129,23 @@ impl State {
         // `selections` **não** é desta tela: quem monta a seção `gui` inteira é o app, juntando a
         // aparência (daqui) com os seletores (do cadastro em Connections) e a paginação (daqui).
         prefs.selection_list = self.selection_list.clone();
+        // A seção `ai` é desta tela: sem isto, gravar a aparência apagaria os perfis.
+        prefs.ai = mustel_core::config::model::AiPrefs {
+            profiles: self.ai_profiles.clone(),
+            active_profile: self.ai_active.clone(),
+        };
         prefs
     }
 
     /// Guarda um aviso vindo da aplicação (fonte ausente, por exemplo).
     pub fn set_warning(&mut self, warning: Option<String>) {
         self.warning = warning;
+    }
+
+    /// A lista de perfis mudou no app (gravada): a tela passa a mostrar a mesma.
+    pub fn set_ai(&mut self, profiles: Vec<mustel_core::config::model::AiProfile>, active: String) {
+        self.ai_profiles = profiles;
+        self.ai_active = active;
     }
 
     /// Desenha a aba e devolve o pedido de gravação quando algo mudou.
@@ -205,7 +259,246 @@ impl State {
         );
         changed |= self.selection_list_ui(ui);
 
+        // --- IA (OpenAI-compatible) ---------------------------------------------------------
+        ui.separator();
+        ui.heading("AI");
+        ui.label(
+            "Profiles for the AI that writes SQL in the Query tab.              The API key goes to the system vault, never to `mustel.jsonc`.",
+        );
+        let ai_request = self.ai_section_ui(ui);
+
+        if let Some(request) = ai_request {
+            return Some(request);
+        }
+
         decision(self.chosen.clone(), self.prefs(), changed, apply_now)
+    }
+
+    /// A seção **AI**: lista de perfis, formulário e `Test`.
+    ///
+    /// Devolve pedidos que **não** são da seção `gui` (gravar a chave no cofre, testar o perfil);
+    /// mexer na lista em si apenas marca `changed`, e o commit grava a seção inteira.
+    fn ai_section_ui(&mut self, ui: &mut egui::Ui) -> Option<Request> {
+        let mut request = None;
+
+        if let Some(message) = &self.ai_message {
+            ui.weak(message);
+        }
+
+        // Lista.
+        let mut activate: Option<String> = None;
+        let mut edit: Option<usize> = None;
+        let mut remove: Option<String> = None;
+        for (index, profile) in self.ai_profiles.iter().enumerate() {
+            ui.horizontal(|ui| {
+                if ui
+                    .radio(profile.id == self.ai_active, &profile.name)
+                    .on_hover_text("Use this profile")
+                    .clicked()
+                {
+                    activate = Some(profile.id.clone());
+                }
+                ui.weak(format!("{} · {}", profile.model, profile.base_url));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let confirming = self.ai_confirming_remove.as_deref() == Some(&profile.id);
+                    let label = if confirming {
+                        "Confirm remove"
+                    } else {
+                        "Remove"
+                    };
+                    if ui.button(label).clicked() {
+                        remove = Some(profile.id.clone());
+                    }
+                    if ui.button("Edit").clicked() {
+                        edit = Some(index);
+                    }
+                    if ui
+                        .button("Test")
+                        .on_hover_text("Send a tiny request")
+                        .clicked()
+                    {
+                        request = Some(Request::TestAiProfile {
+                            profile: profile.id.clone(),
+                        });
+                    }
+                });
+            });
+        }
+
+        if let Some(id) = activate
+            && id != self.ai_active
+        {
+            self.ai_active = id;
+            request = Some(Request::SaveAiProfiles {
+                profiles: self.ai_profiles.clone(),
+                active: self.ai_active.clone(),
+                key: None,
+            });
+        }
+        if let Some(index) = edit {
+            let profile = &self.ai_profiles[index];
+            self.ai_form = Some(AiForm {
+                original: Some(profile.id.clone()),
+                name: profile.name.clone(),
+                base_url: profile.base_url.clone(),
+                model: profile.model.clone(),
+                temperature: profile.clamped_temperature(),
+                key: String::new(),
+                key_present: ai_has_key(&profile.id),
+            });
+        }
+        if let Some(id) = remove {
+            if self.ai_confirming_remove.as_deref() == Some(&id) {
+                self.ai_profiles.retain(|profile| profile.id != id);
+                self.ai_confirming_remove = None;
+                if self.ai_active == id {
+                    self.ai_active = self
+                        .ai_profiles
+                        .first()
+                        .map(|p| p.id.clone())
+                        .unwrap_or_default();
+                }
+                self.ai_message = Some("Profile removed.".to_string());
+                // A chave do perfil sai junto: perfil removido não deixa segredo órfão.
+                request = Some(Request::RemoveAiKey { profile: id });
+            } else {
+                self.ai_confirming_remove = Some(id);
+            }
+        }
+
+        if ui.button("Add profile").clicked() {
+            self.ai_form = Some(AiForm {
+                base_url: mustel_core::config::model::AiProfile::default().base_url,
+                temperature: mustel_core::config::model::AiProfile::default().temperature,
+                ..AiForm::default()
+            });
+        }
+
+        // Formulário.
+        let mut saved = false;
+        let mut cancelled = false;
+        if let Some(form) = &mut self.ai_form {
+            egui::Frame::group(ui.style()).show(ui, |ui| {
+                ui.label(if form.original.is_some() {
+                    "Edit profile"
+                } else {
+                    "New profile"
+                });
+                egui::Grid::new("ai_profile_form")
+                    .num_columns(2)
+                    .spacing([8.0, 4.0])
+                    .show(ui, |ui| {
+                        ui.label("Name");
+                        ui.text_edit_singleline(&mut form.name);
+                        ui.end_row();
+
+                        ui.label("Base URL");
+                        ui.text_edit_singleline(&mut form.base_url);
+                        ui.end_row();
+
+                        ui.label("Model");
+                        ui.text_edit_singleline(&mut form.model);
+                        ui.end_row();
+
+                        ui.label("Temperature");
+                        ui.add(
+                            egui::DragValue::new(&mut form.temperature)
+                                .range(
+                                    *mustel_core::config::model::AI_TEMPERATURE_RANGE.start()
+                                        ..=*mustel_core::config::model::AI_TEMPERATURE_RANGE.end(),
+                                )
+                                .speed(0.05)
+                                .fixed_decimals(2),
+                        );
+                        ui.end_row();
+
+                        ui.label("API key");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut form.key)
+                                .password(true)
+                                .hint_text(if form.key_present {
+                                    "stored in the vault — type to replace"
+                                } else {
+                                    "paste the key"
+                                }),
+                        );
+                        ui.end_row();
+                    });
+
+                ui.horizontal(|ui| {
+                    if ui.button("Save profile").clicked() {
+                        saved = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancelled = true;
+                    }
+                });
+            });
+        }
+
+        if cancelled {
+            self.ai_form = None;
+        }
+        if saved {
+            self.apply_ai_form(&mut request);
+        }
+
+        request
+    }
+
+    /// Aplica o formulário de perfil (cria ou edita) e pede a gravação.
+    fn apply_ai_form(&mut self, request: &mut Option<Request>) {
+        let Some(form) = self.ai_form.take() else {
+            return;
+        };
+
+        let name = form.name.trim().to_string();
+        if name.is_empty() {
+            self.ai_message = Some("The profile needs a name.".to_string());
+            self.ai_form = Some(form);
+            return;
+        }
+        if form.model.trim().is_empty() || form.base_url.trim().is_empty() {
+            self.ai_message = Some("The profile needs a base URL and a model.".to_string());
+            self.ai_form = Some(form);
+            return;
+        }
+
+        // O `id` é a conta no cofre: editar mantém o original; criar deriva do nome.
+        let id = form
+            .original
+            .clone()
+            .unwrap_or_else(|| slug(&name, &self.ai_profiles));
+        let profile = mustel_core::config::model::AiProfile {
+            id: id.clone(),
+            name,
+            base_url: form.base_url.trim().to_string(),
+            model: form.model.trim().to_string(),
+            temperature: form.temperature,
+        };
+
+        match self.ai_profiles.iter_mut().find(|other| other.id == id) {
+            Some(existing) => *existing = profile,
+            None => self.ai_profiles.push(profile),
+        }
+        if self.ai_active.is_empty() {
+            self.ai_active = id.clone();
+        }
+
+        // Perfil **e** chave no mesmo pedido: mandar só a chave deixava o perfil fora do arquivo,
+        // e o `Test` (que procura na lista do app) dizia que ele não existia.
+        let key = if form.key.trim().is_empty() {
+            None
+        } else {
+            Some((id, form.key.trim().to_string()))
+        };
+        request.replace(Request::SaveAiProfiles {
+            profiles: self.ai_profiles.clone(),
+            active: self.ai_active.clone(),
+            key,
+        });
+
+        self.ai_message = Some("Profile saved.".to_string());
     }
 
     /// Repõe aparência **e** tema no de fábrica (`System`).
@@ -359,6 +652,57 @@ struct Combo<'a> {
     which: Family,
 }
 
+/// O perfil já tem chave no cofre? (só o **booleano**: a chave nunca volta para a tela)
+///
+/// A leitura acontece quando o formulário abre, não por quadro: o cofre é lento e não muda sozinho.
+fn ai_has_key(profile_id: &str) -> bool {
+    mustel_core::usecases::ai::ai_key(
+        &mustel_core::credentials::SystemKeyring::with_service(
+            mustel_core::usecases::ai::AI_SERVICE_NAME,
+        ),
+        profile_id,
+    )
+    .map(|key| key.is_some())
+    .unwrap_or(false)
+}
+
+/// Um `id` estável a partir do nome, sem colidir com os existentes.
+fn slug(name: &str, existing: &[mustel_core::config::model::AiProfile]) -> String {
+    let base: String = name
+        .chars()
+        .map(|c| match c {
+            'a'..='z' | '0'..='9' => c,
+            'A'..='Z' => c.to_ascii_lowercase(),
+            // Acento vira a letra sem acento: "Rápido" → "rapido", não "r-pido".
+            'á' | 'à' | 'â' | 'ã' | 'ä' | 'Á' | 'À' | 'Â' | 'Ã' | 'Ä' => 'a',
+            'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => 'e',
+            'í' | 'ì' | 'î' | 'ï' | 'Í' | 'Ì' | 'Î' | 'Ï' => 'i',
+            'ó' | 'ò' | 'ô' | 'õ' | 'ö' | 'Ó' | 'Ò' | 'Ô' | 'Õ' | 'Ö' => 'o',
+            'ú' | 'ù' | 'û' | 'ü' | 'Ú' | 'Ù' | 'Û' | 'Ü' => 'u',
+            'ç' | 'Ç' => 'c',
+            'ñ' | 'Ñ' => 'n',
+            _ => '-',
+        })
+        .collect();
+    let base = base.trim_matches('-').to_string();
+    let base = if base.is_empty() {
+        "profile".to_string()
+    } else {
+        base
+    };
+
+    if !existing.iter().any(|profile| profile.id == base) {
+        return base;
+    }
+    for suffix in 2.. {
+        let candidate = format!("{base}-{suffix}");
+        if !existing.iter().any(|profile| profile.id == candidate) {
+            return candidate;
+        }
+    }
+    unreachable!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -478,6 +822,184 @@ mod tests {
                 .count();
             assert_eq!(same, 1, "ícone repetido em {icon:?}");
         }
+    }
+
+    /// A seção `ai` sai do estado da tela (senão gravar aparência apagaria os perfis).
+    /// CONTRACT: IF-247
+    #[test]
+    fn the_ai_profiles_come_from_and_go_back_to_the_prefs() {
+        let profile = mustel_core::config::model::AiProfile {
+            id: "rapido".to_string(),
+            name: "Rápido".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            ..mustel_core::config::model::AiProfile::default()
+        };
+        let prefs = GuiPrefs {
+            ai: mustel_core::config::model::AiPrefs {
+                profiles: vec![profile.clone()],
+                active_profile: "rapido".to_string(),
+            },
+            ..GuiPrefs::default()
+        };
+
+        let state = State::with_prefs(Some(&prefs));
+        let back = state.prefs();
+
+        assert_eq!(back.ai.profiles, vec![profile]);
+        assert_eq!(back.ai.active_profile, "rapido");
+    }
+
+    /// Criar perfil deriva um `id` estável e não colide; editar mantém o `id` e a posição.
+    #[test]
+    fn saving_a_profile_creates_then_replaces_in_place() {
+        let mut state = State::with_prefs(None);
+
+        state.ai_form = Some(AiForm {
+            name: "Rápido".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            temperature: 0.2,
+            ..AiForm::default()
+        });
+        let mut request = None;
+        state.apply_ai_form(&mut request);
+
+        assert_eq!(state.ai_profiles.len(), 1);
+        assert_eq!(state.ai_profiles[0].id, "rapido");
+        assert_eq!(state.ai_profiles[0].temperature, 0.2);
+        assert_eq!(state.ai_active, "rapido", "o primeiro vira o ativo");
+        assert!(matches!(request, Some(Request::SaveAiProfiles { .. })));
+
+        // Editar mantém o id (é a conta do cofre) e não duplica.
+        let id = state.ai_profiles[0].id.clone();
+        state.ai_form = Some(AiForm {
+            original: Some(id.clone()),
+            name: "Rápido 2".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4o".to_string(),
+            temperature: 0.1,
+            ..AiForm::default()
+        });
+        let mut request = None;
+        state.apply_ai_form(&mut request);
+
+        assert_eq!(state.ai_profiles.len(), 1);
+        assert_eq!(state.ai_profiles[0].id, id);
+        assert_eq!(state.ai_profiles[0].name, "Rápido 2");
+        assert_eq!(state.ai_profiles[0].model, "gpt-4o");
+    }
+
+    /// A chave digitada vai **junto** da lista (o perfil precisa existir para o `Test`).
+    #[test]
+    fn a_typed_key_goes_to_the_vault_and_an_empty_one_keeps_it() {
+        let mut state = State::with_prefs(None);
+
+        state.ai_form = Some(AiForm {
+            name: "A".to_string(),
+            base_url: "https://x/v1".to_string(),
+            model: "m".to_string(),
+            key: "  sk-nova  ".to_string(),
+            ..AiForm::default()
+        });
+        let mut request = None;
+        state.apply_ai_form(&mut request);
+
+        match request {
+            Some(Request::SaveAiProfiles { key, .. }) => {
+                let (profile, secret) = key.expect("a chave foi junto");
+                assert_eq!(profile, "a");
+                assert_eq!(secret, "sk-nova", "a chave é aparada");
+            }
+            other => panic!("pedido errado: {other:?}"),
+        }
+
+        // Sem chave digitada: grava a lista.
+        state.ai_form = Some(AiForm {
+            original: Some("a".to_string()),
+            name: "A".to_string(),
+            base_url: "https://x/v1".to_string(),
+            model: "m".to_string(),
+            ..AiForm::default()
+        });
+        let mut request = None;
+        state.apply_ai_form(&mut request);
+        match request {
+            Some(Request::SaveAiProfiles { key, profiles, .. }) => {
+                assert!(key.is_none(), "sem chave digitada, nada vai para o cofre");
+                assert_eq!(profiles.len(), 1, "e o perfil é gravado assim mesmo");
+            }
+            other => panic!("pedido errado: {other:?}"),
+        }
+    }
+
+    /// **Regressão**: salvar com chave digitada mandava só a chave, e o perfil nunca chegava ao
+    /// app nem ao arquivo — o `Test` depois respondia "That profile no longer exists.".
+    #[test]
+    fn saving_with_a_key_still_delivers_the_profile_list() {
+        let mut state = State::with_prefs(None);
+        state.ai_form = Some(AiForm {
+            name: "Ollama".to_string(),
+            base_url: "https://ollama.com/v1".to_string(),
+            model: "deepseek-v4.1-flash".to_string(),
+            temperature: 0.1,
+            key: "sk-teste".to_string(),
+            ..AiForm::default()
+        });
+
+        let mut request = None;
+        state.apply_ai_form(&mut request);
+
+        match request {
+            Some(Request::SaveAiProfiles {
+                profiles,
+                active,
+                key,
+            }) => {
+                assert_eq!(profiles.len(), 1, "o perfil vai junto com a chave");
+                assert_eq!(profiles[0].id, "ollama");
+                assert_eq!(active, "ollama");
+                assert_eq!(key.as_ref().map(|(id, _)| id.as_str()), Some("ollama"));
+            }
+            other => panic!("pedido errado: {other:?}"),
+        }
+    }
+
+    /// Formulário inválido não grava e explica o que falta.
+    #[test]
+    fn an_incomplete_profile_is_refused() {
+        let mut state = State::with_prefs(None);
+        state.ai_form = Some(AiForm::default());
+        let mut request = None;
+        state.apply_ai_form(&mut request);
+
+        assert!(state.ai_profiles.is_empty());
+        assert!(request.is_none());
+        assert_eq!(
+            state.ai_message.as_deref(),
+            Some("The profile needs a name.")
+        );
+        assert!(state.ai_form.is_some(), "o formulário continua aberto");
+    }
+
+    /// O `id` derivado do nome não colide com os existentes.
+    #[test]
+    fn the_profile_id_does_not_collide() {
+        use mustel_core::config::model::AiProfile;
+
+        let existing = vec![
+            AiProfile {
+                id: "rapido".to_string(),
+                ..AiProfile::default()
+            },
+            AiProfile {
+                id: "rapido-2".to_string(),
+                ..AiProfile::default()
+            },
+        ];
+
+        assert_eq!(slug("Rápido", &existing), "rapido-3");
+        assert_eq!(slug("Outro", &existing), "outro");
+        assert_eq!(slug("!!!", &existing), "profile");
     }
 
     /// `Restore defaults` volta o tema para `System` (o default do produto).

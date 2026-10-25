@@ -27,11 +27,14 @@ só é a origem da maior parte da documentação ruim.
 | | [Senhas no cofre](how-to/senhas-no-cofre.md) | [Aba Settings](reference/settings-aba.md) | |
 | | [Sugestões ao escrever SQL](how-to/autocomplete-no-editor.md) | | [Por que `tokio-postgres`](explanation/por-que-tokio-postgres.md) |
 | | [Publicar uma release](how-to/publicar-release.md) | | |
+| | [Gerar SQL com a IA](how-to/gerar-sql-com-ia.md) | | |
 | | | [Contrato de interface](contrato-de-interface.md) | [Por que o autocomplete é assim](explanation/autocomplete.md) |
 | | | [Seleção de bases](reference/selecao-de-bases.md) | [Por que a seleção de bases é assim](explanation/selecao-de-bases.md) |
 | | | [Queries salvas](reference/saved-queries.md) | |
+| | | [Gerar SQL com IA](reference/ai-generate-sql.md) | |
 | | | | [Fontes e licença](explanation/fontes.md) |
 | | | | [Por que as queries salvas são assim](explanation/saved-queries.md) |
+| | | | [Por que a IA escreve e o humano roda](explanation/ia.md) |
 | | | | [Decisões de engenharia](explanation/decisoes.md) |
 | | | | [Diferenças deliberadas](explanation/diferencas-deliberadas.md) |
 

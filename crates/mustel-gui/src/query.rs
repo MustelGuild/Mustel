@@ -308,6 +308,40 @@ pub async fn schema(
         .map_err(|error| InputError::Core(error.to_string()))
 }
 
+/// Gera o DDL do banco para o painel da IA, com a senha já resolvida.
+///
+/// Vai pelo **catálogo** (o mesmo cliente do `query run`), não por `pg_dump`: sem binário externo,
+/// sem versão para casar e sem senha em processo filho (D1 revisto).
+pub async fn ddl(
+    server: &ServerConfigEntry,
+    password: &str,
+    database: &str,
+    refresh: bool,
+    token: &mustel_core::signal::CancellationToken,
+) -> Result<mustel_core::usecases::ddl::Ddl, InputError> {
+    let run = server_run(server, password)?;
+    let mut settings = run.settings;
+    settings.database = Some(database.to_string());
+
+    let cache = mustel_core::config::paths::ddl_cache_dir()
+        .ok_or_else(|| InputError::Core("No config directory for the schema cache.".to_string()))?;
+
+    let client = mustel_core::postgres::client::connect(&settings)
+        .await
+        .map_err(|error| InputError::Core(error.to_string()))?;
+
+    tokio::select! {
+        result = mustel_core::usecases::ddl::ensure_ddl(
+            &client,
+            &cache,
+            &server.name,
+            database,
+            refresh,
+        ) => result.map_err(|error| InputError::Core(error.to_string())),
+        () = token.cancelled() => Err(InputError::Core("operation cancelled".to_string())),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

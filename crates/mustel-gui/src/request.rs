@@ -35,6 +35,53 @@ pub enum Request {
     TestConnection(ServerConfigEntry),
     /// Cancela o job em andamento.
     CancelJob,
+    /// Abre/fecha o painel de conversa com a IA (aba Query).
+    ToggleAiPanel,
+    /// Vai para a aba Settings (o painel da IA pede quando falta configuração).
+    OpenSettings,
+    /// Joga o SQL escolhido no editor da aba Query, **substituindo** o conteúdo.
+    InsertEditorText(String),
+    /// Grava a lista de perfis de IA (seção `gui.ai`) e, quando há uma, a **chave** do perfil.
+    ///
+    /// Os dois andam juntos de propósito: o formulário salva perfil **e** chave no mesmo clique, e
+    /// mandar só a chave (como era antes) deixava o perfil fora do arquivo — o `Test` depois dizia
+    /// que ele não existia.
+    SaveAiProfiles {
+        /// Perfis, como ficaram na tela.
+        profiles: Vec<mustel_core::config::model::AiProfile>,
+        /// `id` do ativo.
+        active: String,
+        /// Chave a guardar (perfil + chave), quando o dono digitou uma.
+        key: Option<(String, String)>,
+    },
+    /// Apaga a chave de um perfil (perfil removido).
+    RemoveAiKey {
+        /// `id` do perfil.
+        profile: String,
+    },
+    /// Faz uma chamada curta ao provedor para conferir perfil e chave.
+    TestAiProfile {
+        /// `id` do perfil.
+        profile: String,
+    },
+    /// Lê o DDL do banco (do cache, ou baixando) para o painel da IA.
+    LoadDdl {
+        /// Servidor do cadastro.
+        server: String,
+        /// Banco escolhido.
+        database: String,
+        /// Ignora o cache e baixa de novo?
+        refresh: bool,
+    },
+    /// Pede à IA o SQL para a conversa atual.
+    GenerateSql {
+        /// `id` do perfil (a chave vai do cofre, no executor).
+        profile: String,
+        /// DDL da sessão (o texto vai junto: o executor não conhece o painel).
+        ddl: String,
+        /// Histórico da conversa, na ordem.
+        messages: Vec<mustel_core::usecases::ai::ChatMessage>,
+    },
     /// Descobre os bancos do servidor e se o cofre tem a senha dele.
     ///
     /// É o que alimenta o combo de banco da linha "Load autocomplete": o cadastro pod
@@ -107,6 +154,25 @@ pub enum Request {
 pub enum JobResult {
     /// O cadastro recarregado.
     Servers(Vec<ServerConfigEntry>),
+    /// O DDL chegou (ou falhou) para o painel da IA.
+    Ddl {
+        /// Texto filtrado e data, ou o motivo da falha.
+        result: Result<mustel_core::usecases::ddl::Ddl, String>,
+    },
+    /// A IA respondeu (ou falhou) para o painel.
+    SqlGenerated {
+        /// SQL normalizado, ou o motivo da falha.
+        result: Result<String, String>,
+    },
+    /// Os perfis foram gravados.
+    AiProfilesSaved,
+    /// O `Test` de um perfil terminou.
+    AiTested {
+        /// `id` do perfil testado.
+        profile: String,
+        /// Deu certo? (e a mensagem, de sucesso ou de erro)
+        result: Result<String, String>,
+    },
     /// Um servidor foi gravado.
     Saved(String),
     /// Um servidor foi removido.

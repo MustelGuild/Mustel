@@ -5,11 +5,14 @@
 //! imprime, não pergunta e não conhece terminal nem janela: é o que permite o CLI e a GUI (T41)
 //! rodarem o mesmo comando.
 
+pub mod ai;
+pub mod ai_session;
 pub mod custom_databases;
 pub mod database;
 pub mod database_backup;
 pub mod database_restore;
 pub mod db_servers;
+pub mod ddl;
 pub mod gui_prefs;
 pub mod query_run;
 pub mod schema;

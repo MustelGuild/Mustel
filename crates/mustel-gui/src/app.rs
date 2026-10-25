@@ -55,6 +55,9 @@ struct Running {
 /// janela mínima (880) garante ~450 para o SQL. Recolhida, a barra `▶` fica na área principal.
 const SIDEBAR_WIDTH: f32 = 400.0;
 
+/// Largura do painel da IA (fixa na v1, D23).
+const AI_PANEL_WIDTH: f32 = 360.0;
+
 /// Respiro entre a sidebar e o conteúdo à direita dela.
 ///
 /// O painel desenha a própria linha divisória; sem o respiro o primeiro texto da área principal
@@ -88,6 +91,11 @@ pub struct App {
     saved_queries: Vec<mustel_core::config::model::SavedQuery>,
     /// A sidebar de servidores/bases está aberta?
     sidebar_open: bool,
+    /// O painel de conversa com a IA (aba Query) — o estado mora aqui porque um `Panel` do egui
+    /// precisa ser desenhado antes do `CentralPanel`.
+    ai: crate::ai_panel::AiChat,
+    /// Perfis de IA configurados (lista do `gui.ai`, viva no app como as queries salvas).
+    ai_profiles: Vec<mustel_core::config::model::AiProfile>,
 }
 
 impl App {
@@ -160,7 +168,35 @@ impl App {
                 .map(|prefs| prefs.saved_queries.clone())
                 .unwrap_or_default(),
             sidebar_open: true,
+            ai: {
+                let profiles = prefs
+                    .as_ref()
+                    .map(|prefs| prefs.ai.profiles.clone())
+                    .unwrap_or_default();
+                // A conversa volta como estava: o arquivo é de **estado**, não de configuração.
+                let session = mustel_core::config::paths::ai_session_path()
+                    .map(|path| mustel_core::usecases::ai_session::load(&path))
+                    .unwrap_or_default();
+                crate::ai_panel::AiChat::from_session(session, &profiles)
+            },
+            ai_profiles: prefs
+                .as_ref()
+                .map(|prefs| prefs.ai.profiles.clone())
+                .unwrap_or_default(),
         })
+    }
+
+    /// Grava a conversa no arquivo de **estado** (D21/D22).
+    ///
+    /// Uma escrita por turno/reset/troca de contexto: o arquivo é pequeno (mensagens, sem DDL) e
+    /// escrever por quadro seria desperdício.
+    fn save_ai_session(&mut self) {
+        self.ai.session.panel_open = self.ai.open;
+        if let Some(path) = mustel_core::config::paths::ai_session_path()
+            && let Err(error) = mustel_core::usecases::ai_session::save(&path, &self.ai.session)
+        {
+            self.status = format!("Could not save the AI session: {error}");
+        }
     }
 
     /// O cadastro atual (as duas telas leem dele).
@@ -302,6 +338,203 @@ impl App {
                 let _ = token;
             }
             Request::CancelJob => self.cancel(),
+            // Perfis de IA: a tela manda a lista inteira; o app compõe a seção `gui` e grava.
+            Request::SaveAiProfiles {
+                profiles,
+                active,
+                key,
+            } => {
+                self.ai_profiles = profiles.clone();
+                self.settings.set_ai(profiles.clone(), active.clone());
+                self.ai.selected_profile = active;
+                let prefs = self.gui_prefs();
+                let results = self.results.clone();
+                self.spawn("save ai profiles", ctx, move |_token| async move {
+                    // A chave vai **antes** de gravar a lista: se o cofre falhar, o erro aparece e o
+                    // perfil já está na lista da tela (o dono tenta de novo digitando a chave).
+                    let stored = match &key {
+                        Some((profile, secret)) => mustel_core::usecases::ai::set_ai_key(
+                            &mustel_core::credentials::SystemKeyring::with_service(
+                                mustel_core::usecases::ai::AI_SERVICE_NAME,
+                            ),
+                            profile,
+                            secret,
+                        ),
+                        None => Ok(()),
+                    };
+                    let result = match stored {
+                        Ok(()) => match ConfigStore::with_default_path() {
+                            Ok(store) => match gui_prefs::save(&store, Some(prefs)) {
+                                Ok(()) => JobResult::AiProfilesSaved,
+                                Err(error) => JobResult::Failed(error.to_string()),
+                            },
+                            Err(error) => JobResult::Failed(error.to_string()),
+                        },
+                        Err(error) => JobResult::Failed(error.to_string()),
+                    };
+                    let _ = results.send(result);
+                });
+            }
+            Request::RemoveAiKey { profile } => {
+                let results = self.results.clone();
+                self.spawn("remove ai key", ctx, move |_token| async move {
+                    let result = mustel_core::usecases::ai::remove_ai_key(
+                        &mustel_core::credentials::SystemKeyring::with_service(
+                            mustel_core::usecases::ai::AI_SERVICE_NAME,
+                        ),
+                        &profile,
+                    )
+                    .map(|_| JobResult::AiProfilesSaved)
+                    .unwrap_or_else(|error| JobResult::Failed(error.to_string()));
+                    let _ = results.send(result);
+                });
+            }
+            Request::TestAiProfile { profile } => {
+                let results = self.results.clone();
+                let entry = self
+                    .ai_profiles
+                    .iter()
+                    .find(|candidate| candidate.id == profile)
+                    .cloned();
+                self.spawn("test ai profile", ctx, move |_token| async move {
+                    let result = match entry {
+                        Some(entry) => {
+                            match mustel_core::usecases::ai::ai_key(
+                                &mustel_core::credentials::SystemKeyring::with_service(
+                                    mustel_core::usecases::ai::AI_SERVICE_NAME,
+                                ),
+                                &entry.id,
+                            ) {
+                                Ok(Some(key)) => {
+                                    match mustel_core::ai_transport::ReqwestTransport::new() {
+                                        Ok(transport) => {
+                                            let messages =
+                                                vec![mustel_core::usecases::ai::ChatMessage::user(
+                                                    "Reply with SELECT 1;",
+                                                )];
+                                            mustel_core::usecases::ai::generate(
+                                                &transport,
+                                                &entry,
+                                                &key,
+                                                "CREATE TABLE ping (id integer);",
+                                                &messages,
+                                            )
+                                            .await
+                                            .map(|sql| format!("OK: {sql}"))
+                                            .map_err(|error| error.to_string())
+                                        }
+                                        Err(error) => Err(error.to_string()),
+                                    }
+                                }
+                                Ok(None) => Err("No key stored for this profile.".to_string()),
+                                Err(error) => Err(error.to_string()),
+                            }
+                        }
+                        None => Err("That profile no longer exists.".to_string()),
+                    };
+                    let id = profile;
+                    let _ = results.send(JobResult::AiTested {
+                        profile: id,
+                        result,
+                    });
+                });
+            }
+            Request::OpenSettings => {
+                self.screen = Screen::Settings;
+                ctx.request_repaint();
+            }
+            // O `Insert in editor` **substitui** o texto (D13) e fica na tela de query.
+            Request::InsertEditorText(text) => {
+                self.query.replace_editor_text(text);
+                ctx.request_repaint();
+            }
+            // O painel da IA: abrir/fechar é estado de janela, não trabalho de núcleo.
+            Request::ToggleAiPanel => {
+                self.ai.open = !self.ai.open;
+                if self.ai.open && self.ai.ddl.is_none() && !self.ai.selected_database.is_empty() {
+                    // Abriu com banco escolhido: já pede o DDL (cache primeiro).
+                    self.dispatch(
+                        Request::LoadDdl {
+                            server: self.ai.selected_server.clone(),
+                            database: self.ai.selected_database.clone(),
+                            refresh: false,
+                        },
+                        ctx,
+                    );
+                }
+                self.save_ai_session();
+                ctx.request_repaint();
+            }
+            Request::LoadDdl {
+                server,
+                database,
+                refresh,
+            } => {
+                // Mesma forma do `LoadSchema`: sem senha no cofre, avisa e não tenta.
+                let Some(entry) = self
+                    .servers_snapshot()
+                    .into_iter()
+                    .find(|candidate| candidate.name == server)
+                else {
+                    self.status = format!("Server '{server}' not found.");
+                    return;
+                };
+                let password = match query::stored_password(&entry.name) {
+                    Ok(password) => password,
+                    Err(error) => {
+                        self.ai.apply_error(error.to_string());
+                        return;
+                    }
+                };
+
+                let results = self.results.clone();
+                self.spawn("load schema", ctx, move |token| async move {
+                    let result = query::ddl(&entry, &password, &database, refresh, &token)
+                        .await
+                        .map_err(|error| error.to_string());
+                    let _ = results.send(JobResult::Ddl { result });
+                });
+            }
+            Request::GenerateSql {
+                profile,
+                ddl,
+                messages,
+            } => {
+                let results = self.results.clone();
+                let profile = self
+                    .ai_profiles
+                    .iter()
+                    .find(|candidate| candidate.id == profile)
+                    .cloned();
+                self.spawn("generate sql", ctx, move |_token| async move {
+                    let result = match profile {
+                        Some(profile) => match mustel_core::usecases::ai::ai_key(
+                            &mustel_core::credentials::SystemKeyring::with_service(
+                                mustel_core::usecases::ai::AI_SERVICE_NAME,
+                            ),
+                            &profile.id,
+                        ) {
+                            Ok(Some(key)) => {
+                                match mustel_core::ai_transport::ReqwestTransport::new() {
+                                    Ok(transport) => mustel_core::usecases::ai::generate(
+                                        &transport, &profile, &key, &ddl, &messages,
+                                    )
+                                    .await
+                                    .map_err(|error| error.to_string()),
+                                    Err(error) => Err(error.to_string()),
+                                }
+                            }
+                            Ok(None) => Err(format!(
+                                "No key stored for '{}': set it in Settings › AI",
+                                profile.name
+                            )),
+                            Err(error) => Err(error.to_string()),
+                        },
+                        None => Err("That AI profile no longer exists.".to_string()),
+                    };
+                    let _ = results.send(JobResult::SqlGenerated { result });
+                });
+            }
             Request::ReloadServers => {
                 let results = self.results.clone();
                 self.spawn("reload servers", ctx, move |_token| async move {
@@ -637,6 +870,25 @@ impl App {
             self.query.apply(&result);
             self.settings.apply(&result);
 
+            // O DDL e a resposta da IA são do painel: aplicam no estado dele e gravam a sessão.
+            match &result {
+                JobResult::Ddl { result } => match result {
+                    Ok(ddl) => {
+                        self.ai.apply_ddl(ddl.clone());
+                        self.save_ai_session();
+                    }
+                    Err(error) => self.ai.apply_error(error.clone()),
+                },
+                JobResult::SqlGenerated { result } => match result {
+                    Ok(sql) => {
+                        self.ai.apply_reply(sql.clone());
+                        self.save_ai_session();
+                    }
+                    Err(error) => self.ai.apply_error(error.clone()),
+                },
+                _ => {}
+            }
+
             self.status = match &result {
                 JobResult::Servers(servers) => {
                     self.query.sync_servers(servers);
@@ -654,6 +906,12 @@ impl App {
                 JobResult::QueryWithoutDatabases => {
                     "No accessible databases found across selected servers.".to_string()
                 }
+                JobResult::Ddl { .. } | JobResult::SqlGenerated { .. } => self.status.clone(),
+                JobResult::AiProfilesSaved => "AI profiles saved.".to_string(),
+                JobResult::AiTested { result, .. } => match result {
+                    Ok(message) => format!("AI profile works: {message}"),
+                    Err(error) => format!("AI profile failed: {error}"),
+                },
                 JobResult::Schema {
                     server,
                     database,
@@ -871,6 +1129,42 @@ impl eframe::App for App {
                             ui.weak(format!("{} selected", self.query.marked_count()));
                         }
                     });
+                }
+            }
+
+            // **Painel da IA** (aba Query): irmão do esquerdo, criado antes do conteúdo central.
+            // Fechado por padrão e sem arrastar largura (D11/D23).
+            if self.screen == Screen::Query && self.ai.open {
+                let servers = self.servers_snapshot();
+                let profiles = self.ai_profiles.clone();
+                // Bancos do servidor escolhido no painel: os descobertos, ou os do cadastro.
+                let configured: Vec<String> = servers
+                    .iter()
+                    .find(|entry| entry.name == self.ai.selected_server)
+                    .map(|entry| entry.databases.clone())
+                    .unwrap_or_default();
+                let databases = self
+                    .reference
+                    .choices(&self.ai.selected_server, &configured);
+                let has_text = self.query.editor_has_text();
+                let other_job = self.running.as_ref().map(|running| running.label.clone());
+
+                let panel = egui::Panel::right("ai_panel")
+                    .exact_size(AI_PANEL_WIDTH)
+                    .show(ui, |ui| {
+                        crate::ai_panel::ui(
+                            ui,
+                            &mut self.ai,
+                            &servers,
+                            &profiles,
+                            &databases,
+                            has_text,
+                            other_job.as_deref(),
+                        )
+                    });
+
+                if let Some(ai_request) = panel.inner {
+                    request = Some(ai_request);
                 }
             }
 

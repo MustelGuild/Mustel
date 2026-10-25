@@ -243,8 +243,12 @@ pub fn apply(ctx: &egui::Context, chosen: &Chosen) -> Vec<String> {
 /// Tamanho mínimo da janela, em pontos, a 1,0x de escala.
 ///
 /// **880×560** (era 640×480): a sidebar tem 400 px, então a área principal precisa de ~450 para o
-/// SQL e a tabela continuarem usáveis. Cabe num notebook **1366×768** com a barra de tarefas — e
-/// também a 125% de escala, onde sobram 1093×576 pontos (com pouca folga na altura, é verdade).
+/// SQL e a tabela continuarem usáveis. É o piso **com o painel da IA fechado**; aberto, ele come
+/// mais 360 px e quem soma isso é `app::min_window_size`.
+///
+/// Com o painel aberto são 1240×560: ainda cabe num notebook **1366×768**, mas a 125% de escala
+/// (1093×576 pontos) o mínimo de 1550×700 não cabe na largura — a janela abre maior que a tela e
+/// o dono precisa redimensionar.
 const MIN_WINDOW_WIDTH: f32 = 880.0;
 const MIN_WINDOW_HEIGHT: f32 = 560.0;
 

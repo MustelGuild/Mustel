@@ -58,6 +58,22 @@ const SIDEBAR_WIDTH: f32 = 400.0;
 /// Largura do painel da IA (fixa na v1, D23).
 const AI_PANEL_WIDTH: f32 = 360.0;
 
+/// Tamanho mínimo da janela para **este** layout.
+///
+/// [`crate::fonts::min_window_size`] é o piso supondo a sidebar aberta e o painel da IA fechado:
+/// 400 da sidebar mais ~450 para o editor. O painel da IA não é opcional para o layout — aberto, ele
+/// come 360 px da área de conteúdo, e com o mínimo antigo (880) sobravam ~108 px: as linhas do
+/// formulário não cabiam e o texto caía por cima do painel. Cada painel aberto soma a própria
+/// largura ao mínimo, na mesma proporção da escala (fonte maior, janela maior).
+fn min_window_size(scale: f32, ai_open: bool) -> egui::Vec2 {
+    let base = crate::fonts::min_window_size(scale);
+    if ai_open {
+        base + egui::vec2(AI_PANEL_WIDTH * scale, 0.0)
+    } else {
+        base
+    }
+}
+
 /// Respiro entre a sidebar e o conteúdo à direita dela.
 ///
 /// O painel desenha a própria linha divisória; sem o respiro o primeiro texto da área principal
@@ -96,6 +112,8 @@ pub struct App {
     ai: crate::ai_panel::AiChat,
     /// Perfis de IA configurados (lista do `gui.ai`, viva no app como as queries salvas).
     ai_profiles: Vec<mustel_core::config::model::AiProfile>,
+    /// Último mínimo de janela enviado ao sistema (evita repetir o comando a cada quadro).
+    min_inner: Option<egui::Vec2>,
 }
 
 impl App {
@@ -189,6 +207,7 @@ impl App {
                 .as_ref()
                 .map(|prefs| prefs.ai.profiles.clone())
                 .unwrap_or_default(),
+            min_inner: None,
         })
     }
 
@@ -233,6 +252,46 @@ impl App {
         )
     }
 
+    /// O mínimo da janela para o layout **atual**: a escala escolhida e o painel da IA, quando
+    /// aberto (é o único painel que fica fora do piso de [`min_window_size`]).
+    fn min_inner_size(&self) -> egui::Vec2 {
+        min_window_size(
+            self.settings.chosen().scale,
+            self.ai.open && self.screen == Screen::Query,
+        )
+    }
+
+    /// Mantém o mínimo da janela em dia com a escala e com os painéis abertos.
+    ///
+    /// Dois passos: avisa o sistema do mínimo (só quando ele muda — é um comando de viewport, não
+    /// estado de desenho) e **puxa a janela de volta** se ela estiver menor que isso. O mínimo do
+    /// sistema não vale para todo caminho de redimensionamento (um `SetWindowPos`, que é o que a
+    /// janela recebe ao ser restaurada, passa por cima dele), então sem o segundo passo a janela
+    /// continuava menor e o conteúdo voltava a ficar espremido.
+    fn sync_min_window_size(&mut self, ctx: &egui::Context) {
+        // O mínimo nunca passa do monitor: numa tela menor que ele, puxar a janela deixaria parte
+        // dela fora da tela (e o dono sem como alcançar o canto).
+        let monitor = ctx.input(|input| input.viewport().monitor_size);
+        let wanted = match monitor {
+            Some(monitor) => self.min_inner_size().min(monitor),
+            None => self.min_inner_size(),
+        };
+        if self.min_inner != Some(wanted) {
+            self.min_inner = Some(wanted);
+            ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(wanted));
+        }
+
+        let current = ctx.input(|input| input.viewport().inner_rect.map(|rect| rect.size()));
+        if let Some(current) = current
+            && (current.x < wanted.x || current.y < wanted.y)
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                current.x.max(wanted.x),
+                current.y.max(wanted.y),
+            )));
+        }
+    }
+
     /// O que a sidebar desenha, conforme a aba.
     ///
     /// Na aba **Query** é a escolha de bases (query salva, busca, servidores e checkboxes); na aba
@@ -259,12 +318,8 @@ impl App {
             Request::ApplyGuiPrefs(chosen) => {
                 let problems = crate::fonts::apply(ctx, &chosen);
                 self.settings.set_warning(problems.first().cloned());
-
-                // O mínimo acompanha a escala: fonte maior precisa de janela maior para o layout
-                // continuar com a mesma folga que tinha em 1.0.
-                ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(
-                    crate::fonts::min_window_size(chosen.scale),
-                ));
+                // O mínimo acompanha a escala e os painéis abertos: `sync_min_window_size` o
+                // reaplica no quadro seguinte (não há um segundo lugar decidindo isso).
             }
             // A lista de **queries salvas** mudou: compõe a seção `gui` inteira e grava.
             Request::SaveSavedQueries(queries) => {
@@ -306,9 +361,6 @@ impl App {
                 let problems = crate::fonts::apply(ctx, &chosen);
                 crate::theme::apply(ctx, prefs.theme);
                 self.settings.set_warning(problems.first().cloned());
-                ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(
-                    crate::fonts::min_window_size(chosen.scale),
-                ));
 
                 match ConfigStore::with_default_path() {
                     Ok(store) => match gui_prefs::save(&store, Some(prefs)) {
@@ -1028,6 +1080,8 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.ctx = ctx.clone();
+        // Antes de desenhar: o mínimo da janela depende da escala e dos painéis abertos.
+        self.sync_min_window_size(&ctx);
 
         // `CentralPanel` (e não `Frame::central_panel`): o painel **ocupa** toda a área restante e
         // pinta o fundo dela. Com o `Frame` ele encolhia até o tamanho do conteúdo, e o resto da
@@ -1369,6 +1423,53 @@ mod tests {
             painted.texts
         );
         found[0]
+    }
+
+    /// O mínimo da janela **cresce com o painel da IA**: sem ele, sobrava uma tira de conteúdo.
+    ///
+    /// O piso de `fonts` (880 a 1,0) supõe a sidebar aberta e o painel fechado. Com o painel
+    /// aberto, 360 px saem da área de conteúdo: 880 + 360 = 1240 a 1,0. Abrir o painel numa janela
+    /// de 900 deixava ~120 px para o formulário — as linhas não cabiam e o texto caía sobre o
+    /// painel.
+    #[test]
+    fn the_minimum_window_grows_with_the_ai_panel() {
+        let base = crate::fonts::min_window_size(1.0);
+        assert_eq!(
+            min_window_size(1.0, false),
+            base,
+            "sem o painel, o piso de sempre"
+        );
+        assert_eq!(
+            min_window_size(1.0, true),
+            egui::vec2(base.x + AI_PANEL_WIDTH, base.y),
+            "com o painel, some a largura dele"
+        );
+        // A escala continua valendo para os dois lados (fonte maior, janela maior).
+        assert_eq!(
+            min_window_size(1.25, true),
+            egui::vec2((base.x + AI_PANEL_WIDTH) * 1.25, base.y * 1.25)
+        );
+        // A altura não muda: o painel é uma coluna, não ocupa altura a mais.
+        assert_eq!(min_window_size(1.0, true).y, min_window_size(1.0, false).y);
+    }
+
+    /// A conta do `min_window_size` deixa a área de conteúdo com o que o formulário pede.
+    ///
+    /// É o que liga o número ao teste `the_form_never_paints_past_its_width`: com o mínimo antigo
+    /// (880) a área de conteúdo ficava com ~108 px; com 1240 ela fica com ~450, que é a largura
+    /// em que o formulário cabe.
+    ///
+    /// CONTRACT: IF-220
+    #[test]
+    fn the_minimum_leaves_room_for_the_form() {
+        const FORM: f32 = 450.0;
+        let window = min_window_size(1.0, true).x;
+        let left = SIDEBAR_WIDTH + f32::from(CONTENT_GAP);
+        let content = window - left - AI_PANEL_WIDTH;
+        assert!(
+            content >= FORM,
+            "sobram {content} px para o conteúdo; o formulário pede {FORM}"
+        );
     }
 
     /// As duas alças dos painéis recolhidos dividem **uma linha**: o `›` da sidebar à esquerda e o

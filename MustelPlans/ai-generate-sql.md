@@ -661,3 +661,19 @@ Append-only.
   ~450 para o SQL" — verdade só com o painel da IA fechado. Decisão de produto pendente: subir a
   largura mínima conforme os painéis abertos, encolher o painel em janela estreita, ou recolher a
   sidebar sozinha.
+- `[2026-10-25]` **Mínimo da janela com os painéis à vista** (decisão do dono: “suba a janela mínima”,
+  opção 1 da pendência anterior). O piso de `fonts::min_window_size` (880×560) supõe a sidebar
+  aberta e o painel da IA fechado; aberto, o painel come 360 px e sobravam ~108 para o conteúdo.
+  Agora `app::min_window_size(escala, painel_aberto)` soma a largura do painel (1240×560 a 1,0) e
+  `sync_min_window_size` roda a cada quadro: avisa o sistema só quando o valor muda e **puxa a
+  janela de volta** se ela ficou menor. O segundo passo é necessário porque `MinInnerSize` não
+  vale para todo caminho: medido na janela, um `MoveWindow`/`SetWindowPos` para 900×620 deixava o
+  cliente em 884×581 mesmo com o mínimo de 1302×588 já enviado. Com o puxão, o mesmo pedido
+  termina em 1302×588. O mínimo é limitado ao tamanho do monitor (numa tela menor, puxar
+  deixaria parte da janela fora). Os dois envios que moravam no `dispatch` (`ApplyGuiPrefs` e
+  `SaveGuiPrefs`) saíram: agora há um só lugar decidindo o mínimo.
+  Verificado na janela: sem o painel, 800×500 vira 924×588 (880×1,05); ao **abrir** o painel a
+  janela cresce sozinha para 1302×588; com ele aberto, 800×500 continua 1302×588. Testes novos
+  `the_minimum_window_grows_with_the_ai_panel` e `the_minimum_leaves_room_for_the_form` (mutação
+  conferida: sem a soma do painel, o teste acusa “sobram 108 px para o conteúdo”). IF-220
+  atualizada com o piso novo. `cargo test --workspace` → 650 testes; clippy e fmt limpos.

@@ -31,6 +31,7 @@ só é a origem da maior parte da documentação ruim.
 | | | [Seleção de bases](reference/selecao-de-bases.md) | [Por que a seleção de bases é assim](explanation/selecao-de-bases.md) |
 | | | [Queries salvas](reference/saved-queries.md) | |
 | | | | [Fontes e licença](explanation/fontes.md) |
+| | | | [Por que as queries salvas são assim](explanation/saved-queries.md) |
 | | | | [Decisões de engenharia](explanation/decisoes.md) |
 | | | | [Diferenças deliberadas](explanation/diferencas-deliberadas.md) |
 

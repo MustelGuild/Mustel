@@ -15,6 +15,10 @@ dizer coisas diferentes em cada uma: `D6` é "keyring" na migração e "formato 
 de bases. O número sozinho **não** resolve nada — use o texto ao lado dele e a tabela de resolução
 abaixo.
 
+Depois da consolidação entraram mais duas famílias, com letra própria para não colidir com `D*`:
+`A*` (aparência: tema e fontes) e `S*` (queries salvas); o porquê das `S` está em
+[Por que as queries salvas são assim](saved-queries.md).
+
 ### Onde cada número é citado
 
 | ID | Numeração | Onde aparece |
@@ -148,12 +152,12 @@ depois da `A` (tema), e não reutiliza as numerações dos planos antigos.
 |---|---|---|---|
 | `S1` | Modelo | `gui.savedQueries: [{ name, sql }]`, **separado** de `gui.selections` | Unificar exigiria `server`/`database` opcionais e misturaria duas intenções no mesmo combo |
 | `S2` | Onde fica | Combo **acima do editor** da aba Query | É insumo do texto; a sidebar é escopo (quais bases rodam) |
-| `S3` | Salvar | `💾 Save` e `Save as…` **na linha do combo** (à direita dele); diálogo abre **vazio** | Gravar é o outro lado de escolher: fica onde a query é escolhida, não ao lado do `Run query` (ajuste do dono, 2026-10-24) |
+| `S3` | Salvar | `Save` e `Save as…` **na linha do combo** (à direita dele); diálogo abre **vazio** | Gravar é o outro lado de escolher: fica onde a query é escolhida, não ao lado do `Run query` (ajuste do dono, 2026-10-24) |
 | `S4` | Sobrescrever | Escolher **carrega sem perguntar**; o aviso aparece **no salvar**, quando o texto difere | Escolher é reversível; sobrescrever não volta |
-| `S5` | Excluir | **Lixeira `🗑`** em cada linha do combo, confirmação num **popup** (não numa linha do formulário), **definitivo** (sem desfazer); excluir a carregada mantém o texto e solta o vínculo | Resolve na tela de uso; o popup protege sem deslocar o layout |
+| `S5` | Excluir | **Lixeira** (ícone da fonte embutida) em cada linha do combo, confirmação num **popup** (não numa linha do formulário), **definitivo** (sem desfazer); excluir a carregada mantém o texto e solta o vínculo | Resolve na tela de uso; o popup protege sem deslocar o layout |
 
-A referência está em [`reference/saved-queries.md`](../reference/saved-queries.md); a linha de
-contrato é `IF-244`.
+A referência está em [`reference/saved-queries.md`](../reference/saved-queries.md), o porquê em
+[Por que as queries salvas são assim](saved-queries.md); a linha de contrato é `IF-244`.
 
 ## O que não veio para cá
 

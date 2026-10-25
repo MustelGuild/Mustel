@@ -87,6 +87,21 @@ impl Form {
         }
     }
 
+    /// Troca o servidor do `Reads from` e **descarta o banco** escolhido.
+    ///
+    /// O banco pertence ao servidor: manter o nome ao trocar deixaria o formulário apontando para um
+    /// banco que talvez não exista no servidor novo (e o seletor só falharia na hora de rodar, longe
+    /// daqui). Escolher o mesmo servidor não muda nada e devolve `false` — a descoberta só é pedida
+    /// de novo quando houve troca de verdade.
+    fn choose_server(&mut self, chosen: &str) -> bool {
+        if chosen == self.server {
+            return false;
+        }
+        self.server = chosen.to_string();
+        self.database.clear();
+        true
+    }
+
     /// A query como ficou, se o formulário estiver válido.
     ///
     /// O nome **não** é aparado só para exibir: a comparação com os outros é sem diferenciar
@@ -286,28 +301,32 @@ impl State {
                     // seletor pertence àquele servidor.
                     ui.label("Reads from");
                     ui.horizontal(|ui| {
-                        let current = if form.server.is_empty() {
-                            "— pick a server —".to_string()
+                        // Servidor: combo **com busca**, o mesmo dos outros campos de escolha — a
+                        // lista cresce e achar o nome rolando não é escolha.
+                        let server_items: Vec<crate::search_combo::Item<'_>> = servers
+                            .iter()
+                            .map(|server| {
+                                crate::search_combo::Item::new(
+                                    server.name.as_str(),
+                                    server.name == form.server,
+                                )
+                            })
+                            .collect();
+                        let button = if form.server.is_empty() {
+                            "— pick a server —"
                         } else {
-                            form.server.clone()
+                            form.server.as_str()
                         };
-                        let mut picked: Option<String> = None;
-                        egui::ComboBox::from_id_salt("selector_server")
-                            .selected_text(current)
-                            .show_ui(ui, |ui| {
-                                for server in servers {
-                                    if ui
-                                        .selectable_value(
-                                            &mut form.server,
-                                            server.name.clone(),
-                                            &server.name,
-                                        )
-                                        .changed()
-                                    {
-                                        picked = Some(server.name.clone());
-                                    }
-                                }
-                            });
+                        let changed = crate::search_combo::search_combo_sized(
+                            ui,
+                            "selector_server",
+                            button,
+                            &server_items,
+                            !server_items.is_empty(),
+                            crate::search_combo::Size::default(),
+                        )
+                        .map(|index| form.choose_server(&servers[index].name))
+                        .unwrap_or(false);
                         ui.label("/");
                         let databases = self.ready_databases(&form.server).unwrap_or_default();
                         let items: Vec<crate::search_combo::Item<'_>> = databases
@@ -350,9 +369,7 @@ impl State {
                         }
 
                         // Escolher o servidor **já carrega** as bases.
-                        if let Some(name) = picked
-                            && let Some(discover) = self.ensure_discovered(&name)
-                        {
+                        if changed && let Some(discover) = self.ensure_discovered(&form.server) {
                             request = Some(discover);
                         }
                     });
@@ -595,6 +612,64 @@ mod tests {
         form.sql = "select 1".to_string();
 
         assert!(form.to_query().unwrap_err().contains("server"));
+    }
+
+    /// Trocar o servidor do `Reads from` **descarta o banco**; reescolher o mesmo, não.
+    ///
+    /// O banco pertence ao servidor: arrastá-lo para outro deixaria o formulário apontando para um
+    /// banco inexistente, e o erro só apareceria na hora de rodar o seletor.
+    #[test]
+    fn choosing_another_server_drops_the_database() {
+        let mut form = Form::new(&[server("Local"), server("Local 2")]);
+        form.database = "configurador".to_string();
+
+        assert!(
+            !form.choose_server("Local"),
+            "o mesmo servidor não muda nada"
+        );
+        assert_eq!(form.database, "configurador");
+
+        assert!(form.choose_server("Local 2"));
+        assert_eq!(form.server, "Local 2");
+        assert!(
+            form.database.is_empty(),
+            "o banco do servidor anterior não vale aqui: {:?}",
+            form.database
+        );
+    }
+
+    /// O `Reads from` usa o **combo com busca** (seta da fonte embutida), como os outros campos de
+    /// escolha — não o `ComboBox` do egui.
+    #[test]
+    fn the_reads_from_row_uses_the_search_combo() {
+        let ctx = egui::Context::default();
+        let servers = [server("Local"), server("Local 2")];
+        let mut state = State::with_prefs(None);
+        state.form = Some(Form::new(&servers));
+
+        let mut texts: Vec<String> = Vec::new();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.set_max_width(900.0);
+                    let _ = state.ui(ui, &servers);
+                });
+            });
+            texts.clear();
+            collect_text(&output.shapes, &mut texts);
+            output.textures_delta.clear();
+        }
+
+        let arrow = crate::icons::Icon::ChevronDown.glyph().to_string();
+        let arrows = texts.iter().filter(|text| text.contains(&arrow)).count();
+        assert!(
+            arrows >= 1,
+            "o servidor e o banco são combos com busca (seta embutida): {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|text| text.contains("Local")),
+            "o servidor atual fica no botão: {texts:?}"
+        );
     }
 
     /// Escolher o servidor **já pede** a descoberta, e não repete o pedido enquanto carrega.

@@ -197,6 +197,13 @@ pub fn ui(
     // editor). Tudo daqui para baixo vive dentro desta largura.
     let width = ui.available_width();
     ui.set_max_width(width);
+    // E nem da altura: recolhidos os campos do topo, o transcript empurrava o resto para fora do
+    // painel. Recortar garante que o painel inteiro fica do lado dele da divisória.
+    ui.set_clip_rect(ui.max_rect());
+    // Barra sólida: a padrão do egui é `floating`, que só aparece enquanto se rola — numa conversa
+    // longa, quem abre o painel não vê que há mais abaixo. Sólida, e só quando o transcript não
+    // cabe (é o que `VisibleWhenNeeded` faz por padrão).
+    ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
 
     ui.horizontal(|ui| {
         // O título é o nome do botão que abria o painel: o gesto saiu da linha do `Run query` e

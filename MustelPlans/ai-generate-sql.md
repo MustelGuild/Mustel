@@ -637,3 +637,27 @@ Append-only.
   digitando uma frase de 2 linhas a caixa cresce e a primeira linha fica na altura do placeholder.
   Teste `the_placeholder_sits_in_the_middle_of_the_prompt_box` mede o centro do hint contra o do
   `Send`; mutação conferida (sem o `.align`, o hint fica 7,5 px acima e o teste falha).
+- `[2026-10-25]` **Janela estreita e barras de rolagem** (três relatos do dono).
+  1. *O painel da IA invadia o editor.* O painel não invadia: quem transbordava era a **área de
+     conteúdo** — as linhas de controles de largura própria (duas combos de 200, caminho de saída
+     de 250, os botões) passavam da borda e o texto caía por cima do painel. Duas regras: a área
+     recorta a própria pintura (`set_clip_rect` no `Frame` do conteúdo e no painel da IA) e as
+     linhas de controles **quebram** em vez de transbordar (`horizontal_wrapped` na referência do
+     autocomplete, na query salva e no diretório de saída). Teste novo
+     `the_form_never_paints_past_its_width` mede a borda direita de todo texto pintado; conferido
+     por mutação (voltar a `horizontal` faz o teste falhar em `✦ Abrir`, x 505,66 > 500).
+  2. *A barra do editor aparecia sempre.* Era o `ScrollArea` do formulário com `AlwaysVisible`
+     (decisão antiga: "numa tela que cresce sozinha, a barra precisa ser visível o tempo todo").
+     Passou a `VisibleWhenNeeded`, mantendo o estilo sólido para quando ela aparece.
+  3. *O painel da IA sem barra quando precisava.* O `ScrollArea` do transcript já era
+     `VisibleWhenNeeded`, mas o estilo padrão do egui é **flutuante**: a barra só aparece enquanto
+     se rola e some depois. O painel agora usa `ScrollStyle::solid()`, então a barra fica na borda
+     enquanto houver conversa abaixo.
+  Verificado na janela em 1296x883 (tudo cabe, sem barra), 1296x600 (barra sólida no painel),
+  900x620 e na janela maximizada (as linhas voltam a ficar numa linha só, sem mudar o layout
+  largo). `cargo test --workspace` → 648 testes; clippy e fmt limpos.
+  **Pendência encontrada (não resolvida):** com as duas laterais abertas, a janela mínima (880)
+  deixa ~108 px para o conteúdo (400 da sidebar + 360 do painel). `fonts.rs` diz que 880 "garante
+  ~450 para o SQL" — verdade só com o painel da IA fechado. Decisão de produto pendente: subir a
+  largura mínima conforme os painéis abertos, encolher o painel em janela estreita, ou recolher a
+  sidebar sozinha.

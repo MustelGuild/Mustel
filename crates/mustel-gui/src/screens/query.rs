@@ -635,7 +635,11 @@ Selection unchanged."
 
         // Load autocomplete: **um** banco serve de molde para as sugestões. Explícito de
         // propósito — carregar no foco surpreenderia (e pode pedir senha que a janela não tem).
-        ui.horizontal(|ui| {
+        // **Linhas que quebram em vez de transbordar.** Os controles têm largura própria (combo,
+        // caixa de caminho, botões) e, numa janela estreita, uma linha reta empurrava o fim dela
+        // para o lado — foi assim que o `not loaded` apareceu **por cima** do painel da IA. Com
+        // quebra, ou a linha cabe inteira ou o excedente desce, nunca invade o vizinho.
+        ui.horizontal_wrapped(|ui| {
             ui.label("Load autocomplete:");
 
             // Servidor: o primeiro marcado é o padrão. Combo **com busca** (o mesmo dos outros
@@ -746,14 +750,14 @@ Selection unchanged."
         request
     }
 
-    /// Linha **Saved query** acima do editor: escolher carrega o SQL, `✕` exclui, e os diálogos
+    /// linha **Saved query** acima do editor: escolher carrega o SQL, `✕` exclui, e os diálogos
     /// (nome e confirmações) vivem aqui.
     ///
     /// Devolve um [`Request::SaveSavedQueries`] quando a lista precisa ser gravada.
     fn saved_row(&mut self, ui: &mut egui::Ui) -> Option<Request> {
         let mut request = None;
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Saved query:");
 
             let selected = self.saved.source.clone().unwrap_or_default();
@@ -1057,10 +1061,9 @@ Selection unchanged."
         // O popup já gravou o texto aceito no buffer; o retorno não tem o que fazer aqui.
         drop(output);
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Output directory");
             ui.add(egui::TextEdit::singleline(&mut self.output_directory).desired_width(250.0));
-
             // Dois botões ao lado da caixa: escolher (abre o seletor do app) e abrir (mostra a pasta
             // no gerenciador de arquivos). Ícone + tooltip para não roubar largura da caixa.
             if crate::icons::button_text(ui, crate::icons::Icon::FolderOpen, "Escolher")
@@ -1683,8 +1686,9 @@ Selection unchanged."
         let form_height = (total - table_height).max(MIN_FORM_HEIGHT);
 
         // Barra **sólida** (não flutuante): o padrão do egui é `floating`, que só aparece enquanto o
-        // usuário rola — e some depois. Numa tela que cresce sozinha, a barra precisa ser visível
-        // o tempo todo, senão ninguém descobre que há mais conteúdo abaixo.
+        // usuário rola — e some depois. Sólida, ela é uma faixa na borda; mas só quando o formulário
+        // não cabe: uma barra fixa numa tela que quase sempre cabe lia como defeito (e roubava
+        // largura do editor).
         let dt = ui.input(|input| input.stable_dt);
         let animated_offset = self.form_scroll.step(dt);
 
@@ -1695,7 +1699,9 @@ Selection unchanged."
                     .id_salt("query_form")
                     .max_height(form_height)
                     .auto_shrink([false, false])
-                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible);
+                    .scroll_bar_visibility(
+                        egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
+                    );
 
                 // Enquanto anima, o offset vem da animação; fora disso o `ScrollArea` obedece ao
                 // usuário (roda, arrasto da barra, teclado).
@@ -2767,6 +2773,79 @@ mod tests {
             main.iter().any(|(text, _)| text == "Load autocomplete:"),
             "a referência do autocomplete fica na área principal: {main:?}"
         );
+    }
+
+    /// **Nada do formulário é pintado fora da largura dele.**
+    ///
+    /// Com as duas laterais abertas, o conteúdo fica estreito; as linhas de controles de largura
+    /// própria (duas combos de 200, o caminho de saída de 250, os botões) transbordavam para a
+    /// direita e o texto caía **por cima** do painel da IA — foi o que apareceu ao encolher a janela.
+    /// As linhas quebram em vez de transbordar; aqui nenhum texto passa da largura dada à área.
+    #[test]
+    fn the_form_never_paints_past_its_width() {
+        let ctx = egui::Context::default();
+        // A largura da área de conteúdo com as duas laterais abertas: 1296 de janela - 400 da
+        // sidebar - 12 de respiro - 360 do painel da IA - margens do painel central.
+        const WIDTH: f32 = 500.0;
+
+        for _ in 0..2 {
+            let mut state = State::default();
+            let servers = [server("Local")];
+            state.sync_servers(&servers);
+            let reference = crate::reference::Reference::default();
+
+            // O limite é a **janela**: com uma área de conteúdo pura, o painel central ocupa a
+            // largura toda e o que passar dela já está fora (no app, sobre o painel da IA).
+            let limit = WIDTH;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(WIDTH, 700.0),
+                    )),
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let _ = state.ui(ui, &servers, None, &reference);
+                    });
+                },
+            );
+
+            let mut past: Vec<(String, f32)> = Vec::new();
+            collect_past(&output.shapes, limit, &mut past);
+            output.textures_delta.clear();
+
+            assert!(past.is_empty(), "texto pintado além de {limit}: {past:?}");
+        }
+    }
+
+    /// Junta os textos cuja borda direita passa de `limit`: `(texto, borda)`.
+    fn collect_past(
+        shapes: &[egui::epaint::ClippedShape],
+        limit: f32,
+        out: &mut Vec<(String, f32)>,
+    ) {
+        fn walk(shape: &egui::Shape, limit: f32, out: &mut Vec<(String, f32)>) {
+            match shape {
+                egui::Shape::Text(text) => {
+                    let right = text.pos.x + text.galley.size().x;
+                    if right > limit + 1.0 {
+                        out.push((text.galley.text().to_string(), right));
+                    }
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, limit, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for clipped in shapes {
+            walk(&clipped.shape, limit, out);
+        }
     }
 
     /// **Ao abrir a aba**, a descoberta é pedida para **todos** os servidores — não só o primeiro.

@@ -1180,6 +1180,12 @@ impl eframe::App for App {
                     ..egui::Margin::ZERO
                 })
                 .show(ui, |ui| {
+                    // **Nada aqui pinta fora desta área.** O `Frame` não recorta, e as linhas de
+                    // controles de largura própria (referência do autocomplete, diretório de
+                    // saída) transbordavam sobre o painel da IA quando a janela encolhia — o
+                    // painel ficava com o texto do editor por cima. Recortar é a garantia; as
+                    // linhas que mais transbordavam também passaram a quebrar em vez de transbordar.
+                    ui.set_clip_rect(ui.max_rect());
                     // Recolhidos, os painéis **não são painéis**: viram alças no topo da área de
                     // conteúdo — `›` à esquerda (sidebar) e `✦` à direita (IA). Um `Panel` aqui
                     // desenharia a divisória de altura inteira.

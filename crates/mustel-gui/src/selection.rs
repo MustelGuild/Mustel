@@ -534,10 +534,10 @@ impl SelectionState {
         }
     }
 
-    /// Esquece o seletor de **todos** os servidores (a vassoura do combo).
+    /// Esquece o seletor de **todos** os servidores (o botão ao lado do combo).
     ///
     /// Não desmarca nada: o que a query marcou continua marcado, só deixa de ser atribuído a ela.
-    /// Independe do filtro — a vassoura é sobre "todos", não sobre o escopo da tela.
+    /// Independe do filtro — o botão é sobre "todos", não sobre o escopo da tela.
     pub fn forget_all_selectors(&mut self) {
         self.server_selectors.clear();
         // Sem rótulo não há "o que o seletor marcou": o `Reset` volta a ser `Clear`.
@@ -1129,10 +1129,10 @@ mod tests {
         );
     }
 
-    /// A vassoura esquece o seletor de **todos** os servidores — e não desmarca nada.
+    /// O botão esquece o seletor de **todos** os servidores — e não desmarca nada.
     /// CONTRACT: IF-240
     #[test]
-    fn the_broom_forgets_every_selector_without_unmarking() {
+    fn forgetting_removes_the_selector_without_unmarking() {
         let mut state = SelectionState::default();
         let servers = servers();
         state.sync_registry(&servers);
@@ -1147,7 +1147,7 @@ mod tests {
         assert_eq!(state.selectors_count(), 2);
         assert_eq!(state.marked_count(), 2);
 
-        // Mesmo com filtro num servidor, a vassoura é sobre **todos**.
+        // Mesmo com filtro num servidor, o botão é sobre **todos**.
         state.set_server_filter(Some("Local".to_string()));
         state.forget_all_selectors();
 
@@ -1207,7 +1207,7 @@ mod tests {
     /// Esquecer o seletor do escopo e esquecer **todos** são coisas diferentes.
     /// CONTRACT: IF-240
     #[test]
-    fn the_none_row_and_the_broom_differ_in_scope() {
+    fn the_none_row_and_the_forget_button_differ_in_scope() {
         let mut state = SelectionState::default();
         let servers = servers();
         state.sync_registry(&servers);

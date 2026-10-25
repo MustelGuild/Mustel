@@ -38,8 +38,13 @@ pub enum Icon {
     Check,
     /// Errado.
     Cross,
-    /// Vassoura (limpar).
-    Broom,
+    /// Esquece o seletor aplicado (o escopo volta a ficar **sem** seletor).
+    ///
+    /// Seta de voltar ("desfazer"), não uma seta circular: na sidebar ele fica **embaixo** do
+    /// refresh do servidor, na mesma coluna, e dois anéis com seta empilhados se confundiam (o de
+    /// baixo parecia um reload apagado). Voltando o seletor ao que era, o desenho diz a ação — e o
+    /// tooltip completa: a **seleção não muda**.
+    Forget,
     /// Seta para baixo.
     ChevronDown,
     /// Seta para a esquerda.
@@ -80,7 +85,7 @@ impl Icon {
             Icon::OpenExternal => "arrow-top-right-on-square",
             Icon::Check => "check",
             Icon::Cross => "x-mark",
-            Icon::Broom => "arrow-path-rounded-square",
+            Icon::Forget => "arrow-uturn-left",
             Icon::ChevronDown => "chevron-down",
             Icon::ChevronLeft => "chevron-left",
             Icon::ChevronRight => "chevron-right",
@@ -267,7 +272,7 @@ mod tests {
         Icon::FolderOpen,
         Icon::Check,
         Icon::Cross,
-        Icon::Broom,
+        Icon::Forget,
         Icon::ChevronDown,
         Icon::ChevronLeft,
         Icon::ChevronRight,

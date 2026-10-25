@@ -1409,7 +1409,7 @@ Selection unchanged."
             }
 
             // O **mesmo slot** do `⟳` do servidor: enquanto o banco responde, o spinner ocupa o
-            // lugar da vassoura (em vez de empurrá-la e desalinhar a linha).
+            // lugar do botão que esquece o seletor (em vez de empurrá-lo e desalinhar a linha).
             ui.allocate_ui_with_layout(
                 icon_box,
                 egui::Layout::right_to_left(egui::Align::Center),
@@ -1421,13 +1421,13 @@ Selection unchanged."
                         ui.spinner().on_hover_text("Running the query...");
                     } else if crate::icons::button_enabled(
                         ui,
-                        crate::icons::Icon::Broom,
+                        crate::icons::Icon::Forget,
                         self.selection.selectors_count() > 0,
                     )
                     .on_hover_text("Forget the selector on every server (the selection stays)")
                     .clicked()
                     {
-                        // A vassoura esquece o seletor de **todos** os servidores (a linha `(none)`
+                        // O botão esquece o seletor de **todos** os servidores (a linha `(none)`
                         // do combo só esquece o do escopo).
                         self.selection.forget_all_selectors();
                         self.selection_message = Some(
@@ -3061,12 +3061,12 @@ mod tests {
         }
     }
 
-    /// Os dois botões laterais (o refresh do servidor e a vassoura do seletor) ficam **na mesma
+    /// Os dois botões laterais (o refresh do servidor e o de esquecer o seletor) ficam **na mesma
     /// coluna**, com os combos terminando no mesmo lugar.
     ///
     /// Pedido do dono: o combo do `Query Selector` estava mais curto que o do `Server` porque aquela
-    /// linha reservava dois slots (spinner + vassoura) e a outra só um, e o ícone saía deslocado. O
-    /// spinner agora ocupa o **mesmo** slot da vassoura, e as duas linhas usam um `combo_width` só.
+    /// linha reservava dois slots (spinner + botão) e a outra só um, e o ícone saía deslocado. O
+    /// spinner agora ocupa o **mesmo** slot do botão, e as duas linhas usam um `combo_width` só.
     ///
     /// A prova aqui são os **ícones**: eles vêm da fonte embutida e são centrados dentro da mesma
     /// caixa, então a coluna em que caem é a medida direta do alinhamento.
@@ -3077,7 +3077,7 @@ mod tests {
         let servers = [server("Local")];
         let mut state = State::default();
         state.sync_servers(&servers);
-        // A vassoura só existe com seletor no escopo — é ela que ocupa o slot medido.
+        // O botão de esquecer só existe com seletor no escopo — é ele que ocupa o slot medido.
         state.selection.apply(
             &[mustel_core::usecases::custom_databases::ServerSelection {
                 server: "Local".to_string(),
@@ -3118,10 +3118,10 @@ mod tests {
         };
 
         let refresh = x_of(crate::icons::Icon::Refresh.glyph());
-        let broom = x_of(crate::icons::Icon::Broom.glyph());
+        let forget = x_of(crate::icons::Icon::Forget.glyph());
         assert!(
-            (refresh - broom).abs() <= 1.0,
-            "o refresh do servidor e a vassoura têm de ficar na mesma coluna: {refresh} vs {broom}"
+            (refresh - forget).abs() <= 1.0,
+            "o refresh do servidor e o botão de esquecer têm de ficar na mesma coluna: {refresh} vs {forget}"
         );
         assert!(refresh > 300.0, "e no fim da linha, não no meio: {refresh}");
     }

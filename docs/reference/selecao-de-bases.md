@@ -102,8 +102,8 @@ automaticamente. O status diz quantas estão marcadas e de onde vieram:
 > `103 marked · from 'Producao'`
 
 O botão da direita muda de **nome** conforme o escopo (é a coluna `Clear` / `Reset` da tabela
-acima): sem seletor aparece `Clear`, com seletor aparece `Reset`. Esquecer o seletor (`(none)` ou a
-vassoura) devolve o botão ao estado `Clear`. O
+acima): sem seletor aparece `Clear`, com seletor aparece `Reset`. Esquecer o seletor (`(none)` ou o
+botão que esquece) devolve o botão ao estado `Clear`. O
 [porquê](../explanation/selecao-de-bases.md#por-que-clear-vira-reset) está na explicação.
 
 O toggle **Show only marked**, na mesma linha do status, esconde as bases não marcadas — é
@@ -132,11 +132,12 @@ nunca o do filtro atual.
 A linha `(none)` **esquece o rótulo** do escopo, sem desmarcar nada: marcar uma base à mão não
 apaga o nome do seletor, e o rótulo diz de onde a seleção veio.
 
-Ao lado do combo, o botão `∅` é a **vassoura**: esquece o seletor de **todos** os servidores de uma
-vez, sem desmarcar nada, e age mesmo com o filtro num servidor. Fica apagado quando não há seletor
-para limpar. As duas linhas (Server e Query Selector) têm a mesma geometria — combos da mesma largura
-e o botão lateral na mesma coluna —, e o indicador de progresso aparece **no lugar** da vassoura
-enquanto a aplicação roda.
+Ao lado do combo fica o botão que **esquece o seletor**: o ícone é uma seta de voltar ("desfazer"),
+e não uma seta circular — na mesma coluna, logo abaixo do refresh do servidor, dois anéis com seta
+empilhados se confundiam. Ele esquece o seletor de **todos** os servidores de uma vez, sem desmarcar
+nada, e age mesmo com o filtro num servidor. Fica apagado quando não há seletor para limpar. As duas
+linhas (Server e Query Selector) têm a mesma geometria — combos da mesma largura e o botão lateral na
+mesma coluna —, e o indicador de progresso aparece **no lugar** dele enquanto a aplicação roda.
 
 ### Falha ao aplicar
 

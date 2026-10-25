@@ -238,7 +238,7 @@ pub fn artifact(label: &str, path: &Path) -> ArtifactCapture {
 
     ArtifactCapture {
         path: label.to_string(),
-        sha256: Some(format!("{:x}", hasher.finalize())),
+        sha256: Some(crate::hex::lower(&hasher.finalize())),
         text: String::from_utf8(bytes)
             .ok()
             .filter(|text| text.len() <= 64 * 1024),

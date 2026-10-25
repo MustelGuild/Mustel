@@ -10,6 +10,7 @@
 pub mod capture;
 pub mod compare;
 pub mod config_sandbox;
+mod hex;
 pub mod paths;
 pub mod pgpass_sandbox;
 pub mod report;

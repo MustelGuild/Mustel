@@ -10,7 +10,7 @@
 //! - uma falha mantém o transcript, para tentar de novo sem perder a conversa.
 
 use mustel_core::config::model::AiProfile;
-use mustel_core::usecases::ai::ChatMessage;
+use mustel_core::usecases::ai::{self, ChatMessage};
 use mustel_core::usecases::ai_session::AiSession;
 use mustel_core::usecases::ddl::Ddl;
 
@@ -39,8 +39,13 @@ pub struct AiChat {
     pub selected_database: String,
     /// Perfil selecionado nos combos.
     pub selected_profile: String,
-    /// DDL da sessão (vem do cache ou do `pg_dump`).
+    /// DDL da sessão (vem do cache em disco ou do catálogo).
     pub ddl: Option<Ddl>,
+    /// O DDL carregado passou do limite de aviso (`ai::LARGE_DDL_CHARS`)?
+    ///
+    /// Calculado **uma vez** em [`AiChat::apply_ddl`]: contar caracteres a cada quadro num schema
+    /// grande seria desperdício, e o painel se desenha continuamente.
+    pub ddl_is_large: bool,
     /// Turno em andamento.
     pub turn: Turn,
     /// Último erro, mostrado acima do campo de envio.
@@ -108,6 +113,7 @@ impl AiChat {
             messages: Vec::new(),
         };
         self.ddl = None;
+        self.ddl_is_large = false;
         self.error = None;
         self.alert_dismissed = false;
         self.input.clear();
@@ -124,6 +130,7 @@ impl AiChat {
             self.session.database = self.selected_database.clone();
             self.session.profile_id = self.selected_profile.clone();
         }
+        self.ddl_is_large = ai::is_large_schema(&ddl.text);
         self.ddl = Some(ddl);
         self.error = None;
     }
@@ -339,6 +346,22 @@ pub fn ui(
             });
         }
     });
+
+    if let Some(ddl) = &chat.ddl
+        && chat.ddl_is_large
+    {
+        let size = ddl.text.len() / 1024;
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(format!(
+                    "Large schema ({size} KB): the whole schema is sent with every message, so the \
+                     provider may refuse it for context size."
+                ))
+                .color(crate::theme::warning(ui)),
+            )
+            .wrap(),
+        );
+    }
 
     if chat.ddl.is_none() && !chat.selected_database.is_empty() {
         ui.weak("Load the schema to start the conversation.");
@@ -631,6 +654,57 @@ mod tests {
         chat.input = "   ".to_string();
         assert!(chat.ask().is_none());
         assert_eq!(chat.error.as_deref(), Some("Type what you need first."));
+    }
+
+    /// O aviso de schema grande aparece no cabeçalho — e só quando o DDL passa do limite.
+    #[test]
+    fn a_large_schema_shows_a_warning_in_the_header() {
+        let ctx = egui::Context::default();
+
+        fn texts_of(ctx: &egui::Context, chat: &mut AiChat) -> Vec<String> {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.set_max_width(360.0);
+                    let _ = super::ui(ui, chat, &[], &[profile()], &[], false, None);
+                });
+            });
+            let mut texts: Vec<String> = Vec::new();
+            fn walk(shape: &egui::Shape, out: &mut Vec<String>) {
+                match shape {
+                    egui::Shape::Text(text) => out.push(text.galley.text().to_string()),
+                    egui::Shape::Vec(shapes) => {
+                        for shape in shapes {
+                            walk(shape, out);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            for clipped in &output.shapes {
+                walk(&clipped.shape, &mut texts);
+            }
+            output.textures_delta.clear();
+            texts
+        }
+
+        let mut chat = novo_chat();
+        let small = texts_of(&ctx, &mut chat);
+        assert!(
+            !small.iter().any(|text| text.contains("Large schema")),
+            "o DDL de teste é pequeno e não pode avisar: {small:?}"
+        );
+
+        chat.apply_ddl(Ddl {
+            text: "x".repeat(ai::LARGE_DDL_CHARS + 1),
+            dumped_at: ddl().dumped_at,
+        });
+        assert!(chat.ddl_is_large, "o limite foi passado");
+
+        let large = texts_of(&ctx, &mut chat);
+        assert!(
+            large.iter().any(|text| text.contains("Large schema")),
+            "o aviso precisa aparecer no cabeçalho: {large:?}"
+        );
     }
 
     /// O cabeçalho se chama **`AI Generate SQL`** e o botão do canto esconde o painel.

@@ -27,6 +27,11 @@ cache, o painel pede `Load schema`.
 > (`server version 18.3; pg_dump version 16.6`). Pelo catálogo, funciona em qualquer versão de servidor
 > que o app já consiga consultar.
 
+O schema vai **inteiro** em cada pedido (sem truncar). Quando passa de **200.000 caracteres**, o
+cabeçalho mostra `Large schema (<tamanho> KB): the whole schema is sent with every message…`: é um
+aviso, não um bloqueio — o provedor pode recusar o pedido por tamanho de contexto ou cobrar mais.
+O texto continua indo completo; para reduzir, use um banco com menos relações.
+
 ## A conversa
 
 O campo de envio aceita texto livre ("vendas por mês"). Cada resposta vem com o SQL realçado e

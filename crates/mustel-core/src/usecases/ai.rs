@@ -98,6 +98,14 @@ impl ChatMessage {
 /// e o contexto são do provedor.
 pub const LARGE_DDL_CHARS: usize = 200_000;
 
+/// O DDL passou do limite de aviso?
+///
+/// Conta **caracteres** (não bytes), como o nome da constante diz: um schema cheio de acento não
+/// deve disparar o aviso antes da hora. Não trunca nada — quem chama só avisa o dono.
+pub fn is_large_schema(ddl: &str) -> bool {
+    ddl.chars().count() > LARGE_DDL_CHARS
+}
+
 /// O prompt de sistema: instrução fixa + DDL marcado como **dado**.
 ///
 /// O DDL vai entre `<schema>` e `</schema>` com a frase que diz que aquilo não é instrução — é a
@@ -438,6 +446,37 @@ mod tests {
             .expect_err("erro")
             .to_string();
         assert!(empty.contains("without a message"), "{empty}");
+    }
+
+    /// O aviso de schema grande: no limite exato **não** avisa; um caractere além, sim.
+    #[test]
+    fn a_schema_at_the_limit_is_not_large_yet() {
+        assert!(
+            !is_large_schema(&"x".repeat(LARGE_DDL_CHARS)),
+            "no limite ainda não avisa"
+        );
+        assert!(
+            is_large_schema(&"x".repeat(LARGE_DDL_CHARS + 1)),
+            "um caractere além já avisa"
+        );
+        assert!(!is_large_schema(""), "schema vazio não avisa");
+    }
+
+    /// O limite conta **caracteres**, não bytes: acento não antecipa o aviso.
+    #[test]
+    fn the_limit_counts_characters_not_bytes() {
+        // 100 mil "ã" = 200 mil bytes em UTF-8, mas só 100 mil caracteres.
+        let accented = "ã".repeat(LARGE_DDL_CHARS / 2);
+        assert!(
+            accented.len() >= LARGE_DDL_CHARS,
+            "o teste só vale se os bytes passarem do limite: {} bytes",
+            accented.len()
+        );
+        assert!(
+            !is_large_schema(&accented),
+            "100 mil caracteres ainda cabem no limite de 200 mil"
+        );
+        assert!(is_large_schema(&"ã".repeat(LARGE_DDL_CHARS + 1)));
     }
 
     /// O corpo leva modelo, a temperatura do perfil e o system prompt uma vez só.

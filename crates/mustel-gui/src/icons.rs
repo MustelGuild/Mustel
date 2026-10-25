@@ -169,11 +169,15 @@ pub fn button(ui: &mut egui::Ui, icon: Icon) -> egui::Response {
 }
 
 /// Ícone clicável, respeitando o estado habilitado.
+///
+/// **Com moldura** (`.small()`, sem `frame(false)`): ícone solto no meio da linha não parece
+/// clicável — a moldura é o que diz "isto é um botão". Era assim antes da migração para a fonte de
+/// ícones (`small_button`/`Button`), e continua valendo para os quatro tamanhos de linha.
 pub fn button_enabled(ui: &mut egui::Ui, icon: Icon, enabled: bool) -> egui::Response {
     let size = ui.text_style_height(&egui::TextStyle::Body);
     // Sem cor fixa: quem pinta (o `Button`) decide, inclusive o cinza do desabilitado.
     let text = egui::RichText::new(icon.glyph().to_string()).font(font_id(size));
-    let button = egui::Button::new(text).frame(false);
+    let button = egui::Button::new(text).small();
     ui.add_enabled(enabled, button)
 }
 
@@ -326,6 +330,51 @@ mod tests {
         assert_ne!(
             painted[1], painted[0],
             "o desabilitado tem de parecer desabilitado"
+        );
+    }
+
+    /// O botão de ícone pinta **fundo**: ícone solto no meio da linha não parece clicável.
+    ///
+    /// Foi a regressão da migração: trocar `small_button`/`Button` por `Button::frame(false)`
+    /// deixou os três botões de ícone (reload do servidor, esquecedor do seletor, carregar a
+    /// referência) com cara de texto decorado. Este teste exige um retângulo preenchido no centro
+    /// do botão.
+    #[test]
+    fn the_icon_button_paints_a_frame() {
+        let ctx = egui::Context::default();
+        let mut rect = egui::Rect::NOTHING;
+
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                rect = button_enabled(ui, Icon::Refresh, true).rect;
+            });
+        });
+
+        fn find_fill(shape: &egui::Shape, inside: egui::Rect, found: &mut bool) {
+            match shape {
+                egui::Shape::Rect(fill) if fill.fill.a() > 0 => {
+                    if inside.contains(fill.rect.center()) && fill.rect.width() > 8.0 {
+                        *found = true;
+                    }
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        find_fill(shape, inside, found);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut filled = false;
+        for clipped in &output.shapes {
+            find_fill(&clipped.shape, rect, &mut filled);
+        }
+        output.textures_delta.clear();
+
+        assert!(
+            filled,
+            "o botão de ícone tem moldura (fundo pintado), senão não parece clicável: {rect:?}"
         );
     }
 

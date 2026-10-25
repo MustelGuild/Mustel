@@ -91,13 +91,15 @@ impl Reference {
     }
 
     /// O que dizer no tooltip do `⟳` quando ele está desabilitado.
+    /// Por que o botão de carregar está desabilitado (mensagem do **hover**), em inglês como o
+    /// resto da janela.
     pub fn blocked_reason(&self, server: &str, database: &str) -> Option<&'static str> {
         if server.is_empty() || database.is_empty() {
-            return Some("Escolha um servidor e um banco para carregar o esquema");
+            return Some("Pick a server and a database to load the schema");
         }
         if self.has_password(server) == Some(false) {
             return Some(
-                "Sem senha no cofre para este servidor: guarde com `mustel settings db-servers set-password`",
+                "No password in the vault for this server: store it with `mustel settings db-servers set-password`",
             );
         }
         None

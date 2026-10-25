@@ -699,12 +699,11 @@ Selection unchanged."
 
             let can_load = reference.can_load(&self.reference_server, &self.reference_database);
             let load = crate::icons::button_enabled(ui, crate::icons::Icon::Refresh, can_load);
-            let load = match reference
-                .blocked_reason(&self.reference_server, &self.reference_database)
-            {
-                Some(reason) => load.on_disabled_hover_text(reason),
-                None => load.on_hover_text("Carregar o esquema deste banco para o autocomplete"),
-            };
+            let load =
+                match reference.blocked_reason(&self.reference_server, &self.reference_database) {
+                    Some(reason) => load.on_disabled_hover_text(reason),
+                    None => load.on_hover_text("Load this database's schema for the autocomplete"),
+                };
 
             if load.clicked() {
                 request = Some(Request::LoadSchema {

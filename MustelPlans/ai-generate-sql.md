@@ -705,3 +705,18 @@ Append-only.
   mutação conferida (com `left: 0`, ele acusa "o título começa em 224 e tem de ficar ao menos 236").
   Verificado na janela nas três categorias e na largura mínima. `cargo test --workspace` -> 654
   testes; clippy e fmt limpos.
+- `[2026-10-25]` **Rodapé da aba Settings: atalho para o arquivo** (pedido do dono: a frase
+  "Stored in the gui section of mustel.jsonc" não precisava existir; no lugar dela, um link direto
+  para editar o arquivo). A frase saiu e o rodapé virou o link **`Edit in mustel.jsonc`**, que abre
+  o arquivo no editor do sistema (`desktop::open_file`, novo, com o mesmo desenho do
+  `open_directory`: função pura do comando + um único `spawn`, sem shell). Por SO: Windows
+  `notepad`, Linux `xdg-open`, macOS `open` — `explorer` só **seleciona** o arquivo, e
+  `ShellExecute` (FFI) é barrado por `unsafe_code = "forbid"`. Sem arquivo no disco (nada foi
+  gravado ainda), o rodapé explica em vez de abrir um editor vazio (`config_open_hint`, pura).
+  Verificado na janela: o clique abriu `mustel.jsonc` no Notepad (título "mustel.jsonc -
+  Notepad"). O caminho "arquivo ausente" não deu para forçar numa execução real — o `dirs` do
+  Windows lê a pasta conhecida do SO e ignora `APPDATA` no processo — então ele é provado pelo
+  teste unitário da decisão. Testes novos: `the_menu_footer_links_to_the_config_file`,
+  `the_config_link_explains_a_missing_file`, `the_file_open_command_uses_the_system_editor`,
+  `a_file_path_with_spaces_stays_a_single_argument`. `cargo test --workspace` -> 658 testes;
+  clippy e fmt limpos. IF-248 atualizada.

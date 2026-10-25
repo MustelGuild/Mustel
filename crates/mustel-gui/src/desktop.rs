@@ -1,10 +1,11 @@
-//! Integração com a área de trabalho: abrir uma pasta no gerenciador de arquivos.
+//! Integração com a área de trabalho: abrir uma pasta no gerenciador de arquivos e abrir um arquivo
+//! no editor do sistema.
 //!
 //! Duas responsabilidades, separadas de propósito:
 //!
-//! - **decidir** o comando e os argumentos por sistema operacional ([`open_command_for`]) — função pura,
-//!   testável em qualquer máquina;
-//! - **executar** ([`open_directory`]), que é o único ponto que faz `spawn`.
+//! - **decidir** o comando e os argumentos por sistema operacional ([`open_command_for`],
+//!   [`open_file_command_for`]) — funções puras, testáveis em qualquer máquina;
+//! - **executar** ([`open_directory`], [`open_file`]), que são os únicos pontos que fazem `spawn`.
 //!
 //! O seletor de pastas propriamente dito vive em [`crate::picker`]; aqui só o que toca o SO.
 
@@ -63,8 +64,36 @@ pub fn open_directory(directory: &Path) -> std::io::Result<()> {
     Command::new(program).args(args).spawn().map(|_| ())
 }
 
-/// Resolve o caminho digitado na caixa para um caminho absoluto.
+/// Programa e argumentos para abrir `file` no **editor** do sistema.
 ///
+/// Função pura, como [`open_command_for`]. As diferenças por SO não são capricho:
+///
+/// - **Windows**: `notepad`. Abrir arquivo com a ação padrão pediria `ShellExecute` (FFI, barrado
+///   por `unsafe_code = "forbid"`) ou um shell (`cmd /c start`, proibido pela regra de processos
+///   externos); `explorer arquivo` só **seleciona** o arquivo na pasta — não edita. `notepad` é o
+///   editor que existe em toda instalação e abre texto puro sem intermediário.
+/// - **Linux/macOS**: `xdg-open`/`open` com o arquivo abrem no aplicativo padrão do dono (o editor
+///   que ele escolheu), que é o comportamento desejado quando existe.
+pub fn open_file_command_for(os: TargetOs, file: &Path) -> (String, Vec<String>) {
+    let path = file.to_string_lossy().to_string();
+
+    match os {
+        TargetOs::Windows => ("notepad".to_string(), vec![path]),
+        TargetOs::Linux => ("xdg-open".to_string(), vec![path]),
+        TargetOs::MacOs => ("open".to_string(), vec![path]),
+    }
+}
+
+/// Abre `file` no editor do sistema.
+///
+/// Como [`open_directory`], o processo é disparado e **não** é esperado: o editor é do usuário, não
+/// do app.
+pub fn open_file(file: &Path) -> std::io::Result<()> {
+    let (program, args) = open_file_command_for(TargetOs::current(), file);
+    Command::new(program).args(args).spawn().map(|_| ())
+}
+
+/// Resolve o caminho digitado na caixa para um caminho absoluto.///
 /// A caixa aceita caminho relativo (`./results`); abrir ou criar relativo ao *working directory do
 /// processo* é frágil — o app pode ter sido aberto de outro lugar. Relativo é resolvido a partir de
 /// `base`, e o resultado sai normalizado.
@@ -118,6 +147,45 @@ mod tests {
     fn a_path_with_spaces_stays_a_single_argument() {
         let (_, args) = open_command_for(TargetOs::Linux, Path::new("/tmp/minha pasta/resultados"));
         assert_eq!(args, vec!["/tmp/minha pasta/resultados".to_string()]);
+    }
+
+    /// O comando de **abrir arquivo** por SO: editor no Windows, aplicativo padrão nos demais.
+    ///
+    /// O Windows não pode usar `explorer` (só seleciona) nem shell/FFI — daí o `notepad`.
+    #[test]
+    fn the_file_open_command_uses_the_system_editor() {
+        let config = Path::new("C:\\Users\\dev\\AppData\\Roaming\\mustel\\mustel.jsonc");
+
+        let windows = open_file_command_for(TargetOs::Windows, config);
+        assert_eq!(windows.0, "notepad");
+        assert_eq!(
+            windows.1,
+            vec!["C:\\Users\\dev\\AppData\\Roaming\\mustel\\mustel.jsonc".to_string()]
+        );
+
+        assert_eq!(
+            open_file_command_for(
+                TargetOs::Linux,
+                Path::new("/home/dev/.config/mustel/mustel.jsonc")
+            )
+            .0,
+            "xdg-open"
+        );
+        assert_eq!(
+            open_file_command_for(TargetOs::MacOs, Path::new("/Users/dev/mustel.jsonc")).0,
+            "open"
+        );
+    }
+
+    /// Caminho com espaço também vai cru na abertura de arquivo.
+    #[test]
+    fn a_file_path_with_spaces_stays_a_single_argument() {
+        let (_, args) = open_file_command_for(
+            TargetOs::Windows,
+            Path::new("C:\\Users\\dev\\App Data\\mustel.jsonc"),
+        );
+        assert_eq!(args.len(), 1, "um argumento só: {args:?}");
+        assert_eq!(args[0], "C:\\Users\\dev\\App Data\\mustel.jsonc");
     }
 
     /// Relativo é resolvido a partir da base informada, e sai absoluto.

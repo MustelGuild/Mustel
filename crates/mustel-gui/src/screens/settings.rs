@@ -166,6 +166,8 @@ pub struct State {
     ai_message: Option<String>,
     /// Categoria aberta no menu da esquerda.
     category: Category,
+    /// Recado do atalho do arquivo de configuração (arquivo ausente, editor que não abriu).
+    config_hint: Option<String>,
 }
 
 /// O formulário de um perfil de IA (nome, endpoint, modelo, temperatura e chave).
@@ -306,6 +308,29 @@ impl State {
         )
     }
 
+    /// Abre o `mustel.jsonc` no editor do sistema.
+    ///
+    /// O arquivo guarda as preferências e o cadastro; editar à mão é gesto de quem quer o arquivo,
+    /// não uma explicação de onde ele está. A decisão do que dizer fica em [`config_open_hint`]
+    /// (pura); aqui só se dispara o processo.
+    fn open_config_file(&mut self) {
+        let Some(path) = mustel_core::config::paths::config_file_path() else {
+            self.config_hint = Some("The system has no config directory.".to_string());
+            return;
+        };
+
+        match config_open_hint(&path) {
+            // Arquivo ausente (nada foi gravado ainda): explica em vez de abrir um editor vazio —
+            // `notepad` abriria uma janela perguntando se pode criar, e `xdg-open` falharia calado.
+            Some(hint) => self.config_hint = Some(hint),
+            None => {
+                self.config_hint = crate::desktop::open_file(&path)
+                    .err()
+                    .map(|error| format!("Could not open {}: {error}", path.display()));
+            }
+        }
+    }
+
     /// O **menu** de categorias: uma entrada por categoria, com o fundo de seleção ocupando a
     /// largura toda.
     ///
@@ -323,13 +348,23 @@ impl State {
             }
         }
 
-        // Rodapé: onde as escolhas são gravadas. Vale para as três categorias, então mora aqui e não
-        // no topo de uma delas (era onde estava antes, como se fosse só da aparência).
+        // Rodapé: **atalho para o arquivo**, e não uma frase dizendo onde ele fica (a frase saiu:
+        // quem quer editar à mão quer o arquivo aberto, não o caminho escrito). Vale para as três
+        // categorias, então mora aqui.
         ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
             ui.add_space(10.0);
             ui.separator();
             ui.add_space(2.0);
-            ui.weak("Stored in the gui section of mustel.jsonc.");
+            if let Some(hint) = &self.config_hint {
+                ui.weak(hint);
+            }
+            if ui
+                .link("Edit in mustel.jsonc")
+                .on_hover_text("Open the configuration file in the system editor")
+                .clicked()
+            {
+                self.open_config_file();
+            }
         });
     }
 
@@ -888,6 +923,22 @@ fn slug(name: &str, existing: &[mustel_core::config::model::AiProfile]) -> Strin
     unreachable!()
 }
 
+/// O que o atalho do rodapé diz antes de abrir o arquivo, ou `None` quando é para abrir.
+///
+/// Pura de propósito: a decisão depende só do caminho (`is_file`), então dá para testar os dois
+/// casos sem tocar no ambiente nem abrir editor nenhum.
+fn config_open_hint(path: &std::path::Path) -> Option<String> {
+    if path.is_file() {
+        return None;
+    }
+    Some(format!(
+        "{} does not exist yet — change a setting to save it.",
+        path.file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.display().to_string())
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1002,6 +1053,67 @@ mod tests {
                 .iter()
                 .any(|(text, pos)| text == Category::Appearance.label() && pos.x > CATEGORY_WIDTH),
             "o painel começa à direita do menu: {painted:?}"
+        );
+    }
+
+    /// O atalho só manda abrir quando o arquivo existe; sem ele, o rodapé explica o que fazer.
+    ///
+    /// `notepad` abriria uma janela perguntando se pode criar o arquivo, e `xdg-open`/`open`
+    /// falhariam em silêncio — por isso a decisão é tomada antes do `spawn`.
+    #[test]
+    fn the_config_link_explains_a_missing_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing = dir.path().join("mustel.jsonc");
+        let hint = config_open_hint(&missing).expect("arquivo ausente tem recado");
+        assert!(
+            hint.contains("mustel.jsonc") && hint.contains("does not exist"),
+            "o recado nomeia o arquivo e diz o que fazer: {hint}"
+        );
+
+        std::fs::write(&missing, "{}").expect("escreve");
+        assert_eq!(
+            config_open_hint(&missing),
+            None,
+            "com o arquivo no disco, é para abrir (sem recado)"
+        );
+    }
+
+    /// O rodapé do menu é um **atalho para o arquivo**, não uma frase sobre onde ele fica.
+    ///
+    /// A frase antiga ("Stored in the gui section of mustel.jsonc") saiu a pedido do dono: quem
+    /// procura o rodapé quer abrir o arquivo. O clique **não** é exercitado aqui — ele dispara um
+    /// processo (`notepad`/`xdg-open`), que teste não abre; o comando é conferido em
+    /// `desktop::tests`.
+    /// CONTRACT: IF-248
+    #[test]
+    fn the_menu_footer_links_to_the_config_file() {
+        let ctx = egui::Context::default();
+        let mut state = State::with_prefs(None);
+        state.families = Some(Vec::new());
+
+        let mut painted: Vec<(String, egui::Pos2)> = Vec::new();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(screen(900.0, 700.0), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let _ = state.ui(ui);
+                });
+            });
+            painted.clear();
+            collect_text(&output.shapes, &mut painted);
+            output.textures_delta.clear();
+        }
+
+        assert!(
+            painted
+                .iter()
+                .any(|(text, _)| text == "Edit in mustel.jsonc"),
+            "o rodapé é o atalho para o arquivo: {painted:?}"
+        );
+        assert!(
+            !painted
+                .iter()
+                .any(|(text, _)| text.contains("Stored in the gui section")),
+            "a frase antiga saiu: {painted:?}"
         );
     }
 

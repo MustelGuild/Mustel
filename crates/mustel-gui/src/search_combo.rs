@@ -81,6 +81,24 @@ struct State {
     filter: String,
 }
 
+/// Abre o popup do combo por `id`, para teste.
+///
+/// O estado aberto/fechado mora na memória do `egui`, não em quem chama: sem esta porta, um teste de
+/// fora deste módulo não consegue ver a lista aberta.
+#[cfg(test)]
+pub(crate) fn open_for_test(ctx: &egui::Context, id: &str) {
+    let state_id = egui::Id::unique(("search_combo", id));
+    ctx.data_mut(|data| {
+        data.insert_temp(
+            state_id,
+            State {
+                open: true,
+                filter: String::new(),
+            },
+        )
+    });
+}
+
 /// Desenha o combo e devolve o **índice** do item escolhido neste quadro, quando houver.
 ///
 /// `button_text` é o que aparece no botão: o valor atual, ou vazio quando nada foi escolhido.
@@ -130,7 +148,25 @@ pub fn search_combo_sized(
     search_combo_actionable(ui, id, button_text, items, enabled, size).selected
 }
 
-/// O combo com **ação por linha**: além do item escolhido, devolve qual botão de ação foi clicado.
+/// O combinado de [`search_combo_sized`], explicando por que a lista está **vazia**.
+///
+/// `empty_hint` substitui o "nada casa com a busca" quando não há item nenhum para escolher: a
+/// lista vazia é um estado diferente de uma procura sem resultado, e o combo é o lugar de dizer
+/// isso (ex.: "descobrindo bancos…").
+pub fn search_combo_with_hint(
+    ui: &mut egui::Ui,
+    id: &str,
+    button_text: &str,
+    items: &[Item<'_>],
+    enabled: bool,
+    size: Size,
+    empty_hint: &str,
+) -> Option<usize> {
+    search_combo_full(ui, id, button_text, items, enabled, size, Some(empty_hint)).selected
+}
+
+/// O combo com **ação por linha**: além do item escolhido, devolve qual botão de ação foi clicado
+///.
 ///
 /// Só as linhas com [`Item::with_action`] desenham o botão; clicar nele **não** seleciona a linha
 /// nem fecha a lista (excluir várias seguidas não deve exigir reabrir o combo).
@@ -141,6 +177,19 @@ pub fn search_combo_actionable(
     items: &[Item<'_>],
     enabled: bool,
     size: Size,
+) -> ComboOutcome {
+    search_combo_full(ui, id, button_text, items, enabled, size, None)
+}
+
+/// O corpo do combo: as duas entradas públicas só escolhem se há dica de lista vazia.
+fn search_combo_full(
+    ui: &mut egui::Ui,
+    id: &str,
+    button_text: &str,
+    items: &[Item<'_>],
+    enabled: bool,
+    size: Size,
+    empty_hint: Option<&str>,
 ) -> ComboOutcome {
     let state_id = egui::Id::unique(("search_combo", id));
     let mut state = ui
@@ -247,7 +296,12 @@ pub fn search_combo_actionable(
                         }
 
                         if !any {
-                            ui.weak("Nothing matches the search.");
+                            // Lista vazia de verdade (nada para escolher) pede a explicação de quem
+                            // chamou; busca sem resultado pede a dica de busca.
+                            let _ = match (items.is_empty(), empty_hint) {
+                                (true, Some(hint)) => ui.weak(hint),
+                                _ => ui.weak("Nothing matches the search."),
+                            };
                         }
                     });
             });
@@ -699,6 +753,69 @@ mod tests {
             .find(|(text, _)| text.contains(&arrow))
             .unwrap_or_else(|| panic!("a seta foi desenhada: {painted:?}"));
         assert_eq!(arrow.1, button_color, "e a seta acompanha a cor do valor");
+    }
+
+    /// Lista vazia de verdade mostra a explicação de quem chamou, não a dica de busca.
+    ///
+    /// "Nada casa com a busca" está errado quando não existe **nada** para escolher (ex.: os bancos
+    /// ainda estão sendo descobertos) — e o combo é onde o dono vai olhar.
+    #[test]
+    fn an_empty_list_shows_the_caller_hint() {
+        let ctx = egui::Context::default();
+        let state_id = egui::Id::unique(("search_combo", "hint_combo"));
+
+        let painted = |hint: Option<&str>| -> Vec<String> {
+            let mut texts: Vec<String> = Vec::new();
+            for _ in 0..2 {
+                let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                    ctx.data_mut(|data| {
+                        data.insert_temp(
+                            state_id,
+                            State {
+                                open: true,
+                                filter: String::new(),
+                            },
+                        )
+                    });
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let items: Vec<Item<'_>> = Vec::new();
+                        if let Some(hint) = hint {
+                            let _ = search_combo_with_hint(
+                                ui,
+                                "hint_combo",
+                                "",
+                                &items,
+                                true,
+                                Size::default(),
+                                hint,
+                            );
+                        } else {
+                            let _ = search_combo(ui, "hint_combo", "", &items, true);
+                        }
+                    });
+                });
+                texts.clear();
+                collect_text(&output.shapes, &mut texts);
+                output.textures_delta.clear();
+            }
+            texts
+        };
+
+        let texts = painted(Some("descobrindo bancos…"));
+        assert!(
+            texts.iter().any(|text| text.contains("descobrindo bancos")),
+            "a dica de quem chamou aparece: {texts:?}"
+        );
+        assert!(
+            !texts.iter().any(|text| text.contains("Nothing matches")),
+            "e não a dica de busca: {texts:?}"
+        );
+
+        let texts = painted(None);
+        assert!(
+            texts.iter().any(|text| text.contains("Nothing matches")),
+            "sem dica, a lista vazia continua dizendo que nada casa: {texts:?}"
+        );
     }
 
     /// Junta `(texto, cor de fundo)` de todo `Shape::Text`, descendo nos grupos.

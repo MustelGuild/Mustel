@@ -570,6 +570,18 @@ Selection unchanged."
         self.rows = rows;
     }
 
+    /// Troca o servidor de referência, **invalidando o banco** escolhido.
+    ///
+    /// O banco de outro servidor não vale aqui: manter o nome daria a impressão de que ele existe
+    /// no servidor novo (e o carregamento falharia depois). Escolher o mesmo servidor não mexe em
+    /// nada — o combo devolve o item clicado mesmo quando ele já é o atual.
+    fn choose_reference_server(&mut self, chosen: String) {
+        if chosen != self.reference_server {
+            self.reference_server = chosen;
+            self.reference_database.clear();
+        }
+    }
+
     /// Desenha o **formulário** (SQL, saída, servidores, botões, progresso e arquivos).
     ///
     /// Separado de [`State::ui`] porque o formulário rola: a altura dele é a que sobra depois de a
@@ -611,7 +623,8 @@ Selection unchanged."
         ui.horizontal(|ui| {
             ui.label("Referência do autocomplete:");
 
-            // Servidor: o primeiro marcado é o padrão.
+            // Servidor: o primeiro marcado é o padrão. Combo **com busca** (o mesmo dos outros
+            // campos de escolha): a lista de servidores cresce e rolar até o nome não é escolha.
             if self.reference_server.is_empty()
                 && let Some(first) = servers
                     .iter()
@@ -620,27 +633,25 @@ Selection unchanged."
                 self.reference_server = first.name.clone();
             }
 
-            egui::ComboBox::from_id_salt("reference_server")
-                .selected_text(if self.reference_server.is_empty() {
-                    "—".to_string()
-                } else {
-                    self.reference_server.clone()
+            let server_items: Vec<crate::search_combo::Item<'_>> = servers
+                .iter()
+                .map(|server| {
+                    crate::search_combo::Item::new(
+                        server.name.as_str(),
+                        server.name == self.reference_server,
+                    )
                 })
-                .show_ui(ui, |ui| {
-                    for server in servers {
-                        if ui
-                            .selectable_value(
-                                &mut self.reference_server,
-                                server.name.clone(),
-                                &server.name,
-                            )
-                            .clicked()
-                        {
-                            // Trocar de servidor invalida o banco escolhido.
-                            self.reference_database.clear();
-                        }
-                    }
-                });
+                .collect();
+            if let Some(index) = crate::search_combo::search_combo_sized(
+                ui,
+                "reference_server",
+                &self.reference_server,
+                &server_items,
+                !server_items.is_empty(),
+                crate::search_combo::Size::default(),
+            ) {
+                self.choose_reference_server(servers[index].name.clone());
+            }
 
             // Banco: os **descobertos no servidor**; sem descoberta, os do cadastro. O cadastro pode
             // ter só parte dos bancos (ou nenhum, com `fetchAllDatabases`).
@@ -656,30 +667,35 @@ Selection unchanged."
                 self.reference_database = databases.first().cloned().unwrap_or_default();
             }
 
-            egui::ComboBox::from_id_salt("reference_database")
-                .selected_text(if self.reference_database.is_empty() {
-                    "—".to_string()
-                } else {
-                    self.reference_database.clone()
+            let database_items: Vec<crate::search_combo::Item<'_>> = databases
+                .iter()
+                .map(|database| {
+                    crate::search_combo::Item::new(
+                        database.as_str(),
+                        *database == self.reference_database,
+                    )
                 })
-                .show_ui(ui, |ui| {
-                    if databases.is_empty() {
-                        if reference.is_pending(&self.reference_server) {
-                            ui.weak("descobrindo bancos…");
-                        } else if reference.error(&self.reference_server).is_some() {
-                            ui.weak("não deu para listar; nenhum banco no cadastro");
-                        } else {
-                            ui.weak("nenhum banco no cadastro");
-                        }
-                    }
-                    for database in &databases {
-                        ui.selectable_value(
-                            &mut self.reference_database,
-                            database.clone(),
-                            database,
-                        );
-                    }
-                });
+                .collect();
+            // Lista vazia tem motivo (descobrindo, falhou, cadastro sem banco): o combo mostra a
+            // explicação em vez de fingir uma busca sem resultado.
+            let empty_hint = if reference.is_pending(&self.reference_server) {
+                "descobrindo bancos…"
+            } else if reference.error(&self.reference_server).is_some() {
+                "não deu para listar; nenhum banco no cadastro"
+            } else {
+                "nenhum banco no cadastro"
+            };
+            if let Some(index) = crate::search_combo::search_combo_with_hint(
+                ui,
+                "reference_database",
+                &self.reference_database,
+                &database_items,
+                true,
+                crate::search_combo::Size::default(),
+                empty_hint,
+            ) {
+                self.reference_database = databases[index].clone();
+            }
 
             let can_load = reference.can_load(&self.reference_server, &self.reference_database);
             let load = crate::icons::button_enabled(ui, crate::icons::Icon::Refresh, can_load);
@@ -2850,6 +2866,134 @@ mod tests {
         });
         output.textures_delta.clear();
         assert_eq!(request, None, "descoberta conhecida não vira pedido");
+    }
+
+    /// Os dois campos da referência são o **combo com busca** — o mesmo widget de Saved query —
+    /// e não o `ComboBox` do egui: a seta desenhada é a da fonte embutida, e o valor atual
+    /// continua no botão.
+    #[test]
+    fn the_reference_row_uses_the_search_combo() {
+        let ctx = egui::Context::default();
+        let servers = [server("Local"), server("outro")];
+        let mut state = State::default();
+        state.sync_servers(&servers);
+        state.reference_server = "Local".to_string();
+        state.reference_database = "dev".to_string();
+        let mut reference = crate::reference::Reference::default();
+        reference.finish(
+            "Local",
+            crate::reference::Known {
+                databases: Ok(vec!["dev".to_string()]),
+                has_password: true,
+            },
+        );
+
+        let mut texts: Vec<(String, f32)> = Vec::new();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.set_max_width(900.0);
+                    let _ = state.reference_row(ui, &servers, &reference);
+                });
+            });
+            texts.clear();
+            collect_text(&output.shapes, &mut texts);
+            output.textures_delta.clear();
+        }
+
+        let arrow = crate::icons::Icon::ChevronDown.glyph().to_string();
+        let arrows = texts
+            .iter()
+            .filter(|(text, _)| text.contains(&arrow))
+            .count();
+        assert_eq!(
+            arrows, 2,
+            "um combo de busca por campo (servidor e banco): {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|(text, _)| text.contains("Local")),
+            "o servidor atual fica no botão: {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|(text, _)| text.contains("dev")),
+            "o banco atual fica no botão: {texts:?}"
+        );
+    }
+
+    /// Trocar o servidor de referência **invalida o banco** escolhido; reescolher o mesmo, não.
+    #[test]
+    fn choosing_another_reference_server_drops_the_database() {
+        let mut state = State {
+            reference_server: "Local".to_string(),
+            reference_database: "dev".to_string(),
+            ..State::default()
+        };
+
+        // O mesmo servidor: o banco continua (o combo devolve o item clicado de qualquer jeito).
+        state.choose_reference_server("Local".to_string());
+        assert_eq!(state.reference_database, "dev");
+
+        state.choose_reference_server("Local 2".to_string());
+        assert_eq!(state.reference_server, "Local 2");
+        assert!(
+            state.reference_database.is_empty(),
+            "o banco de outro servidor não vale aqui: {:?}",
+            state.reference_database
+        );
+    }
+
+    /// Lista de bancos vazia abre com o **motivo** dela, e não com "nada casa com a busca".
+    ///
+    /// A explicação antiga morava dentro do `ComboBox`; ao trocar o campo pelo combo com busca ela
+    /// passou a vir da própria linha — este teste amarra as duas pontas.
+    #[test]
+    fn an_empty_reference_database_list_explains_itself() {
+        let ctx = egui::Context::default();
+        let servers = [server("Local")];
+        let mut state = State::default();
+        state.sync_servers(&servers);
+        state.reference_server = "Local".to_string();
+
+        let painted = |ctx: &egui::Context,
+                       state: &mut State,
+                       reference: &crate::reference::Reference|
+         -> Vec<String> {
+            crate::search_combo::open_for_test(ctx, "reference_database");
+            let mut texts: Vec<(String, f32)> = Vec::new();
+            for _ in 0..2 {
+                let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        ui.set_max_width(900.0);
+                        let _ = state.reference_row(ui, &servers, reference);
+                    });
+                });
+                texts.clear();
+                collect_text(&output.shapes, &mut texts);
+                output.textures_delta.clear();
+            }
+            texts.into_iter().map(|(text, _)| text).collect()
+        };
+
+        // Descoberto e sem banco no cadastro: diz que não há banco, não que a busca falhou.
+        let known = crate::reference::Reference::default();
+        let texts = painted(&ctx, &mut state, &known);
+        assert!(
+            texts.iter().any(|text| text == "nenhum banco no cadastro"),
+            "a lista vazia se explica: {texts:?}"
+        );
+        assert!(
+            !texts.iter().any(|text| text.contains("Nothing matches")),
+            "e não culpa a busca: {texts:?}"
+        );
+
+        // Enquanto descobre, o motivo é outro.
+        let mut pending = crate::reference::Reference::default();
+        pending.mark_pending("Local");
+        let texts = painted(&ctx, &mut state, &pending);
+        assert!(
+            texts.iter().any(|text| text.contains("descobrindo bancos")),
+            "descobrindo: {texts:?}"
+        );
     }
 
     /// A linha de referência vem **antes** do editor de SQL.

@@ -1,4 +1,4 @@
-//! O que a janela sabe de cada servidor para a linha "Referência do autocomplete".
+//! O que a janela sabe de cada servidor para a linha "Load autocomplete".
 //!
 //! A linha precisa de duas coisas que **não estão no cadastro**: os bancos que o servidor realmente
 //! tem (descobertos em `pg_database`) e se o cofre guarda a senha dele. As duas chegam juntas, num

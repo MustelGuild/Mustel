@@ -37,7 +37,7 @@ identidade do servidor novo, e a senha mora no cofre com a chave do nome (copiá
 servidor a senha do antigo sem ninguém perceber).
 
 A janela tem página própria: a [referência do autocomplete](autocomplete.md) descreve a linha
-"Referência do autocomplete", o que é sugerido em cada contexto e os limites.
+"Load autocomplete", o que é sugerido em cada contexto e os limites.
 
 ## `query run`
 

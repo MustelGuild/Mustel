@@ -16,14 +16,14 @@ mustel settings db-servers set-password dev
 ## Carregar o esquema
 
 1. Abra a janela: `mustel gui` (ou `mustel`, em terminal interativo).
-2. No topo da tela de consulta, ache a linha **Referência do autocomplete**, acima do editor de
+2. No topo da tela de consulta, ache a linha **Load autocomplete**, acima do editor de
    SQL.
 3. Escolha o **servidor** que serve de molde — ele já vem no primeiro servidor do cadastro, e a
    escolha aqui é **independente** dos servidores marcados para rodar a consulta. A janela descobre os
    bancos dele em background e espera a barra de status dizer `'<servidor>' has N database(s).`.
 4. Escolha o **banco**.
 5. Clique em **`⟳`**.
-6. Espere o rótulo virar `carregado (<banco>)` e a barra de status dizer
+6. Espere o rótulo virar `loaded (<banco>)` e a barra de status dizer
    `Schema of '<banco>' loaded: N relation(s), M function(s).`
 
 Agora o editor de SQL tem sugestões. Elas valem para o **banco escolhido**, não para os outros do
@@ -50,8 +50,8 @@ nesse banco (por fora da janela, ou por outro cliente), clique em `⟳` de novo.
 
 Na ordem em que vale conferir:
 
-1. **O esquema está carregado?** O rótulo precisa dizer `carregado (<banco>)`. Se disser
-   `carregado outro banco`, o par servidor/banco atual não é o que foi carregado — clique `⟳`.
+1. **O esquema está carregado?** O rótulo precisa dizer `loaded (<banco>)`. Se disser
+   `another database loaded`, o par servidor/banco atual não é o que foi carregado — clique `⟳`.
 2. **O `⟳` está desabilitado?** O tooltip diz o motivo: falta servidor ou banco escolhido, ou **senha
    no cofre** — resolva em [Guardar e trocar a senha](senhas-no-cofre.md). A janela não pede senha.
 3. **O combo de banco está vazio?** Significa que a descoberta não deu e o cadastro também não tem

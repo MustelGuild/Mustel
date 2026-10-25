@@ -21,7 +21,7 @@ O retrato contém:
 Ficam de fora `pg_catalog` e `information_schema`. O que o usuário da conexão não pode ver também não
 aparece — o filtro é o do próprio Postgres.
 
-## A linha "Referência do autocomplete"
+## A linha "Load autocomplete"
 
 Fica **antes do editor de SQL**, no topo da tela de consulta, e tem quatro partes:
 
@@ -30,7 +30,7 @@ Fica **antes do editor de SQL**, no topo da tela de consulta, e tem quatro parte
 | Combo de servidor | escolhe o servidor do cadastro; trocar de servidor **limpa** o banco escolhido |
 | Combo de banco | lista os bancos que o **servidor** tem, descobertos em `pg_database` ao escolher o servidor; sem descoberta, cai para os bancos do cadastro (`databases`) |
 | `⟳` | carrega (ou recarrega) o retrato do banco escolhido |
-| Rótulo de estado | `não carregado`, `carregado (banco)` ou `carregado outro banco` |
+| Rótulo de estado | `not loaded`, `loaded (banco)` ou `another database loaded` |
 
 A descoberta de bancos roda sozinha quando o servidor é escolhido (uma vez por servidor, em
 background) e é o que faz o combo listar **todos** os bancos — inclusive os que não estão no cadastro,
@@ -50,7 +50,7 @@ Cada par `(servidor, banco)` fica em cache enquanto a janela estiver aberta. Rec
 entrada daquele par; trocar de servidor ou de banco **não** descarta as outras entradas.
 
 Se o servidor escolhido sair do cadastro (removido na aba Connections › Servers), a linha **volta ao início**:
-servidor e banco em `—`, rótulo `não carregado`, e o esquema guardado daquele servidor é descartado —
+servidor e banco vazios, rótulo `not loaded`, e o esquema guardado daquele servidor é descartado —
 nada de sugestão vinda de um servidor que já não existe.
 
 ## O que é sugerido, por contexto

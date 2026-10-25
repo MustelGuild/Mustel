@@ -31,7 +31,7 @@ existir em mais de um servidor.
 
 ```text
 ┌──────────────────────────────────────┬──────────────────────────────────────────┐
-│ ◀  5 selected                        │ Referência do autocomplete: [Local] ⟳    │
+│ ◀  5 selected                        │ Load autocomplete: [Local] ⟳             │
 │                                      │ SQL                                      │
 │ Server                               │ ┌────────────────────────────────────┐   │
 │ [ Local (106) ▼ ] [⟳]                │ │ SELECT 1 AS valor                  │   │

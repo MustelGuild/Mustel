@@ -161,7 +161,7 @@ pub async fn run(
     query_run::run(request, events, token).await
 }
 
-/// Bancos que o servidor tem, para a linha "Referência do autocomplete" e a sidebar.
+/// Bancos que o servidor tem, para a linha "Load autocomplete" e a sidebar.
 ///
 /// Usa o mesmo caso de uso do `settings db-servers test` (`pg_database`, ordenado por nome), então a
 /// lista é a que o servidor realmente tem — inclusive quando o cadastro usa `fetchAllDatabases` e

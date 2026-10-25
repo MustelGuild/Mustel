@@ -68,7 +68,7 @@ fontes do sistema, com nomes típicos, num teste descartável:
 | **Lucida Console** (a mais larga testada) | **413 px** | **1,41** |
 
 O limite matemático da pior fonte é 1,41; **1,25** é onde ainda sobra folga para o rótulo de estado
-mais longo (`carregado outro banco`) e para nomes um pouco maiores que o típico.
+mais longo (`another database loaded`) e para nomes um pouco maiores que o típico.
 
 Com nomes muito longos (20 caracteres), a linha já passa de 640 px **hoje**, com qualquer fonte: é
 limite antigo do layout, não algo que a escolha de fonte cria.

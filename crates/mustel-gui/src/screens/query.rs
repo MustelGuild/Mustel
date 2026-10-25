@@ -604,7 +604,7 @@ Selection unchanged."
         self.reference_schema = schema;
     }
 
-    /// Linha "Referência do autocomplete": servidor, banco, `⟳` e o estado do carregamento.
+    /// Linha "Load autocomplete": servidor, banco, `⟳` e o estado do carregamento.
     ///
     /// Fica **antes** do editor (decisão do dono, 2026-10-23): o esquema é o que alimenta as
     /// sugestões, então escolher o molde primeiro é a ordem em que a tela é usada.
@@ -618,10 +618,10 @@ Selection unchanged."
     ) -> Option<Request> {
         let mut request = None;
 
-        // Referência do autocomplete: **um** banco serve de molde para as sugestões. Explícito de
+        // Load autocomplete: **um** banco serve de molde para as sugestões. Explícito de
         // propósito — carregar no foco surpreenderia (e pode pedir senha que a janela não tem).
         ui.horizontal(|ui| {
-            ui.label("Referência do autocomplete:");
+            ui.label("Load autocomplete:");
 
             // Servidor: o primeiro marcado é o padrão. Combo **com busca** (o mesmo dos outros
             // campos de escolha): a lista de servidores cresce e rolar até o nome não é escolha.
@@ -717,13 +717,13 @@ Selection unchanged."
                 Some((server, database))
                     if server == &self.reference_server && database == &self.reference_database =>
                 {
-                    ui.weak(format!("carregado ({database})"));
+                    ui.weak(format!("loaded ({database})"));
                 }
                 Some(_) => {
-                    ui.weak("carregado outro banco");
+                    ui.weak("another database loaded");
                 }
                 None => {
-                    ui.weak("não carregado");
+                    ui.weak("not loaded");
                 }
             }
         });
@@ -2139,7 +2139,7 @@ mod tests {
         );
         assert!(
             state.reference_loaded.is_none(),
-            "o rótulo volta a 'não carregado'"
+            "o rótulo volta a 'not loaded'"
         );
         assert!(
             state.reference_schema.is_none(),
@@ -2749,7 +2749,7 @@ mod tests {
         output.textures_delta.clear();
 
         assert!(
-            main.iter().any(|(text, _)| text.starts_with("Refer")),
+            main.iter().any(|(text, _)| text == "Load autocomplete:"),
             "a referência do autocomplete fica na área principal: {main:?}"
         );
     }
@@ -2995,6 +2995,74 @@ mod tests {
         );
     }
 
+    /// Os três estados do carregamento aparecem em **inglês** (a janela fala inglês).
+    ///
+    /// O rótulo é o que diz se as sugestões vêm do banco escolhido: `not loaded` (nada), `loaded (x)`
+    /// (é o par atual) e `another database loaded` (carregou outro e o molde não bate com a escolha).
+    #[test]
+    fn the_load_status_is_in_english() {
+        let ctx = egui::Context::default();
+        let servers = [server("Local")];
+        let mut state = State::default();
+        state.sync_servers(&servers);
+        state.reference_server = "Local".to_string();
+        state.reference_database = "dev".to_string();
+        // O combo de banco só lista o que foi descoberto (o cadastro não tem bases): sem isto a
+        // escolha `dev` cai fora e o par nunca casa.
+        let mut reference = crate::reference::Reference::default();
+        reference.finish(
+            "Local",
+            crate::reference::Known {
+                databases: Ok(vec!["dev".to_string()]),
+                has_password: true,
+            },
+        );
+
+        let painted = |ctx: &egui::Context, state: &mut State| -> Vec<String> {
+            let mut texts: Vec<(String, f32)> = Vec::new();
+            for _ in 0..2 {
+                let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        ui.set_max_width(900.0);
+                        let _ = state.reference_row(ui, &servers, &reference);
+                    });
+                });
+                texts.clear();
+                collect_text(&output.shapes, &mut texts);
+                output.textures_delta.clear();
+            }
+            texts.into_iter().map(|(text, _)| text).collect()
+        };
+
+        // Nada carregado.
+        state.reference_loaded = None;
+        let texts = painted(&ctx, &mut state);
+        assert!(
+            texts.iter().any(|text| text == "not loaded"),
+            "estado vazio: {texts:?}"
+        );
+
+        // Carregado, e é o par escolhido.
+        state.reference_loaded = Some(("Local".to_string(), "dev".to_string()));
+        let texts = painted(&ctx, &mut state);
+        assert!(
+            texts.iter().any(|text| text == "loaded (dev)"),
+            "estado carregado: {texts:?}"
+        );
+
+        // Carregado outro banco: o molde não é o da escolha atual.
+        state.reference_loaded = Some(("Local".to_string(), "outro".to_string()));
+        let texts = painted(&ctx, &mut state);
+        assert!(
+            texts.iter().any(|text| text == "another database loaded"),
+            "estado em que o molde diverge: {texts:?}"
+        );
+        assert!(
+            !texts.iter().any(|text| text.contains("carregado")),
+            "nada de português no rótulo: {texts:?}"
+        );
+    }
+
     /// A linha de referência vem **antes** do editor de SQL.
     ///
     /// A ordem é a decisão (o molde alimenta as sugestões, então se escolhe antes de escrever), e
@@ -3027,7 +3095,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("o rótulo {label:?} não foi desenhado: {heights:?}"))
         };
 
-        let reference_y = position("Referência do autocomplete:");
+        let reference_y = position("Load autocomplete:");
         let sql_y = position("SQL");
 
         assert!(

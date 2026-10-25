@@ -17,13 +17,13 @@ quer a estrutura, usa o `pg_dump` — que já faz isso bem e continua sendo a fe
 
 ## Um banco de referência, e não todos
 
-O retrato descreve **um** banco: o escolhido na linha "Referência do autocomplete". A alternativa —
+O retrato descreve **um** banco: o escolhido na linha "Load autocomplete". A alternativa —
 carregar o catálogo de todos os servidores marcados — multiplicaria o custo de cada `⟳` pelo número de
 bancos e encheria a lista de homônimos que não se relacionam.
 
 A aposta é a do uso em massa: quem roda a mesma consulta em vários bancos costuma ter bancos com o
 mesmo esquema, então um molde serve para todos. Quem tem bancos diferentes digita sem ajuda — e o
-rótulo `carregado outro banco` existe para deixar claro que o molde não bate com a escolha atual.
+rótulo `another database loaded` existe para deixar claro que o molde não bate com a escolha atual.
 
 ## Uma cópia em memória, atualizada à mão
 

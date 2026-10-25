@@ -80,7 +80,7 @@ pub struct App {
     query: query_screen::State,
     /// Esquemas carregados para o autocomplete, por `(servidor, banco)`.
     schemas: crate::schema_cache::SchemaCache,
-    /// Bancos descobertos e senha presente, por servidor (linha "Referência do autocomplete").
+    /// Bancos descobertos e senha presente, por servidor (linha "Load autocomplete").
     reference: crate::reference::Reference,
     /// Aba Settings: preferências de aparência.
     settings: settings_screen::State,

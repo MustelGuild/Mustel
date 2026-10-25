@@ -37,7 +37,7 @@ pub enum Request {
     CancelJob,
     /// Descobre os bancos do servidor e se o cofre tem a senha dele.
     ///
-    /// É o que alimenta o combo de banco da linha "Referência do autocomplete": o cadastro pod
+    /// É o que alimenta o combo de banco da linha "Load autocomplete": o cadastro pod
     /// e não
     /// listar todos os bancos (ou nenhum, quando o servidor usa `fetchAllDatabases`).
     ///

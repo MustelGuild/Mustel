@@ -625,3 +625,15 @@ Append-only.
   y, pontas opostas, uma linha de altura); mutação conferida — com o `✦` numa linha própria o
   teste falha com `[16.0 10.0] vs [770.8 31.0]`. Depois da correção a tinta das duas alças fica em
   y 77..87 / y 76..89.
+- `[2026-10-25]` **Placeholder da caixa de envio** (pedido do dono: “vamos melhorar o texto de
+  placeholder”). Duas coisas: a instrução acima da caixa (`Ask for what you need — for example
+  'sales per month'.`) saiu — dizia o mesmo que a caixa já dizia, e ocupava a linha mais cara do
+  painel; e o `hint` passou a ficar no **meio** da caixa (`.align(Align2::LEFT_CENTER)`), porque a
+  caixa tem duas linhas de partida e um hint de uma linha no alto deixava a metade de baixo vazia.
+  O alinhamento é o do próprio `TextEdit`, que pinta `hint`, cursor e texto com o mesmo
+  alinhamento (comentário no fonte do egui 0.37): o primeiro caractere nasce onde o placeholder
+  estava, sem pulo. Centrar só na horizontal foi descartado — o texto é frase e leria como campo
+  de busca. Verificado na janela: placeholder centrado (tinta y 227..240, a mesma faixa do `Send`),
+  digitando uma frase de 2 linhas a caixa cresce e a primeira linha fica na altura do placeholder.
+  Teste `the_placeholder_sits_in_the_middle_of_the_prompt_box` mede o centro do hint contra o do
+  `Send`; mutação conferida (sem o `.align`, o hint fica 7,5 px acima e o teste falha).

@@ -376,15 +376,6 @@ pub fn ui(
 
     // Envio: logo abaixo do cabeçalho, sempre à vista (o painel ocupa a altura toda).
     let sending = chat.turn == Turn::Sending;
-    if chat.session.messages.is_empty() {
-        ui.add(
-            egui::Label::new(
-                egui::RichText::new("Ask for what you need — for example 'sales per month'.")
-                    .weak(),
-            )
-            .wrap(),
-        );
-    }
     ui.horizontal(|ui| {
         let hint = if chat.session.messages.is_empty() {
             "What do you need?"
@@ -394,11 +385,17 @@ pub fn ui(
         // Largura **finita**: `f32::INFINITY` num painel estreito faz o `TextEdit` pedir a largura
         // toda e o layout cresce além do painel (transbordava sobre o editor). Multilinha com duas
         // linhas de partida: a caixa acompanha o texto (é uma conversa, não um campo de busca).
+        //
+        // Alinhamento: o `hint` e o texto digitado compartilham o alinhamento do `TextEdit` (é
+        // assim que o egui os pinta), então centrar na vertical põe o placeholder no meio da caixa
+        // de duas linhas e o primeiro caractere nasce no lugar dele — sem pulo. Centralizar na
+        // horizontal não: o texto é frase, e centrado ele leria como campo de busca.
         ui.add_enabled(
             !sending,
             egui::TextEdit::multiline(&mut chat.input)
                 .hint_text(hint)
                 .desired_rows(2)
+                .align(egui::Align2::LEFT_CENTER)
                 .desired_width((width - 80.0).max(120.0)),
         );
         if ui
@@ -709,5 +706,74 @@ mod tests {
         assert!(chat.open);
         assert_eq!(chat.selected_profile, "rapido");
         assert_eq!(chat.session.messages.len(), 1);
+    }
+
+    /// O placeholder fica no **meio** da caixa de envio, não colado no topo.
+    ///
+    /// A caixa tem duas linhas de partida: um `hint` de uma linha no alto deixava a metade de
+    /// baixo vazia, com cara de caixa mal usada. Como o `hint` e o texto digitado compartilham o
+    /// alinhamento do `TextEdit`, centrar na vertical resolve a caixa vazia sem mover o primeiro
+    /// caractere para outro lugar.
+    ///
+    /// Medida: o centro do texto do placeholder contra o centro do `Send`, que divide a mesma linha
+    /// e é centrado nela. Colado no topo, o `hint` ficaria meia caixa acima (≈12 px).
+    #[test]
+    fn the_placeholder_sits_in_the_middle_of_the_prompt_box() {
+        let ctx = egui::Context::default();
+        let mut chat = novo_chat();
+        chat.open = true;
+
+        let mut texts: Vec<(String, egui::Pos2, f32)> = Vec::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.set_max_width(360.0);
+                let _ = super::ui(ui, &mut chat, &[], &[profile()], &[], false, None);
+            });
+        });
+        texts.clear();
+        {
+            fn walk(shape: &egui::Shape, out: &mut Vec<(String, egui::Pos2, f32)>) {
+                match shape {
+                    egui::Shape::Text(text) => out.push((
+                        text.galley.text().to_string(),
+                        text.pos,
+                        text.galley.size().y,
+                    )),
+                    egui::Shape::Vec(shapes) => {
+                        for shape in shapes {
+                            walk(shape, out);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            for clipped in &output.shapes {
+                walk(&clipped.shape, &mut texts);
+            }
+        }
+        output.textures_delta.clear();
+
+        let center_y = |needle: &str| -> f32 {
+            let found: Vec<f32> = texts
+                .iter()
+                .filter(|(text, _, _)| text == needle)
+                .map(|(_, pos, height)| pos.y + height / 2.0)
+                .collect();
+            assert_eq!(found.len(), 1, "um só {needle:?} no painel: {texts:?}");
+            found[0]
+        };
+
+        let hint = center_y("What do you need?");
+        let send = center_y("Send");
+        assert!(
+            (hint - send).abs() <= 4.0,
+            "o placeholder tem de estar centrado na caixa, na linha do `Send`: {hint} vs {send}"
+        );
+        assert!(
+            !texts
+                .iter()
+                .any(|(text, _, _)| text.contains("sales per month")),
+            "a instrução acima da caixa saiu; fica só o placeholder: {texts:?}"
+        );
     }
 }

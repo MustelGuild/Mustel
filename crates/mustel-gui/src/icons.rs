@@ -108,6 +108,20 @@ pub fn font_id(size: f32) -> egui::FontId {
     egui::FontId::new(size, egui::FontFamily::Name(FAMILY.into()))
 }
 
+/// Um trecho de texto com a fonte pedida e **sem cor fixa**.
+///
+/// A cor fica em [`egui::Color32::PLACEHOLDER`] de propósito: o widget que pinta troca o
+/// placeholder pela cor do estado dele — texto normal, hover, selecionado ou **desabilitado**.
+/// `TextFormat::default()` traria `Color32::GRAY`, e cor explícita vence a do widget: era isso que
+/// deixava combos e ícones com aquele cinza apagado de coisa desligada.
+pub(crate) fn format(font_id: egui::FontId) -> egui::TextFormat {
+    egui::TextFormat {
+        font_id,
+        color: egui::Color32::PLACEHOLDER,
+        ..Default::default()
+    }
+}
+
 /// Registra a fonte dos ícones nas definições do egui.
 ///
 /// Só a família **nomeada** (`Heroicons Outline`) é criada — os ícones nunca entram no fallback do
@@ -131,7 +145,8 @@ pub fn install(definitions: &mut egui::FontDefinitions) {
 
 /// Desenha o ícone embutido no fluxo do texto, na cor do texto.
 pub fn inline(ui: &mut egui::Ui, icon: Icon) -> egui::Response {
-    inline_colored(ui, icon, ui.visuals().text_color())
+    let size = ui.text_style_height(&egui::TextStyle::Body);
+    ui.label(egui::RichText::new(icon.glyph().to_string()).font(font_id(size)))
 }
 
 /// Desenha o ícone embutido com uma cor explícita (aviso, erro).
@@ -151,20 +166,10 @@ pub fn button(ui: &mut egui::Ui, icon: Icon) -> egui::Response {
 /// Ícone clicável, respeitando o estado habilitado.
 pub fn button_enabled(ui: &mut egui::Ui, icon: Icon, enabled: bool) -> egui::Response {
     let size = ui.text_style_height(&egui::TextStyle::Body);
-    let color = if enabled {
-        ui.visuals().weak_text_color()
-    } else {
-        ui.visuals().weak_text_color().gamma_multiply(0.5)
-    };
-    let text = egui::RichText::new(icon.glyph().to_string())
-        .font(font_id(size))
-        .color(color);
+    // Sem cor fixa: quem pinta (o `Button`) decide, inclusive o cinza do desabilitado.
+    let text = egui::RichText::new(icon.glyph().to_string()).font(font_id(size));
     let button = egui::Button::new(text).frame(false);
-    if enabled {
-        ui.add(button)
-    } else {
-        ui.add_enabled(false, button)
-    }
+    ui.add_enabled(enabled, button)
 }
 
 /// Botão com ícone + rótulo.
@@ -183,23 +188,11 @@ pub fn button_text_enabled(
     // `egui::Button` aceita um `WidgetText`; juntar glifo e rótulo com fontes diferentes pede um
     // `LayoutJob`. Construído aqui para o ícone não herdar a fonte do texto.
     let mut job = egui::text::LayoutJob::default();
-    job.append(
-        &icon.glyph().to_string(),
-        0.0,
-        egui::TextFormat {
-            font_id: font_id(size),
-            color: ui.visuals().text_color(),
-            ..Default::default()
-        },
-    );
+    job.append(&icon.glyph().to_string(), 0.0, format(font_id(size)));
     job.append(
         &format!(" {text}"),
         0.0,
-        egui::TextFormat {
-            font_id: egui::TextStyle::Button.resolve(ui.style()),
-            color: ui.visuals().text_color(),
-            ..Default::default()
-        },
+        format(egui::TextStyle::Button.resolve(ui.style())),
     );
     ui.add_enabled(enabled, egui::Button::new(job))
 }
@@ -220,18 +213,12 @@ pub fn selectable_selected(
     job.append(
         &icon.glyph().to_string(),
         0.0,
-        egui::TextFormat {
-            font_id: font_id(ui.text_style_height(&egui::TextStyle::Body)),
-            ..Default::default()
-        },
+        format(font_id(ui.text_style_height(&egui::TextStyle::Body))),
     );
     job.append(
         &format!(" {text}"),
         0.0,
-        egui::TextFormat {
-            font_id: egui::TextStyle::Body.resolve(ui.style()),
-            ..Default::default()
-        },
+        format(egui::TextStyle::Body.resolve(ui.style())),
     );
     ui.selectable_label(selected, job)
 }
@@ -293,6 +280,77 @@ mod tests {
         Icon::ThemeLight,
         Icon::ThemeDark,
     ];
+
+    /// O ícone herda a cor do widget que o pinta — não um cinza fixo.
+    ///
+    /// `TextFormat::default()` traz `Color32::GRAY`, e cor explícita vence a do widget; era isso que
+    /// deixava os combos e as setas com aquele cinza de coisa desligada. Aqui o habilitado sai na cor
+    /// do texto do tema e o desabilitado sai mais apagado que ele.
+    /// CONTRACT: IF-246
+    #[test]
+    fn the_icon_takes_the_widget_color_and_fades_when_disabled() {
+        let ctx = egui::Context::default();
+        let mut enabled_color = egui::Color32::BLACK;
+        let mut painted: Vec<egui::Color32> = Vec::new();
+
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                // É a cor que o `Button` escolhe para o estado normal (sem hover, habilitado).
+                enabled_color = ui.style().visuals.widgets.inactive.text_color();
+                let _ = button_enabled(ui, Icon::Refresh, true);
+                let _ = button_enabled(ui, Icon::Refresh, false);
+            });
+        });
+        collect_fallback_colors(&output.shapes, Icon::Refresh, &mut painted);
+        output.textures_delta.clear();
+
+        assert_eq!(
+            painted.len(),
+            2,
+            "os dois botões foram desenhados: {painted:?}"
+        );
+        assert_eq!(
+            painted[0], enabled_color,
+            "o habilitado usa a cor que o botão escolhe, não um cinza fixo"
+        );
+        assert_ne!(
+            painted[0],
+            egui::Color32::GRAY,
+            "o cinza do `TextFormat::default()` não pode voltar"
+        );
+        assert_ne!(
+            painted[1], painted[0],
+            "o desabilitado tem de parecer desabilitado"
+        );
+    }
+
+    /// Recolhe a cor de fundo (`fallback_color`) dos textos desenhados com o glifo pedido.
+    fn collect_fallback_colors(
+        shapes: &[egui::epaint::ClippedShape],
+        icon: Icon,
+        out: &mut Vec<egui::Color32>,
+    ) {
+        fn walk(shape: &egui::Shape, glyph: &str, out: &mut Vec<egui::Color32>) {
+            match shape {
+                egui::Shape::Text(text) => {
+                    if text.galley.text().trim() == glyph {
+                        out.push(text.fallback_color);
+                    }
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, glyph, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let glyph = icon.glyph().to_string();
+        for clipped in shapes {
+            walk(&clipped.shape, &glyph, out);
+        }
+    }
 
     /// **Guarda de iconografia**: nenhuma string de UI pode conter um glifo/emoji de sistema.
     ///

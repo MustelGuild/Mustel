@@ -150,24 +150,15 @@ pub fn search_combo_actionable(
     let mut acted = None;
 
     // Valor à esquerda, seta à direita — a seta vem da fonte de ícones embutida, não do texto
-    // comum (glifo de sistema mudaria de desenho por SO).
+    // comum (glifo de sistema mudaria de desenho por SO). As duas seções vão **sem cor fixa**:
+    // o botão pinta o rótulo e a seta com a cor do próprio estado.
     let text_font = egui::TextStyle::Button.resolve(ui.style());
     let mut job = egui::text::LayoutJob::default();
-    job.append(
-        button_text,
-        0.0,
-        egui::TextFormat {
-            font_id: text_font.clone(),
-            ..Default::default()
-        },
-    );
+    job.append(button_text, 0.0, crate::icons::format(text_font.clone()));
     job.append(
         &format!("   {}", crate::icons::Icon::ChevronDown.glyph()),
         0.0,
-        egui::TextFormat {
-            font_id: crate::icons::font_id(text_font.size),
-            ..Default::default()
-        },
+        crate::icons::format(crate::icons::font_id(text_font.size)),
     );
     let button = ui
         .add_enabled(
@@ -665,6 +656,76 @@ mod tests {
             texts.iter().any(|text| text == "(none)"),
             "a linha sem ação continua desenhada: {texts:?}"
         );
+    }
+
+    /// O valor e a seta do combo saem na cor do **botão**, não num cinza fixo.
+    ///
+    /// `LayoutJob` sem cor herda `TextFormat::default()`, que é `Color32::GRAY` — e cor explícita vence
+    /// a do widget. O resultado era o combo parecendo desabilitado ao lado dos combos do egui.
+    /// CONTRACT: IF-246
+    #[test]
+    fn the_combo_text_takes_the_button_color() {
+        let ctx = egui::Context::default();
+        let mut button_color = egui::Color32::BLACK;
+        let mut painted: Vec<(String, egui::Color32)> = Vec::new();
+
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                button_color = ui.style().visuals.widgets.inactive.text_color();
+                let items = vec![Item::new("Faturamento", true)];
+                let _ = search_combo(ui, "color_combo", "Faturamento", &items, true);
+            });
+        });
+        collect_text_colors(&output.shapes, &mut painted);
+        output.textures_delta.clear();
+
+        let value = painted
+            .iter()
+            .find(|(text, _)| text.contains("Faturamento"))
+            .unwrap_or_else(|| panic!("o valor do combo foi desenhado: {painted:?}"));
+        assert_eq!(
+            value.1, button_color,
+            "o valor usa a cor do botão, não um cinza fixo"
+        );
+        assert_ne!(
+            value.1,
+            egui::Color32::GRAY,
+            "o cinza do `TextFormat::default()` não pode voltar"
+        );
+
+        let arrow = crate::icons::Icon::ChevronDown.glyph().to_string();
+        let arrow = painted
+            .iter()
+            .find(|(text, _)| text.contains(&arrow))
+            .unwrap_or_else(|| panic!("a seta foi desenhada: {painted:?}"));
+        assert_eq!(arrow.1, button_color, "e a seta acompanha a cor do valor");
+    }
+
+    /// Junta `(texto, cor de fundo)` de todo `Shape::Text`, descendo nos grupos.
+    fn collect_text_colors(
+        shapes: &[egui::epaint::ClippedShape],
+        out: &mut Vec<(String, egui::Color32)>,
+    ) {
+        fn walk(shape: &egui::Shape, out: &mut Vec<(String, egui::Color32)>) {
+            match shape {
+                egui::Shape::Text(text) => {
+                    let content = text.galley.text().trim().to_string();
+                    if !content.is_empty() {
+                        out.push((content, text.fallback_color));
+                    }
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for clipped in shapes {
+            walk(&clipped.shape, out);
+        }
     }
 
     /// O combo comum ignora ações: sem clique no texto, não devolve escolha nenhuma.

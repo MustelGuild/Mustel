@@ -24,6 +24,115 @@ const THEME_OPTIONS: [(crate::icons::Icon, GuiTheme, &str); 3] = [
     (crate::icons::Icon::ThemeDark, GuiTheme::Dark, "Dark"),
 ];
 
+/// Largura do menu de categorias da aba Settings.
+///
+/// **Fixa**, como a sidebar de servidores: o menu é o mapa da aba (não rola junto com o conteúdo) e a
+/// largura não muda de categoria para categoria — mudar seria a tela "pulando" a cada clique.
+const CATEGORY_WIDTH: f32 = 216.0;
+
+/// Altura de uma entrada do menu de categorias.
+const CATEGORY_ROW: f32 = 26.0;
+
+/// Respiro entre o menu de categorias e o painel da direita.
+///
+/// O painel já desenha a própria divisória; sem o respiro o primeiro texto do painel encosta
+/// nela e a tela parece colada. Vinte pontos (a `Margin` do egui soma o respiro próprio do
+/// painel, então a distância que se vê entre a divisória e o texto fica em ~24) — é a folga do
+/// desenho aprovado, e é o que separa de fato as duas colunas nesta aba.
+const CONTENT_GAP: i8 = 20;
+
+/// Uma categoria da aba Settings (o que o menu da esquerda escolhe).
+///
+/// A ordem de [`Category::ALL`] é a do menu. A categoria escolhida **não** é gravada: a aba abre
+/// sempre na primeira, e o arquivo guarda preferências, não onde o dono parou de olhar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Category {
+    /// Tema, fontes e tamanho do texto.
+    #[default]
+    Appearance,
+    /// Paginação da lista de bases (aba Query).
+    DatabaseList,
+    /// Perfis de IA (modelo, endpoint, chave).
+    Ai,
+}
+
+impl Category {
+    /// Todas, na ordem do menu.
+    const ALL: [Category; 3] = [Category::Appearance, Category::DatabaseList, Category::Ai];
+
+    /// Rótulo do menu (só texto: o ícone vem da fonte embutida, nunca emoji).
+    fn label(self) -> &'static str {
+        match self {
+            Category::Appearance => "Appearance",
+            Category::DatabaseList => "Database list",
+            Category::Ai => "AI profiles",
+        }
+    }
+
+    /// Ícone do menu. Cada categoria com o **seu** (três iguais não se distinguem de relance).
+    fn icon(self) -> crate::icons::Icon {
+        match self {
+            // O sol é o ícone do tema claro: a categoria é a aparência da janela.
+            Category::Appearance => crate::icons::Icon::ThemeLight,
+            Category::DatabaseList => crate::icons::Icon::List,
+            Category::Ai => crate::icons::Icon::Sparkles,
+        }
+    }
+
+    /// Subtítulo do painel: uma linha dizendo do que a categoria trata.
+    fn hint(self) -> &'static str {
+        match self {
+            Category::Appearance => "Theme, fonts and text size of the window.",
+            Category::DatabaseList => "How the database list in the Query tab is drawn.",
+            Category::Ai => {
+                "Models for the AI that writes SQL in the Query tab. The key goes to the system vault."
+            }
+        }
+    }
+}
+
+/// O que a categoria desenhada pediu neste quadro.
+#[derive(Debug, Default)]
+struct Outcome {
+    /// Pedido que não é da seção `gui` (chave no cofre, `Test` do perfil, gravar perfis).
+    request: Option<Request>,
+    /// Mudou algo que se grava (a seção `gui` inteira).
+    changed: bool,
+    /// Aplicar já (prévia ao vivo de tema/fonte).
+    apply_now: bool,
+}
+
+/// Uma entrada do menu de categorias: fundo de **largura inteira** na ativa (e no hover), ícone da
+/// fonte embutida e rótulo alinhados à esquerda.
+///
+/// Desenhada à mão pelo mesmo motivo do [`crate::tabs::tab`]: o `selectable_label` do egui encolhe
+/// até o texto, e o realce de um menu tem de ir de ponta a ponta.
+fn category_item(ui: &mut egui::Ui, category: Category, selected: bool) -> egui::Response {
+    let width = ui.available_width();
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(width, CATEGORY_ROW), egui::Sense::click());
+    let visuals = ui.style().interact_selectable(&response, selected);
+
+    if selected || response.hovered() {
+        ui.painter().rect_filled(rect, 4.0, visuals.weak_bg_fill);
+    }
+
+    let job =
+        crate::icons::icon_and_text(ui, category.icon(), category.label(), egui::TextStyle::Body);
+    let galley = ui.painter().layout_job(job);
+    let padding = egui::vec2(10.0, 0.0);
+    ui.painter().galley(
+        egui::pos2(
+            rect.left() + padding.x,
+            rect.center().y - galley.size().y / 2.0,
+        ),
+        galley,
+        visuals.fg_stroke.color,
+    );
+
+    response
+}
+
 /// Posição da escolha no controle (o desconhecido cai em `System`, que é o default).
 fn theme_index(theme: GuiTheme) -> usize {
     THEME_OPTIONS
@@ -55,6 +164,8 @@ pub struct State {
     ai_confirming_remove: Option<String>,
     /// Último recado da seção de IA ("Profile saved", erro do `Test`).
     ai_message: Option<String>,
+    /// Categoria aberta no menu da esquerda.
+    category: Category,
 }
 
 /// O formulário de um perfil de IA (nome, endpoint, modelo, temperatura e chave).
@@ -152,11 +263,99 @@ impl State {
     ///
     /// `servers` é o **cadastro**: a seção de queries de seleção só escolhe entre servidores já
     /// cadastrados (nunca inventa um).
+    ///
+    /// A aba é **menu fixo + painel**: o menu ([`Category`]) não rola com o conteúdo e não depende
+    /// da categoria para existir. Só o painel da direita rola, e só quando não cabe.
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Request> {
-        ui.heading("Appearance");
-        ui.label("These preferences are stored in the `gui` section of `mustel.jsonc`.");
+        // Menu de categorias: painel próprio (desenha o fundo e a divisória), como a sidebar de
+        // servidores da aba Query.
+        egui::Panel::left("settings_categories")
+            .exact_size(CATEGORY_WIDTH)
+            .show(ui, |ui| self.categories_ui(ui));
+
+        // Painel da categoria escolhida. Barra **sólida**: a flutuante só aparece enquanto se rola e
+        // some depois; com a sólida, quem tem conteúdo abaixo vê que tem.
+        let outcome = egui::Frame::NONE
+            .inner_margin(egui::Margin {
+                left: CONTENT_GAP,
+                ..egui::Margin::ZERO
+            })
+            .show(ui, |ui| {
+                ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
+                egui::ScrollArea::vertical()
+                    .id_salt("settings_content")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.category_ui(ui))
+            })
+            .inner
+            .inner;
+
+        // O pedido da categoria (chave no cofre, `Test`, gravar perfis) tem precedência: ele é de
+        // outra seção e não pode esperar o commit da aparência.
+        if let Some(request) = outcome.request {
+            return Some(request);
+        }
+        // Gravar é o "commit": persiste **e** aplica. Sem isso, trocar a fonte mandava só
+        // `SaveGuiPrefs` (porque `changed` também era verdadeiro) e a janela só mudava quando o
+        // tamanho era mexido — era o bug relatado.
+        decision(
+            self.chosen.clone(),
+            self.prefs(),
+            outcome.changed,
+            outcome.apply_now,
+        )
+    }
+
+    /// O **menu** de categorias: uma entrada por categoria, com o fundo de seleção ocupando a
+    /// largura toda.
+    ///
+    /// O fundo é desenhado à mão em vez de usar `selectable_label` porque o rótulo selecionável do
+    /// egui encolhe até o texto — numa coluna de menu, o realce precisa ir de ponta a ponta para ler
+    /// como "esta é a seção aberta".
+    fn categories_ui(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(10.0);
+        ui.label(egui::RichText::new("SETTINGS").small().weak());
+        ui.add_space(6.0);
+
+        for category in Category::ALL {
+            if category_item(ui, category, self.category == category).clicked() {
+                self.category = category;
+            }
+        }
+
+        // Rodapé: onde as escolhas são gravadas. Vale para as três categorias, então mora aqui e não
+        // no topo de uma delas (era onde estava antes, como se fosse só da aparência).
+        ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(2.0);
+            ui.weak("Stored in the gui section of mustel.jsonc.");
+        });
+    }
+
+    /// O painel da categoria aberta.
+    fn category_ui(&mut self, ui: &mut egui::Ui) -> Outcome {
+        let mut outcome = Outcome::default();
+
+        // Cabeçalho do painel: o nome da categoria e do que ela trata — é o que confirma que o
+        // clique no menu trocou de assunto. O respiro do topo evita o título encostado na
+        // divisória das abas.
+        ui.add_space(8.0);
+        ui.heading(self.category.label());
+        ui.label(self.category.hint());
         ui.separator();
 
+        match self.category {
+            Category::Appearance => self.appearance_ui(ui, &mut outcome),
+            Category::DatabaseList => self.database_list_ui(ui, &mut outcome),
+            Category::Ai => outcome.request = self.ai_section_ui(ui),
+        }
+
+        outcome
+    }
+
+    /// Categoria **Appearance**: tema, fontes e tamanho do texto.
+    fn appearance_ui(&mut self, ui: &mut egui::Ui, outcome: &mut Outcome) {
         // Carrega as famílias na primeira renderização: enumerar o sistema custa centenas de ms.
         if self.families.is_none() {
             self.families = Some(fonts::system_families());
@@ -165,10 +364,10 @@ impl State {
         }
         let families = self.families.clone().unwrap_or_default();
 
-        let mut changed = false;
-        let mut apply_now = false;
+        let changed = &mut outcome.changed;
+        let apply_now = &mut outcome.apply_now;
 
-        // Primeiro item da aba: o tema da **janela** (claro, escuro ou seguindo o SO).
+        // Primeiro item da categoria: o tema da **janela** (claro, escuro ou seguindo o SO).
         ui.label("Theme");
         let selected = theme_index(self.theme);
         let items: Vec<(Option<crate::icons::Icon>, &str)> = THEME_OPTIONS
@@ -180,14 +379,14 @@ impl State {
             if theme != self.theme {
                 self.theme = theme;
                 // Clicar é escolha concluída: aplica **e** grava (o commit tem precedência).
-                apply_now = true;
-                changed = true;
+                *apply_now = true;
+                *changed = true;
             }
         }
         ui.weak("Follow system uses the operating system's light or dark setting.");
         ui.separator();
 
-        changed |= self.family_combo(
+        *changed |= self.family_combo(
             ui,
             Combo {
                 label: "Interface font",
@@ -196,9 +395,9 @@ impl State {
                 which: Family::Interface,
             },
             &families,
-            &mut apply_now,
+            apply_now,
         );
-        changed |= self.family_combo(
+        *changed |= self.family_combo(
             ui,
             Combo {
                 label: "Editor font",
@@ -207,7 +406,7 @@ impl State {
                 which: Family::Editor,
             },
             &families,
-            &mut apply_now,
+            apply_now,
         );
 
         ui.separator();
@@ -221,11 +420,11 @@ impl State {
         );
         if slider.changed() {
             self.chosen.scale = fonts::clamp_scale(scale);
-            apply_now = true;
+            *apply_now = true;
         }
         // Grava quando o usuário **solta** o controle: arrastar não pode gerar uma escrita por pixel.
         if slider.drag_stopped() || (slider.changed() && !slider.dragged()) {
-            changed = true;
+            *changed = true;
         }
         ui.weak(format!(
             "Between {MIN_FONT_SCALE:.2}x and {MAX_FONT_SCALE:.2}x. The window's minimum size grows with the font."
@@ -234,44 +433,21 @@ impl State {
         ui.separator();
         if ui.button("Restore defaults").clicked() {
             self.restore_defaults();
-            apply_now = true;
-            changed = true;
+            *apply_now = true;
+            *changed = true;
         }
 
         if let Some(warning) = &self.warning {
             ui.colored_label(crate::theme::warning(ui), warning);
         }
+    }
 
-        // Gravar é o "commit": persiste **e** aplica. Sem isso, trocar a fonte mandava só
-        // `SaveGuiPrefs` (porque `changed` também era verdadeiro) e a janela só mudava quando o
-        // tamanho era mexido — era o bug relatado.
-        //
-        // A segunda seção entra no mesmo commit: a seção `gui` é gravada inteira.
-        // --- Paginação da lista de bases (aba Query) -------------------------------------------
-        //
-        // Desligada por padrão: com o filtro de servidor, a lista completa é utilizável, e paginar
-        // sem necessidade esconde informação. Quem tiver muitos milhares liga aqui.
-        ui.separator();
-        ui.heading("Database list");
-        ui.label(
-            "How the database list in the Query tab is drawn. Filters and search always see the \
-             whole list; pagination only limits what is drawn at once.",
-        );
-        changed |= self.selection_list_ui(ui);
-
-        // --- IA (OpenAI-compatible) ---------------------------------------------------------
-        ui.separator();
-        ui.heading("AI");
-        ui.label(
-            "Profiles for the AI that writes SQL in the Query tab.              The API key goes to the system vault, never to `mustel.jsonc`.",
-        );
-        let ai_request = self.ai_section_ui(ui);
-
-        if let Some(request) = ai_request {
-            return Some(request);
-        }
-
-        decision(self.chosen.clone(), self.prefs(), changed, apply_now)
+    /// Categoria **Database list**: liga/desliga a paginação e define o tamanho da página.
+    ///
+    /// Desligada por padrão: com o filtro de servidor, a lista completa é utilizável, e paginar sem
+    /// necessidade esconde informação. Quem tiver muitos milhares liga aqui.
+    fn database_list_ui(&mut self, ui: &mut egui::Ui, outcome: &mut Outcome) {
+        outcome.changed |= self.selection_list_ui(ui);
     }
 
     /// A seção **AI**: lista de perfis, formulário e `Test`.
@@ -289,38 +465,47 @@ impl State {
         let mut activate: Option<String> = None;
         let mut edit: Option<usize> = None;
         let mut remove: Option<String> = None;
+        // Cada perfil é um **cartão**: rádio (o ativo), nome, o resumo logo abaixo e as ações na
+        // ponta. Antes era uma linha corrida com o resumo colado no nome — com dois perfis de nomes
+        // parecidos, era difícil dizer qual linha era qual.
         for (index, profile) in self.ai_profiles.iter().enumerate() {
-            ui.horizontal(|ui| {
-                if ui
-                    .radio(profile.id == self.ai_active, &profile.name)
-                    .on_hover_text("Use this profile")
-                    .clicked()
-                {
-                    activate = Some(profile.id.clone());
-                }
-                ui.weak(format!("{} · {}", profile.model, profile.base_url));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let confirming = self.ai_confirming_remove.as_deref() == Some(&profile.id);
-                    let label = if confirming {
-                        "Confirm remove"
-                    } else {
-                        "Remove"
-                    };
-                    if ui.button(label).clicked() {
-                        remove = Some(profile.id.clone());
-                    }
-                    if ui.button("Edit").clicked() {
-                        edit = Some(index);
-                    }
+            let active = profile.id == self.ai_active;
+            egui::Frame::group(ui.style()).show(ui, |ui| {
+                ui.horizontal(|ui| {
                     if ui
-                        .button("Test")
-                        .on_hover_text("Send a tiny request")
+                        .radio(active, "")
+                        .on_hover_text("Use this profile")
                         .clicked()
                     {
-                        request = Some(Request::TestAiProfile {
-                            profile: profile.id.clone(),
-                        });
+                        activate = Some(profile.id.clone());
                     }
+                    ui.vertical(|ui| {
+                        ui.strong(&profile.name);
+                        ui.weak(format!("{} · {}", profile.model, profile.base_url));
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let confirming = self.ai_confirming_remove.as_deref() == Some(&profile.id);
+                        let label = if confirming {
+                            "Confirm remove"
+                        } else {
+                            "Remove"
+                        };
+                        if ui.button(label).clicked() {
+                            remove = Some(profile.id.clone());
+                        }
+                        if ui.button("Edit").clicked() {
+                            edit = Some(index);
+                        }
+                        if ui
+                            .button("Test")
+                            .on_hover_text("Send a tiny request")
+                            .clicked()
+                        {
+                            request = Some(Request::TestAiProfile {
+                                profile: profile.id.clone(),
+                            });
+                        }
+                    });
                 });
             });
         }
@@ -740,6 +925,190 @@ mod tests {
         assert_eq!(decision(chosen, prefs, false, false), None);
     }
 
+    /// Toda categoria tem rótulo, ícone próprio e um subtítulo — e o ícone existe na fonte.
+    ///
+    /// Sem isto, uma categoria nova entra sem ícone (cai no `?` do fallback) ou repete o da vizinha
+    /// (duas entradas idênticas de relance).
+    /// CONTRACT: IF-248
+    #[test]
+    fn every_category_has_its_own_icon_and_label() {
+        assert_eq!(
+            Category::ALL.len(),
+            3,
+            "Appearance, Database list, AI profiles"
+        );
+        assert_eq!(
+            Category::default(),
+            Category::Appearance,
+            "a aba abre na primeira categoria"
+        );
+
+        for (index, category) in Category::ALL.iter().enumerate() {
+            assert!(
+                !category.label().trim().is_empty(),
+                "rótulo vazio na posição {index}"
+            );
+            assert!(
+                !category.hint().trim().is_empty(),
+                "subtítulo de {category:?}"
+            );
+            assert_ne!(
+                category.icon().glyph(),
+                '?',
+                "o ícone de {category:?} não existe no Heroicons"
+            );
+            let same = Category::ALL
+                .iter()
+                .filter(|other| other.icon() == category.icon())
+                .count();
+            assert_eq!(same, 1, "ícone repetido em {category:?}");
+        }
+    }
+
+    /// O menu fica **à esquerda** e o conteúdo da categoria **à direita** dele.
+    ///
+    /// É a geometria do desenho aprovado: a coluna do menu é fixa e o painel não a invade. O menu
+    /// pinta ícone + rótulo num galley só, então o texto procurado é o do fim da string.
+    #[test]
+    fn the_category_menu_is_a_fixed_column_on_the_left() {
+        let ctx = egui::Context::default();
+        let mut state = State::with_prefs(None);
+        state.families = Some(Vec::new());
+
+        let mut painted: Vec<(String, egui::Pos2)> = Vec::new();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(screen(900.0, 700.0), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let _ = state.ui(ui);
+                });
+            });
+            painted.clear();
+            collect_text(&output.shapes, &mut painted);
+            output.textures_delta.clear();
+        }
+
+        for category in Category::ALL {
+            let label = category.label();
+            assert!(
+                painted
+                    .iter()
+                    .any(|(text, pos)| text.ends_with(label) && pos.x < CATEGORY_WIDTH),
+                "{label:?} devia estar na coluna do menu: {painted:?}"
+            );
+        }
+        // O painel da categoria aberta começa **depois** da coluna do menu.
+        assert!(
+            painted
+                .iter()
+                .any(|(text, pos)| text == Category::Appearance.label() && pos.x > CATEGORY_WIDTH),
+            "o painel começa à direita do menu: {painted:?}"
+        );
+    }
+
+    /// Há **respiro** entre o menu e o painel: o texto não encosta na divisória.
+    ///
+    /// Era o pedido do dono depois do menu entrar (as colunas ficavam coladas). O número é do
+    /// `CONTENT_GAP` desta tela, e o teste mede a tinta: a primeira letra do título tem de começar
+    /// depois da coluna do menu, com folga.
+    /// CONTRACT: IF-248
+    #[test]
+    fn the_panel_keeps_a_gap_from_the_menu() {
+        let ctx = egui::Context::default();
+        let mut state = State::with_prefs(None);
+        state.families = Some(Vec::new());
+
+        let mut painted: Vec<(String, egui::Pos2)> = Vec::new();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(screen(900.0, 700.0), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let _ = state.ui(ui);
+                });
+            });
+            painted.clear();
+            collect_text(&output.shapes, &mut painted);
+            output.textures_delta.clear();
+        }
+
+        let heading = painted
+            .iter()
+            .find(|(text, pos)| text == Category::Appearance.label() && pos.x > CATEGORY_WIDTH)
+            .expect("o título da categoria foi desenhado")
+            .1;
+
+        assert!(
+            heading.x >= CATEGORY_WIDTH + f32::from(CONTENT_GAP),
+            "o título começa em {} e tem de ficar ao menos {} à direita do menu",
+            heading.x,
+            CATEGORY_WIDTH + f32::from(CONTENT_GAP)
+        );
+    }
+
+    /// Clicar numa categoria troca o painel (o menu não é enfeite).
+    #[test]
+    fn clicking_a_category_swaps_the_panel() {
+        let ctx = egui::Context::default();
+        let mut state = State::with_prefs(None);
+        state.families = Some(Vec::new());
+
+        // Primeiro quadro: desenha e descobre onde está a entrada "AI profiles".
+        let mut painted: Vec<(String, egui::Pos2)> = Vec::new();
+        let mut output = ctx.run_ui(screen(900.0, 700.0), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let _ = state.ui(ui);
+            });
+        });
+        collect_text(&output.shapes, &mut painted);
+        output.textures_delta.clear();
+        let ai = painted
+            .iter()
+            .find(|(text, pos)| text.ends_with(Category::Ai.label()) && pos.x < CATEGORY_WIDTH)
+            .expect("a entrada da IA está no menu")
+            .1;
+        // O galley começa no topo do texto; o meio da linha fica alguns pixels abaixo.
+        let alvo = egui::pos2(ai.x + 4.0, ai.y + 6.0);
+
+        let input = egui::RawInput {
+            events: vec![
+                egui::Event::PointerMoved(alvo),
+                egui::Event::PointerButton {
+                    pos: alvo,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::PointerButton {
+                    pos: alvo,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            ..screen(900.0, 700.0)
+        };
+        painted.clear();
+        let mut clicked = ctx.run_ui(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let _ = state.ui(ui);
+            });
+        });
+        collect_text(&clicked.shapes, &mut painted);
+        clicked.textures_delta.clear();
+
+        assert_eq!(state.category, Category::Ai, "o clique troca a categoria");
+        assert!(
+            painted
+                .iter()
+                .any(|(text, _)| text.contains("Models for the AI")),
+            "o painel da IA está à vista: {painted:?}"
+        );
+        assert!(
+            !painted
+                .iter()
+                .any(|(text, _)| text.contains("Between 0.80x and 1.25x")),
+            "o painel da aparência saiu: {painted:?}"
+        );
+    }
+
     /// O estado da aba **carrega** tudo o que está gravado — inclusive a paginação.
     ///
     /// O bug que originou este teste: `with_prefs` copiava fonte e queries e esquecia a lista,
@@ -1019,5 +1388,40 @@ mod tests {
             0,
             "volta para a primeira opção"
         );
+    }
+
+    /// Entrada de teste com uma janela de tamanho conhecido.
+    ///
+    /// Sem `screen_rect` o egui usa uma superfície enorme (10k x 10k) e qualquer medida de largura
+    /// vira ficção — foi assim que o controle segmentado apareceu com 8k de largura num teste.
+    fn screen(width: f32, height: f32) -> egui::RawInput {
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(width, height),
+            )),
+            ..Default::default()
+        }
+    }
+
+    /// Junta `(texto, posição)` de todo `Shape::Text`, descendo nos grupos.
+    fn collect_text(shapes: &[egui::epaint::ClippedShape], out: &mut Vec<(String, egui::Pos2)>) {
+        fn walk(shape: &egui::Shape, out: &mut Vec<(String, egui::Pos2)>) {
+            match shape {
+                egui::Shape::Text(text) => {
+                    out.push((text.galley.text().to_string(), text.pos));
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for clipped in shapes {
+            walk(&clipped.shape, out);
+        }
     }
 }

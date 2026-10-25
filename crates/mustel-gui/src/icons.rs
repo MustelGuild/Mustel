@@ -59,6 +59,8 @@ pub enum Icon {
     ArrowUp,
     /// Aba de consulta (lupa).
     Magnifier,
+    /// Lista de itens (categorias, listas de configuração).
+    List,
     /// Aba de servidores (pilha de servidores).
     Server,
     /// Aba de configurações (engrenagem).
@@ -97,6 +99,7 @@ impl Icon {
             Icon::ChevronRight => "chevron-right",
             Icon::ArrowUp => "arrow-up",
             Icon::Magnifier => "magnifying-glass",
+            Icon::List => "list-bullet",
             Icon::Server => "server-stack",
             Icon::Settings => "cog-6-tooth",
             Icon::ThemeSystem => "computer-desktop",
@@ -152,6 +155,27 @@ pub fn install(definitions: &mut egui::FontDefinitions) {
             .or_default()
             .insert(0, asset.family.to_string());
     }
+}
+
+/// Ícone + rótulo num **mesmo** `LayoutJob`, na fonte de cada um.
+///
+/// É o que mantém o glifo embutido e o texto na mesma linha sem o ícone herdar a fonte do rótulo.
+/// Público dentro do crate para quem desenha o próprio widget (as entradas do menu de categorias
+/// pintam o `LayoutJob` à mão para ter o fundo de largura inteira).
+pub(crate) fn icon_and_text(
+    ui: &egui::Ui,
+    icon: Icon,
+    text: &str,
+    style: egui::TextStyle,
+) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    job.append(
+        &icon.glyph().to_string(),
+        0.0,
+        format(font_id(ui.text_style_height(&egui::TextStyle::Body))),
+    );
+    job.append(&format!(" {text}"), 0.0, format(style.resolve(ui.style())));
+    job
 }
 
 /// Desenha o ícone embutido no fluxo do texto, na cor do texto.
@@ -224,17 +248,7 @@ pub fn selectable_selected(
     text: &str,
     selected: bool,
 ) -> egui::Response {
-    let mut job = egui::text::LayoutJob::default();
-    job.append(
-        &icon.glyph().to_string(),
-        0.0,
-        format(font_id(ui.text_style_height(&egui::TextStyle::Body))),
-    );
-    job.append(
-        &format!(" {text}"),
-        0.0,
-        format(egui::TextStyle::Body.resolve(ui.style())),
-    );
+    let job = icon_and_text(ui, icon, text, egui::TextStyle::Body);
     ui.selectable_label(selected, job)
 }
 
@@ -271,7 +285,7 @@ mod tests {
         );
     }
 
-    const ALL: [Icon; 24] = [
+    const ALL: [Icon; 25] = [
         Icon::Refresh,
         Icon::Close,
         Icon::Warning,
@@ -288,6 +302,7 @@ mod tests {
         Icon::ChevronRight,
         Icon::ArrowUp,
         Icon::Magnifier,
+        Icon::List,
         Icon::Server,
         Icon::Settings,
         Icon::OpenExternal,

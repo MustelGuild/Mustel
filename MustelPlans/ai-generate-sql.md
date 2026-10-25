@@ -677,3 +677,31 @@ Append-only.
   `the_minimum_window_grows_with_the_ai_panel` e `the_minimum_leaves_room_for_the_form` (mutação
   conferida: sem a soma do painel, o teste acusa “sobram 108 px para o conteúdo”). IF-220
   atualizada com o piso novo. `cargo test --workspace` → 650 testes; clippy e fmt limpos.
+- `[2026-10-25]` **Settings com menu de categorias** (pedido do dono: “um menu sidebar fixo para
+  cada categoria”, aprovado sobre três desenhos da tela — os PNGs eram andaime e saíram). A aba
+  deixou de ser uma coluna única (Appearance → Database list → AI empilhadas): agora é **menu fixo
+  à esquerda** (216 px, `Panel::left`, não rola com o conteúdo) e o **painel da categoria** à
+  direita, que rola só quando não cabe (barra sólida).
+  `Category` tem as três, cada uma com ícone próprio da fonte embutida (sol / lista / sparkles —
+  `Icon::List` = `list-bullet`, novo); a aberta fica realçada de ponta a ponta, numa entrada
+  desenhada à mão como o `tabs::tab` (o `selectable_label` encolhe até o texto). A categoria **não
+  é gravada**: abre em Appearance. O rodapé “Stored in the gui section of mustel.jsonc” saiu do
+  topo do conteúdo e foi para o menu (vale para as três). Na categoria AI cada perfil virou
+  **cartão** (rádio do ativo, nome, resumo embaixo e `Test`/`Edit`/`Remove` à direita; o remove de
+  dois toques continua).
+  Verificado na janela: as três categorias trocam pelo clique e o realce acompanha; na largura
+  mínima (924) o menu continua fixo e o painel não é cortado. Testes novos:
+  `every_category_has_its_own_icon_and_label`, `the_category_menu_is_a_fixed_column_on_the_left`,
+  `clicking_a_category_swaps_the_panel` (mutação conferida: com `Sense::hover` no item o clique
+  não troca e o teste falha). Duas armadilhas de teste custaram rodadas: o menu pinta ícone e
+  rótulo num **galley só** (procurar `== "Appearance"` não acha) e sem `screen_rect` o egui usa uma
+  superfície de 10k × 10k (o controle segmentado apareceu com 8k de largura). IF-248 no manifesto.
+  `cargo test --workspace` → 653 testes; clippy e fmt limpos.
+- `[2026-10-25]` **Respiro entre o menu e o painel** (pedido do dono: as colunas da aba Settings
+  ficavam coladas). O painel da categoria ganhou `CONTENT_GAP = 20` de margem esquerda
+  (`egui::Frame::NONE.inner_margin`): a divisória do menu e o primeiro texto ficavam a 8 px, agora
+  ficam a ~24 (a `Margin` soma o respiro próprio do painel). Fora da aba Settings nada mudou. Teste
+  novo `the_panel_keeps_a_gap_from_the_menu` mede a tinta do título contra a coluna do menu;
+  mutação conferida (com `left: 0`, ele acusa "o título começa em 224 e tem de ficar ao menos 236").
+  Verificado na janela nas três categorias e na largura mínima. `cargo test --workspace` -> 654
+  testes; clippy e fmt limpos.

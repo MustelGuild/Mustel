@@ -74,10 +74,13 @@ impl Picker {
             ui.heading("Escolher pasta");
 
             ui.horizontal(|ui| {
-                if ui
-                    .add_enabled(parent_of(&current).is_some(), egui::Button::new("⬆"))
-                    .on_hover_text("Subir um nível")
-                    .clicked()
+                if crate::icons::button_enabled(
+                    ui,
+                    crate::icons::Icon::ArrowUp,
+                    parent_of(&current).is_some(),
+                )
+                .on_hover_text("Subir um nível")
+                .clicked()
                 {
                     self.go_up();
                 }
@@ -121,7 +124,8 @@ impl Picker {
                             .file_name()
                             .map(|name| name.to_string_lossy().to_string())
                             .unwrap_or_else(|| entry.display().to_string());
-                        if ui.selectable_label(false, format!("📁 {name}")).clicked() {
+                        if crate::icons::selectable(ui, crate::icons::Icon::Folder, &name).clicked()
+                        {
                             self.navigate_to(entry.clone());
                         }
                     }

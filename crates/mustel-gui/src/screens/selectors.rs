@@ -197,10 +197,17 @@ impl State {
                         // linha diz isso — esconder deixaria o dono sem saber por que falha.
                         match crate::selection::missing_source(&query, servers) {
                             Some(missing) => {
-                                ui.colored_label(
-                                    crate::theme::warning(ui),
-                                    format!("⚠ source server '{missing}' is gone"),
-                                );
+                                ui.horizontal(|ui| {
+                                    crate::icons::inline_colored(
+                                        ui,
+                                        crate::icons::Icon::Warning,
+                                        crate::theme::warning(ui),
+                                    );
+                                    ui.colored_label(
+                                        crate::theme::warning(ui),
+                                        format!("source server '{missing}' is gone"),
+                                    );
+                                });
                             }
                             None => {
                                 ui.weak(format!("{} · {}", query.server, query.database));
@@ -324,10 +331,13 @@ impl State {
 
                         let can_discover = !form.server.is_empty();
                         let loading = self.is_loading(&form.server);
-                        if ui
-                            .add_enabled(can_discover && !loading, egui::Button::new("⟳"))
-                            .on_hover_text("List the databases of this server")
-                            .clicked()
+                        if crate::icons::button_enabled(
+                            ui,
+                            crate::icons::Icon::Refresh,
+                            can_discover && !loading,
+                        )
+                        .on_hover_text("List the databases of this server")
+                        .clicked()
                         {
                             self.discovered
                                 .insert(form.server.clone(), Discovery::Loading);
@@ -358,7 +368,7 @@ impl State {
                         }
                         Some(Discovery::Ready(databases)) if !databases.is_empty() => {
                             ui.weak(format!(
-                                "{} database(s) on '{}'. Use ▾ to pick one.",
+                                "{} database(s) on '{}'. Use the arrow to pick one.",
                                 databases.len(),
                                 form.server
                             ));

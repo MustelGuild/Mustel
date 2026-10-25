@@ -772,12 +772,12 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 ui.heading("Mustel");
                 ui.separator();
-                // Abas com ícone **desenhado**: emoji vinha de fonte do sistema e ficava fora da
-                // linha do texto (ver `tabs`).
+                // Abas com ícone da **fonte embutida**: o emoji vinha de fonte do sistema e ficava
+                // fora da linha do texto (ver `tabs`).
                 if crate::tabs::tab(
                     ui,
                     self.screen == Screen::Query,
-                    crate::tabs::Icon::Query,
+                    crate::icons::Icon::Magnifier,
                     "Query",
                 )
                 .clicked()
@@ -787,7 +787,7 @@ impl eframe::App for App {
                 if crate::tabs::tab(
                     ui,
                     self.screen == Screen::Servers,
-                    crate::tabs::Icon::Servers,
+                    crate::icons::Icon::Server,
                     "Connections",
                 )
                 .clicked()
@@ -800,7 +800,7 @@ impl eframe::App for App {
                 if crate::tabs::tab(
                     ui,
                     self.screen == Screen::Settings,
-                    crate::tabs::Icon::Settings,
+                    crate::icons::Icon::Settings,
                     "Settings",
                 )
                 .clicked()
@@ -836,10 +836,9 @@ impl eframe::App for App {
                         .exact_size(SIDEBAR_WIDTH)
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                // `◀`/`▶` (e não `«`/`»`): os guillemets saíam como caixinha na
-                                // fonte embutida e o botão parecia um ícone quebrado.
-                                if ui
-                                    .small_button("◀")
+                                // Seta da fonte de ícones embutida: `«`/`»` saíam como caixinha
+                                // na fonte embutida e o botão parecia um ícone quebrado.
+                                if crate::icons::button(ui, crate::icons::Icon::ChevronLeft)
                                     .on_hover_text("Hide the servers panel")
                                     .clicked()
                                 {
@@ -862,8 +861,7 @@ impl eframe::App for App {
                     // Fechada, o botão de reabrir tem de existir **fora** do painel: dentro dele
                     // ninguém o veria (era o que deixava a sidebar impossível de voltar).
                     ui.horizontal(|ui| {
-                        if ui
-                            .small_button("▶")
+                        if crate::icons::button(ui, crate::icons::Icon::ChevronRight)
                             .on_hover_text("Show the servers panel")
                             .clicked()
                         {

@@ -23,11 +23,11 @@ pub struct Item<'a> {
     /// Separado do `note` de propósito: a nota é informação cinza (contagem), o aviso é problema —
     /// e um problema não pode ser da mesma cor do detalhe.
     pub warning: Option<&'a str>,
-    /// Ação destrutiva por linha (o glifo do botão, ex.: `✕`).
+    /// Ação destrutiva por linha (ex.: [`crate::icons::Icon::Delete`]).
     ///
     /// Clicar **não** seleciona a linha: devolve o índice em [`ComboOutcome::action`]. Use com
     /// [`search_combo_actionable`] — o [`search_combo`] comum ignora a ação.
-    pub action: Option<&'a str>,
+    pub action: Option<crate::icons::Icon>,
 }
 
 impl<'a> Item<'a> {
@@ -59,8 +59,8 @@ impl<'a> Item<'a> {
         }
     }
 
-    /// Acrescenta um botão de ação na linha (o glifo é o rótulo).
-    pub fn with_action(mut self, icon: &'a str) -> Self {
+    /// Acrescenta um botão de ação na linha (o ícone é o rótulo).
+    pub fn with_action(mut self, icon: crate::icons::Icon) -> Self {
         self.action = Some(icon);
         self
     }
@@ -149,11 +149,30 @@ pub fn search_combo_actionable(
     let mut chosen = None;
     let mut acted = None;
 
+    // Valor à esquerda, seta à direita — a seta vem da fonte de ícones embutida, não do texto
+    // comum (glifo de sistema mudaria de desenho por SO).
+    let text_font = egui::TextStyle::Button.resolve(ui.style());
+    let mut job = egui::text::LayoutJob::default();
+    job.append(
+        button_text,
+        0.0,
+        egui::TextFormat {
+            font_id: text_font.clone(),
+            ..Default::default()
+        },
+    );
+    job.append(
+        &format!("   {}", crate::icons::Icon::ChevronDown.glyph()),
+        0.0,
+        egui::TextFormat {
+            font_id: crate::icons::font_id(text_font.size),
+            ..Default::default()
+        },
+    );
     let button = ui
         .add_enabled(
             enabled,
-            // Mesmo desenho dos combos de fonte: valor à esquerda, triângulo à direita.
-            egui::Button::new(format!("{button_text}   ▼")).min_size(egui::vec2(size.button, 0.0)),
+            egui::Button::new(job).min_size(egui::vec2(size.button, 0.0)),
         )
         .on_hover_text(if enabled {
             "Choose…"
@@ -211,7 +230,7 @@ pub fn search_combo_actionable(
                                         // À direita de tudo: o glifo da ação. Clicar nele não
                                         // seleciona a linha (são widgets separados).
                                         if let Some(icon) = item.action {
-                                            triggered = ui.small_button(icon).clicked();
+                                            triggered = crate::icons::button(ui, icon).clicked();
                                         }
                                         if let Some(note) = item.note {
                                             ui.weak(note);
@@ -613,7 +632,7 @@ mod tests {
                 });
                 egui::CentralPanel::default().show(ctx, |ui| {
                     let items = vec![
-                        Item::new("Faturamento", true).with_action("✕"),
+                        Item::new("Faturamento", true).with_action(crate::icons::Icon::Delete),
                         Item::new("(none)", false),
                     ];
                     let _ = search_combo_actionable(
@@ -631,9 +650,16 @@ mod tests {
             output.textures_delta.clear();
         }
 
+        // O ícone da ação vem da fonte embutida (Heroicons), não de emoji do sistema: o codepoint
+        // desenhado é o do `trash`, não um `✕` literal.
+        let trash = crate::icons::Icon::Delete.glyph().to_string();
         assert!(
-            texts.iter().any(|text| text == "✕"),
-            "a linha da query salva traz o botão de excluir: {texts:?}"
+            texts.iter().any(|text| text.contains(&trash)),
+            "a linha da query salva traz o botão de excluir ({trash:?}): {texts:?}"
+        );
+        assert!(
+            !texts.iter().any(|text| text.contains('\u{2715}')),
+            "nada de emoji/glifo de sistema na ação: {texts:?}"
         );
         assert!(
             texts.iter().any(|text| text == "(none)"),
@@ -661,7 +687,9 @@ mod tests {
                     )
                 });
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    let items = vec![Item::new("Faturamento", false).with_action("✕")];
+                    let items = vec![
+                        Item::new("Faturamento", false).with_action(crate::icons::Icon::Delete),
+                    ];
                     selected = search_combo_sized(ui, "plain", "", &items, true, Size::default());
                 });
             });

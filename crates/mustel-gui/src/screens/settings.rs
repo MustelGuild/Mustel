@@ -16,19 +16,19 @@ use crate::request::Request;
 
 /// As três opções de tema, na ordem em que aparecem no controle segmentado.
 ///
-/// Ícone **e** texto: o ícone dá a leitura instantânea, o texto dispensa adivinhar o símbolo. São os
-/// mesmos ícones que o `egui` usa em `ThemePreference::icon`.
-const THEME_OPTIONS: [(&str, GuiTheme); 3] = [
-    ("💻 System", GuiTheme::System),
-    ("☀️ Light", GuiTheme::Light),
-    ("🌙 Dark", GuiTheme::Dark),
+/// Ícone **e** texto: o ícone dá a leitura instantânea, o texto dispensa adivinhar o símbolo. Os
+/// ícones vêm da fonte embutida (Heroicons) — não são emoji, então o desenho é o mesmo em todo SO.
+const THEME_OPTIONS: [(crate::icons::Icon, GuiTheme, &str); 3] = [
+    (crate::icons::Icon::ThemeSystem, GuiTheme::System, "System"),
+    (crate::icons::Icon::ThemeLight, GuiTheme::Light, "Light"),
+    (crate::icons::Icon::ThemeDark, GuiTheme::Dark, "Dark"),
 ];
 
 /// Posição da escolha no controle (o desconhecido cai em `System`, que é o default).
 fn theme_index(theme: GuiTheme) -> usize {
     THEME_OPTIONS
         .iter()
-        .position(|(_, option)| *option == theme)
+        .position(|(_, option, _)| *option == theme)
         .unwrap_or(0)
 }
 
@@ -117,8 +117,11 @@ impl State {
         // Primeiro item da aba: o tema da **janela** (claro, escuro ou seguindo o SO).
         ui.label("Theme");
         let selected = theme_index(self.theme);
-        let labels: Vec<&str> = THEME_OPTIONS.iter().map(|(label, _)| *label).collect();
-        if let Some(index) = crate::tabs::segmented(ui, &labels, selected) {
+        let items: Vec<(Option<crate::icons::Icon>, &str)> = THEME_OPTIONS
+            .iter()
+            .map(|(icon, _, label)| (Some(*icon), *label))
+            .collect();
+        if let Some(index) = crate::tabs::segmented_with_icons(ui, &items, selected) {
             let theme = THEME_OPTIONS[index].1;
             if theme != self.theme {
                 self.theme = theme;
@@ -460,19 +463,20 @@ mod tests {
     fn every_theme_option_has_a_label_and_round_trips() {
         assert_eq!(THEME_OPTIONS.len(), 3, "System, Light e Dark");
 
-        for (index, (label, theme)) in THEME_OPTIONS.iter().enumerate() {
+        for (index, (icon, theme, label)) in THEME_OPTIONS.iter().enumerate() {
             assert!(!label.trim().is_empty(), "rótulo vazio na posição {index}");
+            // O rótulo é **só texto**: o ícone vem da fonte embutida, não é emoji dentro da string.
             assert!(
-                label
-                    .chars()
-                    .any(|c| !c.is_alphanumeric() && !c.is_whitespace()),
-                "o rótulo precisa do ícone: {label}"
-            );
-            assert!(
-                label.contains(char::is_alphabetic),
-                "falta o texto: {label}"
+                label.chars().all(|c| c.is_alphabetic()),
+                "o rótulo é só texto; o ícone é separado: {label}"
             );
             assert_eq!(theme_index(*theme), index, "posição de {theme:?}");
+            // Cada opção tem um ícone próprio (senão duas parecem a mesma).
+            let same = THEME_OPTIONS
+                .iter()
+                .filter(|(other, _, _)| other == icon)
+                .count();
+            assert_eq!(same, 1, "ícone repetido em {icon:?}");
         }
     }
 

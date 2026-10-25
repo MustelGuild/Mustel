@@ -287,13 +287,6 @@ const ICON_WIDTH: f32 = 28.0;
 /// quando não há seletor no escopo).
 const RESET: &str = "Reset";
 
-/// A vassoura do combo de seletor: esquece o seletor de **todos** os servidores.
-///
-/// `🧹` não existe no Fira Code (a fonte embutida); `✕` já significa "dispensar" e `⌫` confunde
-/// com apagar texto. O `∅` (conjunto vazio) está na fonte e diz o que o botão faz — deixa o escopo
-/// **sem** seletor.
-const BROOM: &str = "∅";
-
 /// Largura mínima da lista aberta do combo de servidor: `Homologacao-Tenant… · 104`.
 const SERVER_POPUP_WIDTH: f32 = 400.0;
 
@@ -689,7 +682,7 @@ Selection unchanged."
                 });
 
             let can_load = reference.can_load(&self.reference_server, &self.reference_database);
-            let load = ui.add_enabled(can_load, egui::Button::new("⟳"));
+            let load = crate::icons::button_enabled(ui, crate::icons::Icon::Refresh, can_load);
             let load = match reference
                 .blocked_reason(&self.reference_server, &self.reference_database)
             {
@@ -745,7 +738,7 @@ Selection unchanged."
                         crate::search_combo::Item::new("(none)", selected.is_empty())
                     } else {
                         crate::search_combo::Item::new(text.as_str(), *text == selected)
-                            .with_action("🗑")
+                            .with_action(crate::icons::Icon::Delete)
                     }
                 })
                 .collect();
@@ -780,10 +773,14 @@ Selection unchanged."
             // Salvar mora **na linha** da query salva: é onde se escolhe o que carregar, então é
             // onde se grava também. Clicar em Save com texto diferente do carregado **avisa**
             // antes de substituir (D4).
-            if ui
-                .add_enabled(!self.sql.trim().is_empty(), egui::Button::new("💾 Save"))
-                .on_hover_text("Save over the loaded query")
-                .clicked()
+            if crate::icons::button_text_enabled(
+                ui,
+                crate::icons::Icon::Save,
+                "Save",
+                !self.sql.trim().is_empty(),
+            )
+            .on_hover_text("Save over the loaded query")
+            .clicked()
             {
                 match self.saved.source.clone() {
                     Some(name) if self.saved.is_dirty(&self.sql) => {
@@ -797,13 +794,14 @@ Selection unchanged."
                     }
                 }
             }
-            if ui
-                .add_enabled(
-                    !self.sql.trim().is_empty(),
-                    egui::Button::new("📝 Save as…"),
-                )
-                .on_hover_text("Save the editor text under a new name")
-                .clicked()
+            if crate::icons::button_text_enabled(
+                ui,
+                crate::icons::Icon::SaveAs,
+                "Save as…",
+                !self.sql.trim().is_empty(),
+            )
+            .on_hover_text("Save the editor text under a new name")
+            .clicked()
             {
                 self.saved.naming = Some(String::new());
                 self.saved.naming_error = None;
@@ -1035,8 +1033,7 @@ Selection unchanged."
 
             // Dois botões ao lado da caixa: escolher (abre o seletor do app) e abrir (mostra a pasta
             // no gerenciador de arquivos). Ícone + tooltip para não roubar largura da caixa.
-            if ui
-                .button("📂 Escolher")
+            if crate::icons::button_text(ui, crate::icons::Icon::FolderOpen, "Escolher")
                 .on_hover_text("Escolher a pasta de saída")
                 .clicked()
             {
@@ -1055,7 +1052,12 @@ Selection unchanged."
                 format!("A pasta ainda não existe: {}", target.display())
             };
 
-            let open = ui.add_enabled(can_open, egui::Button::new("🗂 Abrir"));
+            let open = crate::icons::button_text_enabled(
+                ui,
+                crate::icons::Icon::OpenExternal,
+                "Abrir",
+                can_open,
+            );
             let open = if can_open {
                 open.on_hover_text(tooltip)
             } else {
@@ -1134,15 +1136,25 @@ Selection unchanged."
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     for row in &self.progress {
-                        let line = if row.error.is_empty() {
-                            format!(
-                                "✓ {}/{} — {} rows — {:.1}s",
-                                row.server, row.database, row.rows, row.seconds
-                            )
-                        } else {
-                            format!("✗ {}/{} — {}", row.server, row.database, row.error)
-                        };
-                        ui.monospace(line);
+                        ui.horizontal(|ui| {
+                            if row.error.is_empty() {
+                                crate::icons::inline(ui, crate::icons::Icon::Check);
+                                ui.monospace(format!(
+                                    "{}/{} — {} rows — {:.1}s",
+                                    row.server, row.database, row.rows, row.seconds
+                                ));
+                            } else {
+                                crate::icons::inline_colored(
+                                    ui,
+                                    crate::icons::Icon::Cross,
+                                    crate::theme::danger(ui),
+                                );
+                                ui.monospace(format!(
+                                    "{}/{} — {}",
+                                    row.server, row.database, row.error
+                                ));
+                            }
+                        });
                     }
                 });
         }
@@ -1298,8 +1310,7 @@ Selection unchanged."
                 icon_box,
                 egui::Layout::right_to_left(egui::Align::Center),
                 |ui| {
-                    if ui
-                        .add_enabled(!running, egui::Button::new("⟳"))
+                    if crate::icons::button_enabled(ui, crate::icons::Icon::Refresh, !running)
                         .on_hover_text(format!("List the databases of {scope_name}"))
                         .clicked()
                     {
@@ -1331,7 +1342,7 @@ Selection unchanged."
                         .iter()
                         .find(|query| query.name.eq_ignore_ascii_case(text))
                         .and_then(|query| crate::selection::missing_source(query, servers))
-                        .map(|missing| format!("⚠ reads from '{missing}' (missing)"))
+                        .map(|missing| format!("reads from '{missing}' (missing)"))
                 })
                 .collect();
             let items: Vec<crate::search_combo::Item<'_>> = texts
@@ -1392,13 +1403,13 @@ Selection unchanged."
                         ui.spinner().on_hover_text(format!("Applying '{query}'..."));
                     } else if running {
                         ui.spinner().on_hover_text("Running the query...");
-                    } else if ui
-                        .add_enabled(
-                            self.selection.selectors_count() > 0,
-                            egui::Button::new(BROOM),
-                        )
-                        .on_hover_text("Forget the selector on every server (the selection stays)")
-                        .clicked()
+                    } else if crate::icons::button_enabled(
+                        ui,
+                        crate::icons::Icon::Broom,
+                        self.selection.selectors_count() > 0,
+                    )
+                    .on_hover_text("Forget the selector on every server (the selection stays)")
+                    .clicked()
                     {
                         // A vassoura esquece o seletor de **todos** os servidores (a linha `(none)`
                         // do combo só esquece o do escopo).
@@ -1420,8 +1431,16 @@ Selection unchanged."
                 // texto, e uma caixa estreita some no meio do nada).
                 ui.set_min_width(ui.available_width());
                 ui.horizontal_wrapped(|ui| {
-                    ui.colored_label(crate::theme::alert(ui), format!("⚠ {alert}"));
-                    if ui.small_button("✕").on_hover_text("Dismiss").clicked() {
+                    crate::icons::inline_colored(
+                        ui,
+                        crate::icons::Icon::Warning,
+                        crate::theme::alert(ui),
+                    );
+                    ui.colored_label(crate::theme::alert(ui), alert);
+                    if crate::icons::button(ui, crate::icons::Icon::Close)
+                        .on_hover_text("Dismiss")
+                        .clicked()
+                    {
                         dismiss = true;
                     }
                 });
@@ -1493,8 +1512,7 @@ Selection unchanged."
             // não se confundir com o `Clear`, que desmarca bases.
             if !self.selection.search().is_empty() {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .small_button("✕ search")
+                    if crate::icons::button_text(ui, crate::icons::Icon::Close, "search")
                         .on_hover_text("Clear the search")
                         .clicked()
                     {
@@ -1701,7 +1719,10 @@ Selection unchanged."
                 size,
             );
 
-            let button = ui.put(rect, egui::Button::new("▼").small());
+            // Seta da fonte de ícones embutida (não é emoji: o desenho é o mesmo em todo SO).
+            let glyph = egui::RichText::new(crate::icons::Icon::ChevronDown.glyph().to_string())
+                .font(crate::icons::font_id(14.0));
+            let button = ui.put(rect, egui::Button::new(glyph).small());
             let button = button.on_hover_text("Ir para o fim da página");
 
             if button.clicked() {
@@ -1776,8 +1797,8 @@ Selection unchanged."
 
                 ui.horizontal(|ui| {
                     ui.label(
-                        egui::RichText::new("⚠")
-                            .size(28.0)
+                        egui::RichText::new(crate::icons::Icon::Warning.glyph().to_string())
+                            .font(crate::icons::font_id(28.0))
                             .color(crate::theme::danger(ui)),
                     );
                     ui.label(
@@ -2478,7 +2499,7 @@ mod tests {
             error: "connection refused".to_string(),
         });
 
-        assert_eq!(state.applying, None, "o `⟳` saiu da tela");
+        assert_eq!(state.applying, None, "o indicador de carga saiu da tela");
         let alert = state.apply_alert.clone().expect("alerta");
         assert!(alert.contains("Could not apply 'Homologacao'"), "{alert}");
         assert!(alert.contains("connection refused"), "{alert}");
@@ -2896,17 +2917,15 @@ mod tests {
         }
     }
 
-    /// Os dois botões laterais (o `⟳` do servidor e a vassoura do seletor) ficam **na mesma
+    /// Os dois botões laterais (o refresh do servidor e a vassoura do seletor) ficam **na mesma
     /// coluna**, com os combos terminando no mesmo lugar.
     ///
     /// Pedido do dono: o combo do `Query Selector` estava mais curto que o do `Server` porque aquela
     /// linha reservava dois slots (spinner + vassoura) e a outra só um, e o ícone saía deslocado. O
     /// spinner agora ocupa o **mesmo** slot da vassoura, e as duas linhas usam um `combo_width` só.
     ///
-    /// A prova aqui são os **ícones**: eles são alinhados à direita dentro da mesma caixa, então a
-    /// coluna em que caem é a medida direta do alinhamento. (Os triângulos `▼` não servem de medida:
-    /// o do combo de servidor faz parte do rótulo `All servers (N)   ▼`, e comparar texto
-    /// centrado de rótulos de tamanhos diferentes não diz nada sobre a largura do botão.)
+    /// A prova aqui são os **ícones**: eles vêm da fonte embutida e são centrados dentro da mesma
+    /// caixa, então a coluna em que caem é a medida direta do alinhamento.
     /// CONTRACT: IF-240
     #[test]
     fn the_selector_row_has_the_same_geometry_as_the_server_row() {
@@ -2914,8 +2933,21 @@ mod tests {
         let servers = [server("Local")];
         let mut state = State::default();
         state.sync_servers(&servers);
+        // A vassoura só existe com seletor no escopo — é ela que ocupa o slot medido.
+        state.selection.apply(
+            &[mustel_core::usecases::custom_databases::ServerSelection {
+                server: "Local".to_string(),
+                databases: vec![mustel_core::usecases::custom_databases::DatabaseChoice {
+                    name: "dev".to_string(),
+                    blocked_by: None,
+                    warning: None,
+                }],
+            }],
+            &crate::selection::ApplyScope::All,
+            "todas",
+        );
 
-        let mut texts: Vec<(String, egui::Pos2)> = Vec::new();
+        let mut texts: Vec<(String, f32)> = Vec::new();
         for _ in 0..2 {
             let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
@@ -2926,30 +2958,113 @@ mod tests {
                 });
             });
             texts.clear();
-            collect_pos(&output.shapes, &mut texts);
+            collect_center_x(&output.shapes, &mut texts);
             output.textures_delta.clear();
         }
 
-        let x_of = |needle: &str| -> f32 {
+        let x_of = |glyph: char| -> f32 {
+            let needle = glyph.to_string();
             let found: Vec<f32> = texts
                 .iter()
-                .filter(|(text, _)| text == needle)
-                .map(|(_, pos)| pos.x)
+                .filter(|(text, _)| *text == needle)
+                .map(|(_, x)| *x)
                 .collect();
-            assert_eq!(found.len(), 1, "um só `{needle}` na sidebar: {texts:?}");
+            assert_eq!(found.len(), 1, "um só {glyph:?} na sidebar: {texts:?}");
             found[0]
         };
 
-        let discover = x_of("⟳");
-        let broom = x_of(BROOM);
+        let refresh = x_of(crate::icons::Icon::Refresh.glyph());
+        let broom = x_of(crate::icons::Icon::Broom.glyph());
         assert!(
-            (discover - broom).abs() <= 1.0,
-            "o `⟳` e a vassoura têm de ficar na mesma coluna: {discover} vs {broom}"
+            (refresh - broom).abs() <= 1.0,
+            "o refresh do servidor e a vassoura têm de ficar na mesma coluna: {refresh} vs {broom}"
+        );
+        assert!(refresh > 300.0, "e no fim da linha, não no meio: {refresh}");
+    }
+
+    /// O progresso marca cada banco com o ícone da fonte embutida — certo ou errado —, nunca com
+    /// `✓`/`✗` do texto comum (que mudariam de desenho por SO).
+    #[test]
+    fn the_progress_marks_come_from_the_embedded_icon_font() {
+        let ctx = egui::Context::default();
+        let servers = [server("Local")];
+        let reference = crate::reference::Reference::default();
+        let mut state = State::default();
+        state.sync_servers(&servers);
+        state.push_progress(ProgressRow {
+            server: "Local".to_string(),
+            database: "dev".to_string(),
+            rows: 3,
+            seconds: 0.2,
+            error: String::new(),
+        });
+        state.push_progress(ProgressRow {
+            server: "Local 2".to_string(),
+            database: "dev".to_string(),
+            rows: 0,
+            seconds: 0.0,
+            error: "connection refused".to_string(),
+        });
+
+        let mut texts: Vec<(String, f32)> = Vec::new();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.set_max_width(700.0);
+                    let _ = state.form_ui(ui, &servers, &reference);
+                });
+            });
+            texts.clear();
+            collect_text(&output.shapes, &mut texts);
+            output.textures_delta.clear();
+        }
+
+        let check = crate::icons::Icon::Check.glyph().to_string();
+        let cross = crate::icons::Icon::Cross.glyph().to_string();
+        assert!(
+            texts.iter().any(|(text, _)| *text == check),
+            "a linha concluída traz o certo da fonte embutida: {texts:?}"
         );
         assert!(
-            discover > 300.0,
-            "e no fim da linha, não no meio: {discover}"
+            texts.iter().any(|(text, _)| *text == cross),
+            "a linha com erro traz o errado da fonte embutida: {texts:?}"
         );
+        assert!(
+            !texts
+                .iter()
+                .any(|(text, _)| text.contains('\u{2713}') || text.contains('\u{2717}')),
+            "nada de glifo de sistema (U+2713/U+2717) na marca: {texts:?}"
+        );
+        assert!(
+            texts
+                .iter()
+                .any(|(text, _)| text.contains("connection refused")),
+            "o erro do banco aparece: {texts:?}"
+        );
+    }
+
+    /// Junta `(texto, centro em x)` de todo `Shape::Text`, descendo nos grupos.
+    fn collect_center_x(shapes: &[egui::epaint::ClippedShape], out: &mut Vec<(String, f32)>) {
+        fn walk(shape: &egui::Shape, out: &mut Vec<(String, f32)>) {
+            match shape {
+                egui::Shape::Text(text) => {
+                    let content = text.galley.text().trim().to_string();
+                    if !content.is_empty() {
+                        out.push((content, text.pos.x + text.galley.size().x / 2.0));
+                    }
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for clipped in shapes {
+            walk(&clipped.shape, out);
+        }
     }
 
     /// Junta `(texto, posição)` de todo `Shape::Text`, descendo nos grupos.

@@ -37,6 +37,7 @@ fontique = "0.11"
 egui_extras = "0.37"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 thiserror = "2"
+iconflow = { version = "2.1", default-features = false, features = ["pack-heroicons"] }
 
 [dev-dependencies]
 tempfile = "3"

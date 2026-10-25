@@ -24,6 +24,7 @@ pub mod app;
 pub mod desktop;
 pub mod events;
 pub mod fonts;
+pub mod icons;
 pub mod picker;
 pub mod query;
 pub mod reference;

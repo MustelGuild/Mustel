@@ -127,8 +127,12 @@ pub fn definitions(chosen: &Chosen) -> (egui::FontDefinitions, Vec<String>) {
     let mut definitions = egui::FontDefinitions::default();
     let mut problems = Vec::new();
 
-    // Alinha os ícones (🔍 🖥 ⚙ 📂 🗂 ⟳ ▼) com a linha do texto: a fonte de ícones do egui tem
-    // métrica própria e sem isto os glifos ficam acima do texto nas abas e nos botões.
+    // Os ícones da interface vêm de um TTF **embutido** (Heroicons), numa família nomeada: é o
+    // mesmo desenho em qualquer SO e a cor é a do tema, sem depender de fonte de emoji do sistema.
+    crate::icons::install(&mut definitions);
+
+    // Alinha os glifos do `egui-icons` (o egui ainda o mantém no fallback do texto) com a linha
+    // do texto: essa fonte tem métrica própria e sem isto os glifos ficam acima do texto.
     if let Some(icons) = definitions.font_data.get_mut("egui-icons") {
         // `FontData` é imutável dentro do `Arc`: recria com o **mesmo** blob (sem copiar o arquivo)
         // e o novo tweak.

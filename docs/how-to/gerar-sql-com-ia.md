@@ -20,7 +20,8 @@ Abra **Settings › AI** e clique em `Add profile`:
 
 ## 2. Abra o painel
 
-Na aba **Query**, clique em **`AI Generate SQL`** (ao lado do `Run query`). O painel abre à direita.
+Na aba **Query**, clique em **`AI Generate SQL`** (no alto da tela). O painel abre à direita; o
+ícone `sparkles` no canto dele esconde, e o mesmo botão do alto traz de volta.
 
 ## 3. Escolha o banco e carregue o schema
 

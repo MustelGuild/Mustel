@@ -1112,7 +1112,7 @@ Selection unchanged."
             .horizontal(|ui| {
                 let targets = self.selection.targets(servers);
 
-                let run = if ui
+                if ui
                     .add_enabled(
                         !running && !targets.is_empty(),
                         egui::Button::new("Run query"),
@@ -1124,18 +1124,7 @@ Selection unchanged."
                     self.request_run(targets)
                 } else {
                     None
-                };
-
-                // O painel da IA mora ao lado do que **escreve** no editor, mas é ação: fica aqui,
-                // com rótulo, e alterna o painel em vez de abrir modal (D10/D11).
-                if crate::icons::button_text(ui, crate::icons::Icon::Sparkles, "AI Generate SQL")
-                    .on_hover_text("Chat with an AI to write this query")
-                    .clicked()
-                {
-                    return Some(Request::ToggleAiPanel);
                 }
-
-                run
             })
             .inner;
 

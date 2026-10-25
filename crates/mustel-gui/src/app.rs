@@ -174,10 +174,16 @@ impl App {
                     .map(|prefs| prefs.ai.profiles.clone())
                     .unwrap_or_default();
                 // A conversa volta como estava: o arquivo é de **estado**, não de configuração.
-                let session = mustel_core::config::paths::ai_session_path()
+                let path = mustel_core::config::paths::ai_session_path();
+                // Sem arquivo de sessão, o painel **nasce aberto** (como a sidebar esquerda);
+                // com arquivo, volta como estava.
+                let saved = path.as_deref().is_some_and(std::path::Path::exists);
+                let session = path
                     .map(|path| mustel_core::usecases::ai_session::load(&path))
                     .unwrap_or_default();
-                crate::ai_panel::AiChat::from_session(session, &profiles)
+                let mut chat = crate::ai_panel::AiChat::from_session(session, &profiles);
+                chat.open = if saved { chat.open } else { true };
+                chat
             },
             ai_profiles: prefs
                 .as_ref()
@@ -1027,6 +1033,9 @@ impl eframe::App for App {
         // pinta o fundo dela. Com o `Frame` ele encolhia até o tamanho do conteúdo, e o resto da
         // janela ficava com o fundo cru do `eframe` — a área escura abaixo do conteúdo.
         egui::CentralPanel::default().show(ui, |ui| {
+            // Um pedido por quadro: a barra (handle do painel), as sidebars e a tela escrevem nele.
+            let mut request = None;
+
             ui.horizontal(|ui| {
                 ui.heading("Mustel");
                 ui.separator();
@@ -1067,6 +1076,19 @@ impl eframe::App for App {
                 }
                 ui.separator();
                 ui.label(&self.status);
+                // Colapsado, o painel **não é um painel**: vira o ícone inline, alinhado à direita,
+                // como o `›` da sidebar esquerda. Um `Panel` aqui desenharia a divisória de altura
+                // inteira, que era o que deixava a direita com "cara de linha".
+                if self.screen == Screen::Query && !self.ai.open {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if crate::icons::button(ui, crate::icons::Icon::Sparkles)
+                            .on_hover_text("Show the AI panel")
+                            .clicked()
+                        {
+                            request = Some(Request::ToggleAiPanel);
+                        }
+                    });
+                }
                 if let Some(running) = &self.running {
                     ui.spinner();
                     ui.label(format!("[{}]", running.label));
@@ -1082,7 +1104,6 @@ impl eframe::App for App {
             // Sidebar: **servidores e escolha de bases** moram à esquerda; a área principal fica com
             // o que é da execução (SQL, saída, resultados). A aba Settings não tem sidebar — é um
             // formulário só. `show_collapsible` cuida da animação e deixa uma alça para reabrir.
-            let mut request = None;
             if matches!(self.screen, Screen::Query | Screen::Servers) {
                 // `show_collapsible` anima o painel e deixa uma alça na borda quando recolhido. Ele
                 // escreve em `expanded` só quando o **arrasto da alça** muda o estado; o botão
@@ -1114,7 +1135,7 @@ impl eframe::App for App {
                     if toggled {
                         self.sidebar_open = false;
                     }
-                    request = sidebar.inner;
+                    request = sidebar.inner.or(request);
                 } else {
                     // Fechada, o botão de reabrir tem de existir **fora** do painel: dentro dele
                     // ninguém o veria (era o que deixava a sidebar impossível de voltar).
@@ -1164,7 +1185,7 @@ impl eframe::App for App {
                     });
 
                 if let Some(ai_request) = panel.inner {
-                    request = Some(ai_request);
+                    request = Some(ai_request).or(request);
                 }
             }
 

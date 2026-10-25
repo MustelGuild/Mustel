@@ -7,8 +7,9 @@
 
 ## Como abrir
 
-O botão **`AI Generate SQL`** (ícone `sparkles`), na linha do `Run query`, **abre e fecha** o painel.
-Ele fica à direita da janela, com 360 px fixos, e só existe na aba Query.
+O painel **`AI Generate SQL`** (ícone `sparkles` no título) fica à direita da janela, com 360 px
+fixos, e só existe na aba Query. O ícone `sparkles` no canto do painel **esconde**; fechado, o botão
+`AI Generate SQL` aparece no alto da aba para trazê-lo de volta.
 
 ## O cabeçalho
 

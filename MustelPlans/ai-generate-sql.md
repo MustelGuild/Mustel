@@ -75,7 +75,7 @@ Decisões travadas na exploração (2026-10-24). O agente **não reabre** sem ap
 | D7 | Perfis | **Vários**: `gui.ai.profiles[]` + `activeProfile` | Pedido do dono; provedores diferentes convivem |
 | D8 | Chave | **Por perfil**, cofre `mustel.ai`, conta = `profile.id` | Provedores diferentes têm chaves diferentes; id estável sobrevive a renomear |
 | D9 | Seção no arquivo | `gui.ai` só aparece quando há perfil (`skip_serializing_if`) | Mesma regra do resto de `gui` |
-| D10 | Botão | `AI Generate SQL` (`sparkles`) na linha do `Run query` **alterna o painel** | Pedido do dono; sem modal |
+| D10 | Botão | `AI Generate SQL` (`sparkles`) é o **título do painel**; o ícone `sparkles` no cabeçalho esconde, e o botão no alto da aba reabre | Pedido do dono: o gesto mora no painel, não ao lado do `Run query` |
 | D11 | Forma da UI | **Painel à direita** na aba Query, 360 px, recolhível, fechado por padrão | Conversa é longa e o editor precisa ficar à vista |
 | D12 | Fluxo | Turnos: intenção → resposta com SQL → `Ask for a change` → … | Pedido do dono; iterar é o valor |
 | D13 | Entrada no editor | `Insert in editor` **substitui todo o conteúdo** do editor (não insere no cursor); rótulo avisa quando o editor não está vazio | É o gesto pedido pelo dono; trabalhar por diff de texto seria outra feature |
@@ -582,3 +582,24 @@ Append-only.
   (correto: não há relação de usuário).
 - `[2026-10-25]` Docs e manifesto atualizados (`IF-247` cita o catálogo; explicação ganhou a seção
   "Por que o catálogo e não o `pg_dump`"). `cargo test --workspace` → 642 testes, clippy e fmt limpos.
+- `[2026-10-25]` **Gesto do painel movido** (pedido do dono): o botão `AI Generate SQL` saiu da linha
+  do `Run query`. O painel passou a se chamar **`AI Generate SQL`** (ícone `sparkles` ao lado do
+  título), o `✕` virou o **ícone `sparkles`** que esconde, e — fechado — o botão `AI Generate SQL`
+  aparece no alto da aba Query para reabrir (mesmo padrão do `▶` da sidebar: o handle vive fora do
+  painel). Docs e `IF-247` atualizados.
+- `[2026-10-25]` **Painel nasce aberto e colapsa para o ícone** (pedido do dono, depois do bug "clico
+  no botão e ele não abre"). Duas correções:
+  1. **Bug real**: a barra superior gravava `request = Some(ToggleAiPanel)`, mas o bloco da sidebar
+     logo depois fazia `request = sidebar.inner` — **sobrescrevendo** o pedido com `None` na maioria
+     dos quadros. Trocado por merge (`sidebar.inner.or(request)`, idem no painel e no `main`).
+  2. **Desenho**: o botão solto no alto da aba saiu; fechado, o painel vira uma **faixa de 34 px**
+     com o ícone `sparkles` (mesmo padrão da barra `▶` da sidebar), e clicar nela devolve o painel.
+     Sem arquivo de sessão o painel **nasce aberto**; com arquivo, volta como estava (`panelOpen`).
+  Verificado na janela: nasce aberto → sparkles do cabeçalho colapsa para a faixa → sparkles da faixa
+  reabre. `cargo test --workspace` → 643 testes.
+- `[2026-10-25]` **Colapso sem linha** (relato do dono: "a da esquerda integra ao editor, a da direita
+  fica com uma linha"). Causa: eu tinha feito o estado colapsado como `Panel::right` de 34 px, e
+  **todo painel desenha a divisória de altura inteira**. A sidebar esquerda não faz isso: colapsada ela
+  é só um botão inline no conteúdo (`›`). O painel da IA passou a fazer igual — fechado, desenha um
+  `sparkles` inline alinhado à direita na barra; nenhum painel, nenhuma linha. Verificado na janela:
+  colapsa para o botão no canto e reabre no clique.

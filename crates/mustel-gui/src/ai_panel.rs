@@ -199,9 +199,16 @@ pub fn ui(
     ui.set_max_width(width);
 
     ui.horizontal(|ui| {
-        ui.heading("AI");
+        // O título é o nome do botão que abria o painel: o gesto saiu da linha do `Run query` e
+        // virou o próprio painel (o ícone à direita esconde, e o handle da barra traz de volta).
+        let size = ui.text_style_height(&egui::TextStyle::Heading);
+        ui.label(
+            egui::RichText::new(crate::icons::Icon::Sparkles.glyph().to_string())
+                .font(crate::icons::font_id(size)),
+        );
+        ui.heading("AI Generate SQL");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if crate::icons::button(ui, crate::icons::Icon::Close)
+            if crate::icons::button(ui, crate::icons::Icon::Sparkles)
                 .on_hover_text("Hide the AI panel")
                 .clicked()
             {
@@ -623,6 +630,64 @@ mod tests {
         chat.input = "   ".to_string();
         assert!(chat.ask().is_none());
         assert_eq!(chat.error.as_deref(), Some("Type what you need first."));
+    }
+
+    /// O cabeçalho se chama **`AI Generate SQL`** e o botão do canto esconde o painel.
+    ///
+    /// O gesto saiu da linha do `Run query` (pedido do dono): o título carrega o nome, e o ícone
+    /// `sparkles` à direita alterna — quem reabre é o botão do alto da aba.
+    /// CONTRACT: IF-247
+    #[test]
+    fn the_header_is_the_generate_button_and_its_icon_hides_the_panel() {
+        let ctx = egui::Context::default();
+        let mut chat = novo_chat();
+        chat.open = true;
+
+        let mut texts: Vec<String> = Vec::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.set_max_width(360.0);
+                let _ = super::ui(ui, &mut chat, &[], &[profile()], &[], false, None);
+            });
+        });
+        texts.clear();
+        {
+            fn walk(shape: &egui::Shape, out: &mut Vec<String>) {
+                match shape {
+                    egui::Shape::Text(text) => out.push(text.galley.text().to_string()),
+                    egui::Shape::Vec(shapes) => {
+                        for shape in shapes {
+                            walk(shape, out);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            for clipped in &output.shapes {
+                walk(&clipped.shape, &mut texts);
+            }
+        }
+        output.textures_delta.clear();
+
+        assert!(
+            texts.iter().any(|text| text == "AI Generate SQL"),
+            "o título é o nome do antigo botão: {texts:?}"
+        );
+        // O fechar (`x-mark`) saiu do cabeçalho; o canto agora é o sparkles.
+        assert!(
+            !texts
+                .iter()
+                .any(|text| text == &crate::icons::Icon::Close.glyph().to_string()),
+            "o botão de fechar (`x-mark`) não mora mais no cabeçalho: {texts:?}"
+        );
+        assert!(
+            texts
+                .iter()
+                .filter(|text| *text == &crate::icons::Icon::Sparkles.glyph().to_string())
+                .count()
+                >= 2,
+            "sparkles no título e no canto: {texts:?}"
+        );
     }
 
     /// A sessão gravada volta com o perfil ativo, e um perfil removido cai no primeiro.

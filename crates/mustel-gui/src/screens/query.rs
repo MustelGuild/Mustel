@@ -1979,14 +1979,14 @@ mod tests {
 
         state.scroll_to_end(0.0, 400.0);
         assert!(
-            state.form_scroll.is_active(),
+            state.form_scroll.step(0.0).is_some(),
             "clicar precisa começar a rolagem suave"
         );
 
         let mut already_there = State::default();
         already_there.scroll_to_end(400.0, 400.0);
         assert!(
-            !already_there.form_scroll.is_active(),
+            already_there.form_scroll.step(0.0).is_none(),
             "já no fim não anima nada"
         );
     }

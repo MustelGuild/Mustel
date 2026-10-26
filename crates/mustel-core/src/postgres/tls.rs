@@ -42,16 +42,6 @@ impl SslMode {
         matches!(self, Self::Require | Self::VerifyCa | Self::VerifyFull)
     }
 
-    /// Tenta TLS, aceitando seguir sem quando o servidor não oferece?
-    pub fn tries_tls(self) -> bool {
-        !matches!(self, Self::Disable)
-    }
-
-    /// Valida o hostname do certificado? (`VerifyCA` do Npgsql **não** valida.)
-    pub fn verifies_hostname(self) -> bool {
-        matches!(self, Self::VerifyFull)
-    }
-
     /// Nome como o legado escreve.
     pub fn as_str(self) -> &'static str {
         match self {
@@ -117,6 +107,7 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-021
     fn tls_requirements_match_npgsql_semantics() {
         assert!(!SslMode::Disable.requires_tls());
         assert!(!SslMode::Allow.requires_tls());
@@ -124,13 +115,7 @@ mod tests {
         assert!(SslMode::Require.requires_tls());
         assert!(SslMode::VerifyCa.requires_tls());
         assert!(SslMode::VerifyFull.requires_tls());
-
-        assert!(!SslMode::Disable.tries_tls());
-        assert!(SslMode::Allow.tries_tls());
-        assert!(SslMode::Prefer.tries_tls());
-
-        // Diferença sutil que precisa ser respeitada: VerifyCA valida a cadeia sem checar hostname.
-        assert!(!SslMode::VerifyCa.verifies_hostname());
-        assert!(SslMode::VerifyFull.verifies_hostname());
+        // `VerifyCA` valida a cadeia **sem** checar o hostname (o Npgsql é assim); a distinção está
+        // na doc das variantes e é o que o T19 (TLS de verdade) precisa respeitar.
     }
 }

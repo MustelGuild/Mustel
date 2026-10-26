@@ -53,14 +53,6 @@ impl Default for PgPassEntry {
 }
 
 impl PgPassEntry {
-    /// Entrada com todos os defaults do legado e a senha informada.
-    pub fn with_password(password: impl Into<String>) -> Self {
-        Self {
-            password: password.into(),
-            ..Self::default()
-        }
-    }
-
     /// Identidade da entrada: os quatro campos que decidem duplicata e remoção.
     pub fn identity_key(&self) -> (&str, &str, &str, &str) {
         (

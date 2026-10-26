@@ -81,11 +81,6 @@ impl Sandbox {
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         }
     }
-
-    /// Conteúdo do `mustel.jsonc` do sandbox, se existir.
-    pub fn config_text(&self) -> Option<String> {
-        std::fs::read_to_string(self.config_file()).ok()
-    }
 }
 
 impl Default for Sandbox {

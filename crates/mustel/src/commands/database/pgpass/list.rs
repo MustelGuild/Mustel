@@ -62,7 +62,10 @@ mod tests {
     #[test]
     /// CONTRACT: IF-100
     fn the_mask_never_reveals_the_password() {
-        let entry = mustel_core::pgpass::PgPassEntry::with_password("segredo");
+        let entry = mustel_core::pgpass::PgPassEntry {
+            password: "segredo".to_string(),
+            ..mustel_core::pgpass::PgPassEntry::default()
+        };
         let row = vec![
             entry.hostname.clone(),
             entry.port.clone(),

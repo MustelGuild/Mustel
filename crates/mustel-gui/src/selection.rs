@@ -150,15 +150,6 @@ pub struct MarkSummary {
 }
 
 impl MarkSummary {
-    /// Texto do status: o que entrou e, quando houver, o que foi pulado e por quê.
-    pub fn describe(&self) -> String {
-        let mut text = format!("{} marked", self.marked);
-        if let Some(skips) = self.describe_skips() {
-            text.push_str(&format!(" · {skips}"));
-        }
-        text
-    }
-
     /// Só o que ficou **de fora**, para quando o "quantas marcadas" já está na tela.
     ///
     /// A sidebar mostra uma linha derivada (`103 marked · from 'Producao'`) que é sempre a verdade
@@ -1648,7 +1639,8 @@ mod tests {
         assert_eq!(summary.no_password, 0);
         assert!(
             summary
-                .describe()
+                .describe_skips()
+                .unwrap_or_default()
                 .contains("2 skipped (excluded by excludePatterns)")
         );
         assert!(state.all_visible_marked(&servers));
@@ -1696,7 +1688,12 @@ mod tests {
         let summary = state.select_all_visible(&servers);
         assert_eq!(summary.marked, 1, "dev ja estava; a com aviso fica de fora");
         assert_eq!(summary.no_password, 1);
-        assert!(summary.describe().contains("1 skipped (no password)"));
+        assert!(
+            summary
+                .describe_skips()
+                .unwrap_or_default()
+                .contains("1 skipped (no password)")
+        );
 
         state.set_marked("Local", "test2", true);
         assert_eq!(state.marked_on("Local"), 2);

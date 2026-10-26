@@ -49,28 +49,6 @@ impl std::fmt::Display for InputError {
     }
 }
 
-/// Monta a requisição de `query run` para um servidor e uma consulta.
-pub fn request_for(
-    server: &ServerConfigEntry,
-    sql: &str,
-    password: &str,
-) -> Result<QueryRunRequest, InputError> {
-    let store =
-        ConfigStore::with_default_path().map_err(|error| InputError::Config(error.to_string()))?;
-    let defaults =
-        query_run::defaults(&store).map_err(|error| InputError::Config(error.to_string()))?;
-
-    Ok(QueryRunRequest {
-        servers: vec![server_run(server, password)?],
-        sql: Arc::from(sql),
-        output_directory: absolute(&defaults.output_directory),
-        max_parallelism: defaults.max_parallelism as usize,
-        command_timeout: Duration::from_secs(DEFAULT_COMMAND_TIMEOUT_SECONDS),
-        all: server.fetch_all_databases,
-        exclude: HashSet::new(),
-    })
-}
-
 /// Monta a requisição a partir dos servidores **já escolhidos** na tela (T42).
 ///
 /// É o caminho da janela: cada servidor vem com a conexão resolvida ([`server_run`]), e o paralelismo
@@ -361,7 +339,9 @@ mod tests {
 
     #[test]
     fn the_request_carries_the_resolved_connection_and_no_database() {
-        let request = request_for(&server(), "SELECT 1", "segredo").expect("monta");
+        let run = server_run(&server(), "segredo").expect("conexão");
+        let request =
+            request_for_runs(vec![run], "SELECT 1", "./results".to_string()).expect("monta");
 
         assert_eq!(request.servers.len(), 1);
         let run = &request.servers[0];

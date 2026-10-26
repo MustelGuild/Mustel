@@ -4,10 +4,9 @@
 //! `--max-pool-size`, `--keepalive`, `--connection-lifetime`, `--timeout`, `--command-timeout`,
 //! `--ssl-mode`) e no cadastro do servidor, com os **defaults do legado**.
 
-use std::str::FromStr;
 use std::time::Duration;
 
-use crate::postgres::tls::{SslMode, SslModeError};
+use crate::postgres::tls::SslMode;
 
 /// Defaults herdados do FurLab.
 pub const DEFAULT_PORT: u16 = 5432;
@@ -39,15 +38,15 @@ pub struct ConnectionSettings {
     pub connect_timeout: Duration,
     /// Timeout de comando.
     pub command_timeout: Duration,
-    /// Habilita pool de conexões.
+    /// Habilita pool de conexões. **Aceito por paridade; sem efeito** (não há pool).
     pub pooling: bool,
-    /// Tamanho mínimo do pool.
+    /// Tamanho mínimo do pool. **Aceito por paridade; sem efeito** (não há pool).
     pub min_pool_size: u32,
-    /// Tamanho máximo do pool.
+    /// Tamanho máximo do pool. **Aceito por paridade; sem efeito** (não há pool).
     pub max_pool_size: u32,
     /// Keepalive (0 = desligado, como no legado).
     pub keepalive: Duration,
-    /// Tempo de vida máximo de uma conexão (0 = ilimitado, como no legado).
+    /// Tempo de vida máximo de uma conexão (0 = ilimitado). **Aceito por paridade; sem efeito.**
     pub connection_lifetime: Duration,
 }
 
@@ -72,12 +71,6 @@ impl Default for ConnectionSettings {
 }
 
 impl ConnectionSettings {
-    /// Aplica um texto de `sslMode` vindo do cadastro ou da flag.
-    pub fn with_ssl_mode_text(mut self, text: &str) -> Result<Self, SslModeError> {
-        self.ssl_mode = SslMode::from_str(text)?;
-        Ok(self)
-    }
-
     /// Traduz para a configuração do `tokio-postgres`.
     ///
     /// A senha vai junto porque o driver a exige na configuração; ela **nunca** é registrada em log
@@ -136,20 +129,6 @@ mod tests {
         assert_eq!(settings.ssl_mode, SslMode::Prefer);
         assert_eq!(settings.keepalive, Duration::ZERO);
         assert_eq!(settings.connection_lifetime, Duration::ZERO);
-    }
-
-    #[test]
-    fn ssl_mode_text_is_parsed_into_the_settings() {
-        let settings = ConnectionSettings::default()
-            .with_ssl_mode_text("Require")
-            .expect("valid mode");
-        assert_eq!(settings.ssl_mode, SslMode::Require);
-
-        assert!(
-            ConnectionSettings::default()
-                .with_ssl_mode_text("nope")
-                .is_err()
-        );
     }
 
     #[test]

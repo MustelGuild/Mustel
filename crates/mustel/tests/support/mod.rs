@@ -8,7 +8,7 @@
 //! única implementação das regras (exit code e artefatos como contrato, texto como N4).
 //!
 //! Cada arquivo de teste de integração compila este módulo como crate próprio, então nem toda função
-//! é usada em todo alvo — daí o `allow(dead_code)`.
+//! é usada em todo alvo — daí o `allow(dead_code, unreachable_pub)`.
 #![allow(
     dead_code,
     unreachable_pub,

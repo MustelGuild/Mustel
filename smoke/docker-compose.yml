@@ -1,0 +1,28 @@
+name: mustel-smoke
+
+services:
+  postgres:
+    build: .
+    image: mustel-smoke-postgres:local
+    container_name: mustel-smoke-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: smoke
+      POSTGRES_DB: postgres
+    ports:
+      - "55432:5432"
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/postgresql/server.crt
+      - -c
+      - ssl_key_file=/etc/postgresql/server.key
+    healthcheck:
+      # O marcador só existe depois que as 100+ bases terminaram de ser criadas.
+      test: ["CMD-SHELL", "test -f /tmp/smoke-init.done && pg_isready -U postgres -d postgres"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 20s

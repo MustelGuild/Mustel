@@ -242,6 +242,7 @@ async fn backup_all(
         let output_path = match dump_path(&output_dir, &database) {
             Ok(path) => path,
             Err(error) => {
+                failures += 1;
                 events.emit(CoreEvent::DatabaseStepFailed {
                     step: DatabaseStep::Backup,
                     database: &database,

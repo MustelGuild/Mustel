@@ -81,7 +81,7 @@ impl Icon {
     pub fn name(self) -> &'static str {
         match self {
             Icon::Refresh => "arrow-path",
-            Icon::Close => "x-mark",
+            Icon::Close | Icon::Cross => "x-mark",
             Icon::Warning => "exclamation-triangle",
             Icon::Delete => "trash",
             Icon::Save => "arrow-down-tray",
@@ -92,7 +92,6 @@ impl Icon {
             Icon::Sparkles => "sparkles",
             Icon::Copy => "clipboard",
             Icon::Check => "check",
-            Icon::Cross => "x-mark",
             Icon::Forget => "arrow-uturn-left",
             Icon::ChevronDown => "chevron-down",
             Icon::ChevronLeft => "chevron-left",

@@ -70,7 +70,7 @@ mod tests {
             entry.hostname.clone(),
             entry.port.clone(),
             entry.database.clone(),
-            entry.username.clone(),
+            entry.username,
             MASK.to_string(),
         ];
         assert_eq!(row, vec!["localhost", "5432", "*", "postgres", "****"]);

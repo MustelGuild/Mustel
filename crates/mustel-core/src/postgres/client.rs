@@ -463,8 +463,8 @@ pub fn map_error(error: tokio_postgres::Error) -> CoreError {
     let message = match (error.as_db_error(), &sqlstate) {
         (Some(db_error), Some(state)) => {
             let position = db_error.position().map(|position| match position {
-                tokio_postgres::error::ErrorPosition::Original(position) => *position,
-                tokio_postgres::error::ErrorPosition::Internal { position, .. } => *position,
+                tokio_postgres::error::ErrorPosition::Original(position)
+                | tokio_postgres::error::ErrorPosition::Internal { position, .. } => *position,
             });
 
             postgres_message(

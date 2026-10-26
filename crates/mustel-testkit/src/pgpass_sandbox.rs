@@ -7,6 +7,7 @@ use std::path::Path;
 
 use crate::capture::PgPassSeed;
 
+/// Aplica o estado inicial pedido ao `pgpass.conf` (cria, apaga ou grava um fixture).
 pub fn apply_seed(path: &Path, seed: PgPassSeed) -> std::io::Result<()> {
     let content = match seed {
         PgPassSeed::Unchanged => return Ok(()),

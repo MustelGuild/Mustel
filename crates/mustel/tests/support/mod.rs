@@ -9,7 +9,11 @@
 //!
 //! Cada arquivo de teste de integração compila este módulo como crate próprio, então nem toda função
 //! é usada em todo alvo — daí o `allow(dead_code)`.
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    unreachable_pub,
+    reason = "módulo de suporte compartilhado pelos alvos de teste; cada alvo usa um subconjunto e o `pub` é necessário para os testes de integração"
+)]
 
 use std::path::PathBuf;
 use std::process::Command;

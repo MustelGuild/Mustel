@@ -1672,6 +1672,7 @@ Selection unchanged."
         self.form_scroll.start(current, max_offset);
     }
 
+    /// Desenha a aba Query (referência, editor, saída e resultados) e devolve os pedidos da tela.
     pub fn ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -1806,7 +1807,7 @@ Selection unchanged."
         }
 
         self.confirmation = Some(Confirmation {
-            description: analyzer::description(&self.sql).to_string(),
+            description: analyzer::description(&self.sql),
             servers: targets.len(),
             // As bases são **explícitas**: o plano roda exatamente as marcadas (D15).
             databases: targets.iter().map(|(_, databases)| databases.len()).sum(),

@@ -18,8 +18,8 @@ fn normalize(text: &str) -> String {
 fn run(args: &[&str]) -> (Option<i32>, String, String) {
     let sandbox = support::Sandbox::new();
     sandbox.seed_config(mustel_testkit::capture::ConfigSeed::Absent);
-    let argv: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
-    let output = sandbox.run(&argv);
+    let command_args: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
+    let output = sandbox.run(&command_args);
     (
         output.exit_code,
         normalize(&output.stdout),

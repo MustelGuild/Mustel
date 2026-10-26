@@ -84,8 +84,14 @@ fn main() -> Result<()> {
         seed_mustel_config(capture.config_seed)?;
         apply_seed(&pgpass_file, capture.pgpass_seed)
             .with_context(|| format!("seed mustel pgpass for {}", capture.slug))?;
-        let argv: Vec<&str> = capture.argv.iter().map(String::as_str).collect();
-        let output = run_mustel(&binary, &workspace, &config_dir, &pgpass_file, &argv)?;
+        let capture_argv: Vec<&str> = capture.argv.iter().map(String::as_str).collect();
+        let output = run_mustel(
+            &binary,
+            &workspace,
+            &config_dir,
+            &pgpass_file,
+            &capture_argv,
+        )?;
 
         comparisons.push(compare_case(
             &capture,

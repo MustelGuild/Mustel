@@ -208,7 +208,7 @@ pub fn scaled_style(mut style: egui::Style, scale: f32) -> egui::Style {
     };
 
     // Os tamanhos de referência são os do estilo padrão do egui.
-    let base = egui::Style::default().text_styles.clone();
+    let base = egui::Style::default().text_styles;
     for (text_style, font_id) in &base {
         if let Some(slot) = style.text_styles.get_mut(text_style) {
             slot.size = font_id.size * scale;
@@ -252,6 +252,7 @@ pub fn apply(ctx: &egui::Context, chosen: &Chosen) -> Vec<String> {
 const MIN_WINDOW_WIDTH: f32 = 880.0;
 const MIN_WINDOW_HEIGHT: f32 = 560.0;
 
+/// Tamanho mínimo da janela para a escala de fonte dada (o `Sync` do egui usa isto).
 pub fn min_window_size(scale: f32) -> egui::Vec2 {
     let scale = if scale.is_finite() {
         scale.clamp(MIN_FONT_SCALE, MAX_FONT_SCALE)

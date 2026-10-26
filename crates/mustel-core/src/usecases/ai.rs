@@ -183,6 +183,34 @@ pub fn build_body(profile: &AiProfile, ddl: &str, messages: &[ChatMessage]) -> S
     serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string())
 }
 
+/// Valida o `baseUrl` do perfil: `https`, ou `http` apenas em loopback; nunca com credenciais.
+///
+/// O DDL completo do banco vai para essa URL junto com a chave: um `http://host` remoto enviaria
+/// os dois em texto puro (CWE-319).
+pub fn validate_base_url(raw: &str) -> Result<(), CoreError> {
+    let url = url::Url::parse(raw)
+        .map_err(|error| CoreError::InvalidArgument(format!("Invalid AI base URL: {error}")))?;
+
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(CoreError::InvalidArgument(
+            "The AI base URL must not carry credentials.".to_string(),
+        ));
+    }
+
+    if url.scheme() == "https" || (url.scheme() == "http" && is_loopback_host(url.host_str())) {
+        return Ok(());
+    }
+
+    Err(CoreError::InvalidArgument(format!(
+        "The AI base URL must use https (http is allowed only for localhost): {raw}"
+    )))
+}
+
+/// Host de loopback, com ou sem colchetes de IPv6.
+fn is_loopback_host(host: Option<&str>) -> bool {
+    matches!(host, Some("localhost" | "127.0.0.1" | "[::1]" | "::1"))
+}
+
 /// Chama o provedor e devolve o **SQL** da resposta (sem as cercas).
 ///
 /// Erros são separados por status porque o conselho muda: `401` é chave, `404` é modelo/base,
@@ -195,6 +223,8 @@ pub async fn generate<T: HttpTransport + ?Sized>(
     ddl: &str,
     messages: &[ChatMessage],
 ) -> Result<String, CoreError> {
+    validate_base_url(&profile.base_url)?;
+
     let url = format!(
         "{}/chat/completions",
         profile.base_url.trim_end_matches('/')
@@ -271,6 +301,28 @@ fn truncate(text: &str, limit: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    /// CONTRACT: IF-249
+    fn the_ai_base_url_requires_https_except_on_loopback() {
+        for valid in [
+            "https://api.openai.com/v1",
+            "http://localhost:11434/v1",
+            "http://127.0.0.1:11434",
+            "http://[::1]:11434",
+        ] {
+            assert!(validate_base_url(valid).is_ok(), "{valid}");
+        }
+
+        for invalid in [
+            "http://10.0.0.5/v1",
+            "file:///tmp/v1",
+            "https://user:pass@host/v1",
+            "not a url",
+        ] {
+            assert!(validate_base_url(invalid).is_err(), "{invalid}");
+        }
+    }
     use crate::credentials::InMemoryCredentialStore;
 
     fn profile(temperature: f32) -> AiProfile {

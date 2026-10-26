@@ -14,6 +14,8 @@ use mustel_core::signal::{cancellation_token, spawn_ctrl_c_listener};
 
 #[tokio::main]
 async fn main() {
+    warn_if_password_is_on_the_command_line();
+
     let parsed = match MustelCli::try_parse() {
         Ok(parsed) => parsed,
         Err(error) => std::process::exit(handle_parse_error(&error)),
@@ -32,6 +34,21 @@ async fn main() {
     };
 
     std::process::exit(code);
+}
+
+/// `-W` deixa a senha visível em `ps` e no histórico do shell; avisa quando há terminal.
+fn warn_if_password_is_on_the_command_line() {
+    use std::io::IsTerminal;
+
+    let uses_flag = std::env::args().any(|argument| {
+        argument == "-W" || argument == "--password" || argument.starts_with("--password=")
+    });
+    if uses_flag && std::io::stdin().is_terminal() {
+        eprintln!(
+            "Warning: -W exposes the password in the process list and shell history; prefer \
+             MUSTEL_PASSWORD or the keyring."
+        );
+    }
 }
 
 /// Trata erro de parse com o contrato do oráculo (descoberto no T9).

@@ -74,6 +74,12 @@ A conversa **persiste entre reinícios** em `%APPDATA%/mustel/ai/session.json`:
 O arquivo guarda **só** a conversa e o contexto: o DDL **não** é copiado para lá (ele já está no
 cache) e nenhuma chave aparece nele. Apagar o arquivo é o mesmo que começar do zero.
 
+## Endereço do provedor
+
+O `baseUrl` precisa ser `https`. `http` só é aceito em loopback (`localhost`, `127.0.0.1`, `[::1]`);
+qualquer outro `http` é recusado ao salvar o perfil e antes de cada requisição, porque a chave e o
+DDL do banco iriam em texto puro. URL com usuário/senha embutidos também é recusada.
+
 ## O que a IA não faz
 
 - **não executa** nada — nem "rodar depois de gerar";

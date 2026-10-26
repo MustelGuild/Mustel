@@ -47,6 +47,8 @@ Options:
           Comma-separated list of database names to exclude
       --no-confirm
           Skip confirmation prompt for destructive queries
+      --csv-escape-formulas
+          Escape spreadsheet formulas in the CSV (`=`, `+`, `-`, `@`, TAB, CR)
   -h, --help
           Print help
   -V, --version

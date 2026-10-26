@@ -52,10 +52,10 @@ pub fn stored_password(
     credentials.get(&server.name).ok().flatten()
 }
 
-/// Resolve a senha na ordem do legado: flag → valor guardado → prompt.
+/// Resolve a senha na ordem: flag → `MUSTEL_PASSWORD` → valor guardado → prompt.
 ///
-/// O legado trata espaço em branco como ausência (`IsNullOrWhiteSpace`) nas duas primeiras fontes;
-/// o que vem do prompt é usado **como veio**, sem checagem (uma senha vazia digitada vira
+/// O legado trata espaço em branco como ausência (`IsNullOrWhiteSpace`) nas fontes que não são
+/// prompt; o que vem do prompt é usado **como veio**, sem checagem (uma senha vazia digitada vira
 /// `PGPASSWORD` vazio, e o erro aparece na autenticação do PostgreSQL).
 pub fn resolve_password(
     flag: Option<&str>,
@@ -66,6 +66,12 @@ pub fn resolve_password(
 
     if let Some(password) = flag.filter(|value| usable(value)) {
         return Ok(password.to_string());
+    }
+    if let Some(password) = std::env::var("MUSTEL_PASSWORD")
+        .ok()
+        .filter(|value| usable(value))
+    {
+        return Ok(password);
     }
     if let Some(password) = stored.filter(|value| usable(value)) {
         return Ok(password.to_string());

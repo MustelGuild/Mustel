@@ -128,17 +128,13 @@ impl PgPassStore {
 
         self.write(|| {
             if let Some(dir) = parent_dir(&self.path) {
-                fs::create_dir_all(dir)?;
+                crate::private_fs::create_dir(dir)?;
             }
 
             let mut line = entry.serialize();
             line.push_str(line_ending());
-            fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&self.path)?
-                .write_all(line.as_bytes())?;
-            restrict_permissions(&self.path)
+            crate::private_fs::open_append(&self.path)?.write_all(line.as_bytes())?;
+            Ok(())
         })?;
 
         Ok(PgPassOutcome::Added)

@@ -1,0 +1,48 @@
+# Gate de qualidade em push/PR. As actions são pinadas por SHA (o comentário diz a versão) para
+# que uma tag re-apontada não execute código com o token do repositório.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  gate:
+    name: fmt, clippy, test (Windows)
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: instalar Rust
+        uses: dtolnay/rust-toolchain@18f0487477426dce244608110aa2660c2893deb7 # 1.98.1
+        with:
+          components: rustfmt, clippy
+      - name: cache do cargo
+        uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - name: formatação
+        run: cargo fmt --all -- --check
+      - name: lints
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: testes
+        run: cargo test --workspace
+
+  dependencies:
+    name: dependências (RustSec) e licenças
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: instalar Rust
+        uses: dtolnay/rust-toolchain@18f0487477426dce244608110aa2660c2893deb7 # 1.98.1
+      - name: auditoria RustSec
+        uses: rustsec/audit-check@b66acf5e9fe20f8aba065be86778a8a4c846f902 # v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: licenças e fontes
+        uses: EmbarkStudios/cargo-deny-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
+        with:
+          command: check licenses sources bans

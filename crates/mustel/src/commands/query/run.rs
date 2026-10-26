@@ -102,6 +102,7 @@ pub async fn run(args: QueryRunArgs, token: &CancellationToken) -> Result<i32, C
         command_timeout: Duration::from_secs(args.command_timeout.unwrap_or(300).max(1) as u64),
         all: args.all,
         exclude: discovery::exclude_names(args.exclude.as_deref()),
+        escape_formulas: args.csv_escape_formulas,
     };
 
     // Os eventos vão para a tabela ao vivo; o que sai depois dela (caminhos e resumo) fica na fila
@@ -271,6 +272,7 @@ mod tests {
             all: false,
             exclude: None,
             no_confirm: false,
+            csv_escape_formulas: false,
         }
     }
 

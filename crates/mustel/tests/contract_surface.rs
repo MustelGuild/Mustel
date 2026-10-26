@@ -158,6 +158,14 @@ const UNIT_COVERED: &[(&str, &str)] = &[
         "--exclude-patterns",
         "crates/mustel/src/commands/settings/db_servers/add.rs::tests::exclude_patterns_fall_back_to_the_defaults",
     ),
+    (
+        "--csv-escape-formulas",
+        "crates/mustel-core/src/query/csv_writer.rs::tests::formula_escape_prefixes_dangerous_fields_only_when_enabled",
+    ),
+    (
+        "--strict",
+        "crates/mustel-core/src/usecases/database_backup.rs::tests::strict_only_fails_when_a_database_failed",
+    ),
 ];
 
 /// Flags longas que aparecem em um texto de ajuda.

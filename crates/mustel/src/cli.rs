@@ -149,6 +149,10 @@ pub struct QueryRunArgs {
     /// Skip confirmation prompt for destructive queries.
     #[arg(long = "no-confirm")]
     pub no_confirm: bool,
+
+    /// Escape spreadsheet formulas in the CSV (`=`, `+`, `-`, `@`, TAB, CR).
+    #[arg(long = "csv-escape-formulas")]
+    pub csv_escape_formulas: bool,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -218,6 +222,10 @@ pub struct DatabaseBackupArgs {
     /// Back up all databases on the server.
     #[arg(short = 'a', long = "all")]
     pub all: bool,
+
+    /// Fail with a non-zero exit code when any database fails (default: warn and exit 0).
+    #[arg(long = "strict")]
+    pub strict: bool,
 
     /// Table patterns to exclude entirely from the backup (repeat the flag for multiple values).
     #[arg(long = "exclude", value_name = "pattern")]

@@ -21,11 +21,13 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: write
+permissions: {}
+  # a permissão de escrita fica só no job `release`, abaixo
 
 jobs:
   package:
+    permissions:
+      contents: read
     name: empacotar (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -35,13 +37,13 @@ jobs:
           - windows-latest
           - ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: instalar Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@18f0487477426dce244608110aa2660c2893deb7 # 1.98.1
 
       - name: cache do cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
 
       # O binário carrega o `egui`/`eframe` (feature `gui`, ligada por padrão), então o build Unix
       # precisa das bibliotecas de sistema da pilha gráfica: sem elas o link falha (dbus, X11/Wayland
@@ -65,7 +67,7 @@ jobs:
         run: ./publish.sh
 
       - name: guardar o artefato do job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mustel-${{ matrix.os }}
           path: |
@@ -76,12 +78,15 @@ jobs:
           retention-days: 7
 
   release:
+    permissions:
+      contents: write
     name: publicar na página de release
     needs: package
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: baixar os artefatos
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: dist
           merge-multiple: true
@@ -109,7 +114,7 @@ jobs:
         run: ls -l dist
 
       - name: criar a release e anexar os artefatos
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ inputs.tag }}
           name: Mustel ${{ inputs.tag }}
@@ -119,3 +124,4 @@ jobs:
             dist/*.zip
             dist/*.tar.gz
             dist/*.sha256
+            sbom.cdx.json

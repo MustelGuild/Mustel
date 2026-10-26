@@ -684,6 +684,12 @@ impl State {
             return;
         }
 
+        if let Err(error) = mustel_core::usecases::ai::validate_base_url(form.base_url.trim()) {
+            self.ai_message = Some(error.to_string());
+            self.ai_form = Some(form);
+            return;
+        }
+
         // O `id` é a conta no cofre: editar mantém o original; criar deriva do nome.
         let id = form
             .original

@@ -35,7 +35,10 @@ pub fn run(args: DbServersSetPasswordArgs) -> Result<i32, CoreError> {
         }
     };
 
-    let password = match args.password.as_deref() {
+    let provided = args
+        .password
+        .or_else(|| std::env::var("MUSTEL_PASSWORD").ok());
+    let password = match provided.as_deref() {
         Some(password) => password.to_string(),
         None => prompts::password("Password: ")?,
     };

@@ -54,6 +54,7 @@ try {
     Copy-Item (Join-Path $root 'mustel.example.jsonc') $stage
     Copy-Item (Join-Path $root 'LICENSE') $stage
     Copy-Item (Join-Path $root 'crates\mustel-gui\assets\fonts\FiraCode-OFL.txt') $stage
+    Copy-Item (Join-Path $root 'THIRD-PARTY-NOTICES.md') $stage
 
     $readme = @"
 Mustel $version ($triple)

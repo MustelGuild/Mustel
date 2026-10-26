@@ -20,7 +20,8 @@ Dentro de cada servidor:
 
 ## Precedência da senha
 
-`-W` → cofre (chave = nome do servidor) → prompt. No máximo **um** prompt por servidor, não por banco.
+`-W` → `MUSTEL_PASSWORD` → cofre (chave = nome do servidor) → prompt. No máximo **um** prompt por
+servidor, não por banco. `-W` num terminal avisa que a senha fica visível no `ps` e no histórico.
 
 ## Confirmação
 
@@ -40,6 +41,10 @@ Cada execução cria uma pasta `<saída>/<timestamp>/`:
 | `<servidor>_<ts>.csv` | só aquele servidor (nome sanitizado) |
 | `<ts>_log.csv` | `Server, Database, ExecutedAt, Status, RowCount, DurationMs, Error` |
 | `<ts>_erros.csv` | só quando algum banco falha |
+
+Por padrão o CSV reproduz os bytes do legado. Com `--csv-escape-formulas`, todo campo que começa
+com `=`, `+`, `-`, `@`, TAB ou CR ganha um `'` na frente (no cabeçalho e nas linhas), para o
+Excel/LibreOffice não avaliar o conteúdo como fórmula. Default: desligado.
 
 Formato do CSV consolidado:
 

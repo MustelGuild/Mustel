@@ -4,6 +4,7 @@
 //! `--max-pool-size`, `--keepalive`, `--connection-lifetime`, `--timeout`, `--command-timeout`,
 //! `--ssl-mode`) e no cadastro do servidor, com os **defaults do legado**.
 
+use std::fmt;
 use std::time::Duration;
 
 use crate::postgres::tls::SslMode;
@@ -20,7 +21,7 @@ pub const DEFAULT_MIN_POOL_SIZE: u32 = 1;
 pub const DEFAULT_MAX_POOL_SIZE: u32 = 100;
 
 /// O que é preciso para abrir uma conexão.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ConnectionSettings {
     /// Host do servidor.
     pub host: String,
@@ -48,6 +49,27 @@ pub struct ConnectionSettings {
     pub keepalive: Duration,
     /// Tempo de vida máximo de uma conexão (0 = ilimitado). **Aceito por paridade; sem efeito.**
     pub connection_lifetime: Duration,
+}
+
+impl fmt::Debug for ConnectionSettings {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ConnectionSettings")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("user", &self.user)
+            .field("password", &self.password.as_ref().map(|_| "<oculta>"))
+            .field("database", &self.database)
+            .field("ssl_mode", &self.ssl_mode)
+            .field("connect_timeout", &self.connect_timeout)
+            .field("command_timeout", &self.command_timeout)
+            .field("pooling", &self.pooling)
+            .field("min_pool_size", &self.min_pool_size)
+            .field("max_pool_size", &self.max_pool_size)
+            .field("keepalive", &self.keepalive)
+            .field("connection_lifetime", &self.connection_lifetime)
+            .finish()
+    }
 }
 
 impl Default for ConnectionSettings {
@@ -115,6 +137,18 @@ impl ConnectionSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_never_shows_the_password() {
+        let settings = ConnectionSettings {
+            password: Some("s3cret".to_string()),
+            ..ConnectionSettings::default()
+        };
+
+        let text = format!("{settings:?}");
+        assert!(text.contains("<oculta>"), "{text}");
+        assert!(!text.contains("s3cret"), "{text}");
+    }
 
     #[test]
     /// CONTRACT: IF-024

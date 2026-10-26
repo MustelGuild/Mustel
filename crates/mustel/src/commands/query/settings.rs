@@ -107,7 +107,7 @@ fn connection_settings(
     args: &QueryRunArgs,
 ) -> Result<ConnectionSettings, CoreError> {
     let password = resolve_password(server, args)?;
-    let ssl_mode = resolve_ssl_mode(args, server);
+    let ssl_mode = resolve_ssl_mode(args, server)?;
 
     Ok(ConnectionSettings {
         host: resolve_text(args.host.as_deref(), &server.host),
@@ -148,6 +148,12 @@ fn resolve_password(server: &ServerConfigEntry, args: &QueryRunArgs) -> Result<S
         return Ok(password.to_string());
     }
 
+    if let Ok(password) = std::env::var("MUSTEL_PASSWORD")
+        && !password.trim().is_empty()
+    {
+        return Ok(password);
+    }
+
     if let Ok(Some(password)) = SystemKeyring::new().get(&server.name) {
         return Ok(password);
     }
@@ -160,15 +166,25 @@ fn resolve_password(server: &ServerConfigEntry, args: &QueryRunArgs) -> Result<S
     prompts::password(&format!("{PASSWORD_PROMPT} '{}': ", server.name))
 }
 
-/// `--ssl-mode` vence o cadastro; valor desconhecido vira `Prefer`, como no legado.
-fn resolve_ssl_mode(args: &QueryRunArgs, server: &ServerConfigEntry) -> SslMode {
+/// `--ssl-mode` vence o cadastro; valor desconhecido na **flag** vira `Prefer`, como no legado. Já
+/// um `sslMode` inválido **no cadastro** é erro: não pode conectar em texto puro em silêncio.
+fn resolve_ssl_mode(args: &QueryRunArgs, server: &ServerConfigEntry) -> Result<SslMode, CoreError> {
     let raw = args
         .ssl_mode
         .as_deref()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or(&server.ssl_mode);
 
-    raw.parse().unwrap_or_default()
+    if args
+        .ssl_mode
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return Ok(raw.parse().unwrap_or_default());
+    }
+
+    raw.parse::<SslMode>()
+        .map_err(|error| CoreError::InvalidState(error.to_string()))
 }
 
 /// Override de texto vence o cadastro quando não é branco.
@@ -237,6 +253,15 @@ fn parse_connection_string(connection_string: &str) -> connection_string::Parsed
 mod tests {
     use super::*;
 
+    #[test]
+    fn an_invalid_ssl_mode_in_the_config_is_an_error() {
+        let mut configured = server();
+        configured.ssl_mode = "Requiree".to_string();
+
+        let error = connection_settings(&configured, &args()).expect_err("config inválida");
+        assert!(error.to_string().contains("invalid ssl mode"), "{error}");
+    }
+
     fn args() -> QueryRunArgs {
         QueryRunArgs {
             input: None,
@@ -259,6 +284,7 @@ mod tests {
             all: false,
             exclude: None,
             no_confirm: false,
+            csv_escape_formulas: false,
         }
     }
 

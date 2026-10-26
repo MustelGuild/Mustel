@@ -57,6 +57,47 @@ pub fn is_valid_username(username: &str) -> bool {
     PATTERN.is_match(username)
 }
 
+/// Nome de banco seguro para virar **nome de arquivo** de dump (`<banco>.dump`).
+///
+/// Não usa [`is_valid_postgres_identifier`]: o PostgreSQL aceita nomes legítimos com `-`, espaço e
+/// Unicode, e recusá-los faria o `backup --all` pular bancos reais. A regra aceita qualquer nome
+/// que **não seja caminho**: sem separadores, sem byte nulo, diferente de `.`/`..` e, no Windows,
+/// sem drive, caractere reservado, nome de dispositivo ou ponto/espaço no fim.
+pub fn is_safe_file_stem(name: &str) -> bool {
+    if name.is_empty() || name.len() > 255 || name.contains('\0') {
+        return false;
+    }
+
+    if name == "." || name == ".." || name.chars().any(char::is_control) {
+        return false;
+    }
+
+    if name.contains(['/', '\\']) {
+        return false;
+    }
+
+    #[cfg(windows)]
+    {
+        if name.contains(':') || name.ends_with('.') || name.ends_with(' ') {
+            return false;
+        }
+
+        let stem = name.split('.').next().unwrap_or(name);
+        const RESERVED: [&str; 22] = [
+            "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7",
+            "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+        ];
+        if RESERVED
+            .iter()
+            .any(|reserved| stem.eq_ignore_ascii_case(reserved))
+        {
+            return false;
+        }
+    }
+
+    true
+}
+
 /// Padrões de travessia de caminho que o legado procura (`SecurityUtils.PathTraversalPatterns`).
 const PATH_TRAVERSAL_PATTERNS: [&str; 11] = [
     "..",
@@ -178,6 +219,43 @@ pub fn is_port_in_range(port: i64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_database_name_is_a_file_name_only_without_path_syntax() {
+        for valid in ["mydb", "my-db", "Meu Banco", "a_b", "db.2026"] {
+            assert!(is_safe_file_stem(valid), "deveria aceitar {valid:?}");
+        }
+
+        for invalid in [
+            "",
+            ".",
+            "..",
+            "../etc",
+            "..\\Startup\\a",
+            "a/b",
+            "C:\\x",
+            "mydb\0",
+            "linha\nquebrada",
+        ] {
+            assert!(!is_safe_file_stem(invalid), "deveria recusar {invalid:?}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_device_names_and_trailing_dots_are_refused() {
+        for invalid in [
+            "con",
+            "NUL",
+            "com1",
+            "lpt9",
+            "con.dump",
+            "trailing.",
+            "trailing ",
+        ] {
+            assert!(!is_safe_file_stem(invalid), "deveria recusar {invalid:?}");
+        }
+    }
 
     #[test]
     fn postgres_identifier_follows_the_legacy_rules() {

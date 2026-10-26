@@ -131,6 +131,11 @@ Contributions are welcome:
 The repository guide for contributors and agents is [`AGENTS.md`](AGENTS.md). Please run
 `cargo fmt`, `cargo clippy -- -D warnings` and `cargo test --workspace` before opening a PR.
 
+## Security
+
+To report a vulnerability, follow [`SECURITY.md`](SECURITY.md). Please do not open a public issue with
+exploit details.
+
 ## License
 
 This project is licensed under the **GNU Affero General Public License v3.0** (`AGPL-3.0-only`) — see

@@ -23,7 +23,7 @@
 //!
 //! No cancelamento a árvore do `pg_dump` é morta e o comando sai com **130**.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::error::CoreError;
 use crate::events::{CoreEvent, DatabaseStep, EventSink};
@@ -50,6 +50,8 @@ pub struct BackupOptions {
     pub username: Option<String>,
     /// `--all`: copia todos os bancos do servidor.
     pub all: bool,
+    /// Falha com código não-zero quando qualquer banco falha (default: avisa e sai 0).
+    pub strict: bool,
     /// Arquivo de saída (banco único) ou diretório (`--all`).
     pub output: Option<String>,
     /// Formato do `-F` (default `c`).
@@ -145,6 +147,16 @@ async fn backup_single(
         )));
     };
 
+    if options.output.is_none() && !validation::is_safe_file_stem(&connection.database) {
+        return Err(DatabaseFailure::Command(CommandFailure::new(
+            FailureKind::OperationFailed,
+            format!(
+                "Error: unsafe database name for dump file: {}",
+                connection.database
+            ),
+        )));
+    }
+
     let output_path = options
         .output
         .clone()
@@ -161,6 +173,28 @@ async fn backup_single(
             )))
         }
     }
+}
+
+/// Falha de comando quando `--strict` foi pedido e algum banco falhou.
+fn strict_failure(failures: usize) -> Option<DatabaseFailure> {
+    (failures > 0).then(|| {
+        DatabaseFailure::Command(CommandFailure::new(
+            FailureKind::OperationFailed,
+            format!("Error: {failures} database(s) failed."),
+        ))
+    })
+}
+
+/// Caminho de saída do dump de um banco, ou erro quando o nome não serve como nome de arquivo.
+///
+/// O `datname` vem do servidor: sem esta checagem, `..\..\Startup\a` escreveria fora de
+/// `output_dir` (CWE-22).
+fn dump_path(output_dir: &Path, database: &str) -> Result<PathBuf, String> {
+    if !validation::is_safe_file_stem(database) {
+        return Err(format!("unsafe database name for dump file: {database}"));
+    }
+
+    Ok(output_dir.join(dump_file_name(database)))
 }
 
 /// Dump de todos os bancos do servidor, um arquivo por banco.
@@ -192,6 +226,8 @@ async fn backup_all(
         std::fs::create_dir_all(&output_dir).map_err(CoreError::Io)?;
     }
 
+    let mut failures = 0usize;
+
     for database in databases {
         if token.is_cancelled() {
             break;
@@ -203,12 +239,23 @@ async fn backup_all(
             username: connection.username.clone(),
             database: database.clone(),
         };
-        let output_path = output_dir.join(dump_file_name(&database));
+        let output_path = match dump_path(&output_dir, &database) {
+            Ok(path) => path,
+            Err(error) => {
+                events.emit(CoreEvent::DatabaseStepFailed {
+                    step: DatabaseStep::Backup,
+                    database: &database,
+                    error: &error,
+                });
+                continue;
+            }
+        };
         let output_path = output_path.display().to_string();
 
         // O `pg_dump` é localizado dentro do laço, como no legado: um banco sem binário conta como
         // falha daquele banco, não do comando.
         let Some(pg_dump) = locator.find_pg_dump() else {
+            failures += 1;
             events.emit(CoreEvent::DatabaseStepFailed {
                 step: DatabaseStep::Backup,
                 database: &database,
@@ -221,6 +268,7 @@ async fn backup_all(
             // Uma falha por banco não derruba o comando: o legado embrulha a mensagem da exceção no
             // `LogError` (`Failed to backup database 'x': {ex.Message}`) e segue.
             Ok(PgDumpOutcome::Failed { exit_code, stderr }) => {
+                failures += 1;
                 let error = format!("pg_dump failed with exit code {exit_code}. Error: {stderr}");
                 events.emit(CoreEvent::DatabaseStepFailed {
                     step: DatabaseStep::Backup,
@@ -234,7 +282,14 @@ async fn backup_all(
         }
     }
 
-    // O legado devolve 0 mesmo com bancos falhando (o resumo dele é `LogInformation`, filtrado).
+    // Sem `--strict` o legado devolve 0 mesmo com bancos falhando (IF-060); com a flag, o resumo
+    // de falhas vira código não-zero.
+    if options.strict
+        && let Some(failure) = strict_failure(failures)
+    {
+        return Err(failure);
+    }
+
     Ok(())
 }
 
@@ -358,6 +413,37 @@ pub use crate::usecases::database::DUMP_EXTENSION;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    /// CONTRACT: IF-065
+    fn strict_only_fails_when_a_database_failed() {
+        assert!(strict_failure(0).is_none());
+
+        let DatabaseFailure::Command(command) = strict_failure(2).expect("falha") else {
+            panic!("esperava falha de comando");
+        };
+        assert!(
+            command.message.contains("2 database"),
+            "{}",
+            command.message
+        );
+    }
+
+    #[test]
+    /// CONTRACT: IF-063
+    fn a_hostile_database_name_cannot_escape_the_output_directory() {
+        let directory = std::path::Path::new("saida");
+
+        assert_eq!(
+            dump_path(directory, "my-db").expect("nome válido"),
+            std::path::Path::new("saida").join("my-db.dump")
+        );
+
+        for invalid in ["..\\..\\Startup\\a", "../../etc/cron.d/a", "a/b"] {
+            let error = dump_path(directory, invalid).expect_err("nome hostil");
+            assert!(error.contains("unsafe database name"), "{error}");
+        }
+    }
     use crate::events::CoreEvent;
     use crate::signal::cancellation_token;
     use std::sync::Mutex;

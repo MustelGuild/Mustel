@@ -11,6 +11,7 @@
 
 use mustel_core::config::{ConfigStore, ServerConfigEntry};
 use mustel_core::error::CoreError;
+use mustel_core::postgres::tls::SslMode;
 use mustel_core::usecases::db_servers;
 use mustel_core::validation::{is_port_in_range, is_valid_host, is_valid_username};
 
@@ -42,7 +43,12 @@ fn add_direct(args: &DbServersAddArgs) -> Result<i32, CoreError> {
     let server = build_entry(args, name, host)?;
     db_servers::add(&store, &server)?;
 
-    if let Some(password) = args.password.as_deref() {
+    let password = args
+        .password
+        .clone()
+        .or_else(|| std::env::var("MUSTEL_PASSWORD").ok());
+
+    if let Some(password) = password.as_deref() {
         db_servers::set_password(&store, name, password)?;
     }
 
@@ -204,6 +210,17 @@ fn default_exclude_patterns() -> Vec<String> {
     vec!["template*".to_string(), "postgres".to_string()]
 }
 
+/// Recusa `--ssl-mode` fora do enum: um valor inválido gravado no cadastro conectaria em texto puro.
+fn validate_ssl_mode(raw: Option<&str>) -> Result<(), CoreError> {
+    let Some(raw) = raw.filter(|value| !value.trim().is_empty()) else {
+        return Ok(());
+    };
+
+    raw.parse::<SslMode>()
+        .map(|_| ())
+        .map_err(|error| CoreError::InvalidArgument(error.to_string()))
+}
+
 /// Monta a entrada a partir das flags (defaults iguais aos do legado).
 ///
 /// A **porta** é checada aqui, e não no núcleo, porque a mensagem do legado cita o valor cru da flag
@@ -213,6 +230,8 @@ fn build_entry(
     name: &str,
     host: &str,
 ) -> Result<ServerConfigEntry, CoreError> {
+    validate_ssl_mode(args.ssl_mode.as_deref())?;
+
     if !is_port_in_range(i64::from(args.port)) {
         return Err(CoreError::InvalidArgument(format!(
             "Invalid port: {}. Must be between 1 and 65535.",
@@ -254,6 +273,15 @@ fn build_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_invalid_ssl_mode_is_refused() {
+        assert!(validate_ssl_mode(Some("Require")).is_ok());
+        assert!(validate_ssl_mode(None).is_ok());
+
+        let error = validate_ssl_mode(Some("Requiree")).expect_err("inválido");
+        assert!(error.to_string().contains("invalid ssl mode"), "{error}");
+    }
 
     #[test]
     /// CONTRACT: IF-120

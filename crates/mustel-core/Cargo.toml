@@ -17,6 +17,7 @@ serde_json = "1"
 dirs = "7"
 thiserror = "2"
 regex = "1"
+url = "2"
 tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
 # `Stream`/`FuturesUnordered` para o `query run` (T34): o resultado do driver chega como fluxo de
 # linhas (memória estável em export grande) e o executor junta as consultas paralelas.

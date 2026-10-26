@@ -41,6 +41,7 @@ cp "target/release/mustel" "$stage/"
 cp mustel.example.jsonc "$stage/"
 cp LICENSE "$stage/"
 cp crates/mustel-gui/assets/fonts/FiraCode-OFL.txt "$stage/"
+cp THIRD-PARTY-NOTICES.md "$stage/"
 cat > "$stage/README.txt" <<EOF
 Mustel $version ($triple)
 

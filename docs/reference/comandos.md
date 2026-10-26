@@ -39,6 +39,13 @@ servidor a senha do antigo sem ninguém perceber).
 A janela tem página própria: a [referência do autocomplete](autocomplete.md) descreve a linha
 "Load autocomplete", o que é sugerido em cada contexto e os limites.
 
+## Senha
+
+`-W/--password` continua existindo por paridade. Sem a flag, `MUSTEL_PASSWORD` é usado antes do
+cofre e do prompt (backup, restore, `query run`, `pgpass add`, `add` e `set-password`). Num
+terminal, usar `-W` imprime um aviso em stderr: o valor fica visível em `ps`/Gerenciador de Tarefas
+e no histórico do shell.
+
 ## `query run`
 
 Detalhe completo em [query run](query-run.md).
@@ -69,6 +76,7 @@ Detalhe completo em [query run](query-run.md).
 | `-H` / `-p` / `-U` / `-W` | conexão |
 | `--ssl-mode` / `--timeout` / `--command-timeout` | aceitos por compatibilidade; **não** vão para o `pg_dump` |
 | `-a, --all` | todos os bancos do servidor |
+| `--strict` | falha com não-zero se algum banco falhar; sem a flag, aviso e exit 0 |
 | `--exclude <padrão>` | tabelas a excluir inteiras (repetível) |
 | `--exclude-table-data <padrão>` | excluir só os dados (repetível) |
 | `-o, --output <path>` | arquivo ou diretório |

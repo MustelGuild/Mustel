@@ -16,7 +16,8 @@
   seleção de bases — veja a tabela de resolução lá); `DIV*` →
   [diferenças deliberadas](explanation/diferencas-deliberadas.md);
   `N1`–`N4` → [escada de fidelidade](explanation/escada-de-fidelidade.md); `T*` → tarefa do plano de
-  migração já encerrado (histórico do Git, sem definição vigente).
+  migração já encerrado (histórico do Git, sem definição vigente); `SEC` →
+  [ajustes de segurança](../MustelPlans/seguranca-ajustes.md).
 - **Classe**:
   - `A` — observável por uma invocação de CLI (flag, exit code, mensagem, artefato).
   - `B` — observável por unidade/integração, mas com efeito visível no CLI (cofre, driver, formatos).
@@ -75,6 +76,7 @@
 | IF-040 | T33 | A | sem nenhum banco acessível o comando para antes de escrever arquivos | `query run` contra servidor inalcançável | crates/mustel-core/src/usecases/query_run.rs::tests::without_any_accessible_database_the_command_stops_before_writing_files | coberta |
 | IF-041 | T40 | A | o resumo e os caminhos dos arquivos são emitidos depois da execução | stdout de `query run` | crates/mustel-core/src/usecases/query_run.rs::tests::the_summary_and_the_file_paths_are_emitted_after_the_run | coberta |
 | IF-042 | T33 | A | falha de descoberta gera aviso e cai no cadastro, sem abortar | `query run -a` com descoberta falhando | crates/mustel-core/src/query/plan.rs::tests::a_failed_discovery_warns_and_falls_back_to_the_configuration | coberta |
+| IF-064 | SEC | A | `--csv-escape-formulas` prefixa `'` em campo que uma planilha avaliaria como fórmula (`=`, `+`, `-`, `@`, TAB, CR), no cabeçalho e nas linhas; default desligado mantém os bytes do legado | `query run -c "select '=1+1'" --csv-escape-formulas` | crates/mustel-core/src/query/csv_writer.rs::tests::formula_escape_prefixes_dangerous_fields_only_when_enabled | coberta |
 
 ## `database backup`
 
@@ -93,6 +95,8 @@
 | IF-060 | T40 | A | `--all` com falha em um banco avisa, continua e sai 0 | `database backup -a` com um banco inválido | crates/mustel-core/src/usecases/database_backup.rs::tests::a_failed_run_emits_one_step_event_per_database_and_continues | coberta |
 | IF-061 | T40 | A | `--ssl-mode`, `--timeout` e `--command-timeout` são aceitos mas não entram no `pg_dump` | `database backup db --ssl-mode Disable` | crates/mustel/src/commands/database/backup.rs::tests::the_flags_are_translated_verbatim | coberta |
 | IF-062 | N1 | A | as três flags de validação do `backup` saem 2 | `database backup db -p 0` | crates/mustel/src/commands/database/backup.rs::tests::validation_failures_exit_with_2 | coberta |
+| IF-063 | SEC | B | o nome de banco vindo do servidor (`datname`) só vira nome de arquivo se não for caminho: nome hostil falha apenas aquele banco no `--all` e aborta o backup individual, sem escrever fora do diretório de saída | `database backup --all` e `database backup` contra servidor com `datname` hostil | crates/mustel-core/src/usecases/database_backup.rs::tests::a_hostile_database_name_cannot_escape_the_output_directory; crates/mustel-core/src/validation.rs::tests::a_database_name_is_a_file_name_only_without_path_syntax | coberta |
+| IF-065 | SEC | A | `--strict` no `backup --all` devolve não-zero quando qualquer banco falha e imprime o resumo; sem a flag, exit 0 (`IF-060`) | `database backup -a --strict` com um banco inválido | crates/mustel-core/src/usecases/database_backup.rs::tests::strict_only_fails_when_a_database_failed | coberta |
 
 ## `database restore`
 
@@ -283,3 +287,6 @@
 > As linhas `pendente` são as que o restante do plano fecha: T5/T6 (replay), T8 (texto), T9 (exit
 > codes), T10 (cofre), T11 (binário único), T13 (divergências), T14 (prompts). O plano só fecha com
 > zero `pendente`.
+
+| IF-249 | SEC | B | o `baseUrl` de IA exige `https`; `http` só em loopback (`localhost`, `127.0.0.1`, `[::1]`), e URL com credenciais é recusada ao salvar e antes de cada requisição | aba Settings › AI profiles e geração de SQL | crates/mustel-core/src/usecases/ai.rs::tests::the_ai_base_url_requires_https_except_on_loopback | coberta |
+| IF-066 | SEC | B | `sslMode` inválido **no cadastro** é erro (exit 40 no `test`/execução e 2 no `add`), nunca `Prefer` em silêncio; a flag `--ssl-mode` do `query run` mantém o fallback do legado | config com `"sslMode": "Requiree"` em `settings db-servers test` | crates/mustel-core/src/usecases/db_servers.rs::tests::an_invalid_ssl_mode_in_the_config_is_an_error; crates/mustel/src/commands/query/settings.rs::tests::an_invalid_ssl_mode_in_the_config_is_an_error; crates/mustel/src/commands/settings/db_servers/add.rs::tests::an_invalid_ssl_mode_is_refused | coberta |

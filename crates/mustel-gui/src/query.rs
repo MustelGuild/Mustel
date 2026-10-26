@@ -75,6 +75,7 @@ pub fn request_for_runs(
         // CLI sem `--all`.
         all: false,
         exclude: HashSet::new(),
+        escape_formulas: false,
     })
 }
 

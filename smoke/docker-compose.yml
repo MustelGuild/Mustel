@@ -26,3 +26,26 @@ services:
       timeout: 5s
       retries: 40
       start_period: 20s
+
+  smoke:
+    build:
+      context: .
+      dockerfile: runner.Dockerfile
+    image: mustel-smoke-runner:local
+    container_name: mustel-smoke-runner
+    depends_on:
+      postgres:
+        condition: service_healthy
+    working_dir: /src
+    environment:
+      CARGO_TARGET_DIR: /tmp/target
+      DISPLAY: ":99"
+      LIBGL_ALWAYS_SOFTWARE: "1"
+    volumes:
+      - ..:/src:ro
+      - ./out:/out
+      - target:/tmp/target
+    entrypoint: ["/bin/bash", "/src/smoke/run.sh"]
+
+volumes:
+  target:

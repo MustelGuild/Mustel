@@ -73,7 +73,7 @@ try {
 
     Write-Output '== recriando o ambiente Docker'
     docker compose -f $compose down -v --remove-orphans 2>&1 | Out-Null
-    docker compose -f $compose up -d --build
+    docker compose -f $compose up -d --build postgres
     Check 'docker compose up' ($LASTEXITCODE -eq 0)
     Check 'container saudável (100+ bases)' (Wait-Healthy) 'veja docker logs mustel-smoke-postgres'
 

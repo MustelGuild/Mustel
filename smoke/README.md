@@ -1,8 +1,8 @@
 # Ambiente de smoke
 
-Sobe um PostgreSQL 17 descartável com **100+ bases** e roda o CLI inteiro contra ele. O objetivo é
-provar os fluxos que os testes headless não alcançam: conexão real, descoberta de bases, CSV,
-backup/restore, TLS, nomes hostis e a janela da GUI.
+Sobe um PostgreSQL **18.6** descartável com **100+ bases** e roda o CLI inteiro contra ele. O
+objetivo é provar os fluxos que os testes headless não alcançam: conexão real, descoberta de bases,
+CSV, backup/restore, TLS, nomes hostis e a janela da GUI.
 
 ## O que a imagem cria
 
@@ -21,10 +21,30 @@ backup/restore, TLS, nomes hostis e a janela da GUI.
 
 ## Como rodar
 
+**Tudo dentro do Docker, sem abrir janela no seu desktop:**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File smoke/docker-smoke.ps1
+powershell -ExecutionPolicy Bypass -File smoke/docker-smoke.ps1 -Keep  # preserva volume e imagens
+```
+
+O `docker-smoke.ps1` sobe o Postgres 18.6 e um runner Linux com Rust, Xvfb, xdotool e ImageMagick,
+roda o CLI e a GUI **dentro do container** e destrói tudo. A GUI é desenhada num display virtual
+(Xvfb); nenhuma janela aparece no Windows. As capturas ficam em `smoke/out/gui`
+(`01-query.png`, `02-connections.png`, `03-settings.png`) e o smoke compara os pixels para provar
+que os cliques nas abas mudaram a tela.
+
+O fonte é montado em `/src` somente na execução e o `target` do Cargo fica num volume nomeado
+(`mustel-smoke_target`), então o `target/` do Windows não é tocado. O primeiro run compila o
+workspace no Linux (alguns minutos); os seguintes reutilizam o volume (use `-Keep` para não
+apagá-lo).
+
+**Modo rápido no host** (usa o binário do Windows e só o Postgres no Docker):
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File smoke/smoke.ps1
 powershell -ExecutionPolicy Bypass -File smoke/smoke.ps1 -Keep       # não destrói o container
-powershell -ExecutionPolicy Bypass -File smoke/smoke.ps1 -Gui        # abre e fecha a janela
+powershell -ExecutionPolicy Bypass -File smoke/smoke.ps1 -Gui        # abre e fecha a janela real
 powershell -ExecutionPolicy Bypass -File smoke/smoke.ps1 -SkipBuild  # usa o binário atual
 ```
 
@@ -35,20 +55,22 @@ dono **não** são tocados. Use `-Keep` para inspecionar depois.
 
 ## O que é verificado
 
-- `settings db-servers add` / `ls` no config isolado;
-- `query run` em um banco e com `--all` (103 bases), conferindo o CSV consolidado;
+- `settings db-servers add` / `ls` / `test` no config isolado, com a senha no **cofre efêmero do container**;
+- `query run` em um banco e com `--all` (103 bases), **sem `-W`** (senha vem do cofre do container), conferindo o CSV consolidado;
 - `--csv-escape-formulas`: default intacto e prefixo `'` nos valores `=`, `+`, `-`, `@`;
 - TLS: `Disable` e `Prefer` conectam; `Require` falha com o `sslMode` explicado no `_erros.csv`;
 - `sslMode` inválido no cadastro é erro, não `Prefer` silencioso;
 - usuário sem superusuário (`smoke_app`) lendo a tabela;
 - `database backup` de um banco, `--all` (com o banco hostil pulado) e `--strict` (exit não-zero);
 - `database restore --create-if-not-exists --no-clean` e consulta no banco restaurado;
-- `-Gui`: a janela abre e fecha.
+- no modo container: a GUI abre sob Xvfb já com a descoberta feita pelo cofre (`Smoke has 107
+database(s)` nas capturas), os cliques em Connections e Settings são validados por diferença de
+pixels, e nada abre no desktop do dono.
 
 ## O que não é verificado aqui
 
-- `settings db-servers test`: ele resolve a senha pelo cofre/prompt, e o script **não** grava no
-  cofre do dono. A conectividade é provada pelo `query run` com `-W`;
+- no **modo host** o `settings db-servers test` não roda, porque ele exigiria gravar no cofre do
+dono; o modo container cobre esse caminho no cofre efêmero do runner, que é destruído no fim;
 - o interior da GUI (autocomplete, seleção, formulários): use a skill `mustel-gui-smoke-test`;
 - o sucesso de `--ssl-mode Require`: depende de D1 (TLS do Postgres), ainda pendente;
 - `pgpass add/list/remove`: escreveria no `pgpass.conf` real.
@@ -64,4 +86,4 @@ docker compose -f smoke/docker-compose.yml down -v
 ```
 
 A imagem base está fixada pelo digest em `Dockerfile`; o certificado é gerado no build. O diretório
-`smoke/` é de engenharia, não documentação de produto.
+`smoke/` é de engenharia, não documentação de produto. `smoke/out/` é ignorado pelo Git.

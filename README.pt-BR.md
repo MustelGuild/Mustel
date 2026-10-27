@@ -41,9 +41,10 @@ cargo install mustel
 **Alvos suportados**: `x86_64-pc-windows-msvc` e `x86_64-unknown-linux-gnu`.
 macOS **não** é suportado por enquanto.
 
-**Dependência de runtime (Linux)**: `libdbus-1.so.3` — `sudo apt install libdbus-1-3` no
-Debian/Ubuntu. Abrir a janela exige também X11 ou Wayland com OpenGL; o CLI sozinho ainda carrega a
-libdbus na partida.
+**Build e runtime (Linux)**: nenhum pacote `-devel` é necessário — a libdbus é compilada das fontes
+embutidas no crate e linkada estaticamente (`vendored`), então o binário nunca carrega
+`libdbus-1.so.3`. O cofre continua exigindo um Secret Service rodando (GNOME Keyring/KWallet). Abrir a
+janela exige também X11 ou Wayland com OpenGL.
 
 ## Comandos
 

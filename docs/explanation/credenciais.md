@@ -12,6 +12,11 @@ No **cofre do sistema operacional**, via crate `keyring`:
 
 Serviço: `mustel`. Usuário (chave): o **nome do servidor** cadastrado em `mustel.jsonc`.
 
+A **biblioteca** do D-Bus vai embutida no binário, com link estático (decisão `B1` em
+[Decisões de engenharia](decisoes.md)) — é o que dispensa `libdbus-1-dev` no build e
+`libdbus-1.so.3` em runtime. O **serviço** continua sendo o do sistema: sem uma sessão com Secret
+Service o cofre não responde.
+
 ```bash
 # grava/atualiza a senha de um servidor já cadastrado
 mustel settings db-servers set-password dev

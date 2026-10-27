@@ -38,6 +38,12 @@ keyring = { version = "3", features = ["apple-native"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+# `vendored` compila o libdbus 1.14.4 das fontes embutidas no crate (via `cc`) em vez de exigir o
+# `dbus-1.pc` do sistema (`dbus-devel`/`libdbus-1-dev`); o binário também passa a linkar libdbus
+# estaticamente, sem carregar `libdbus-1.so.3` em runtime. A feature homônima do `keyring` não serve:
+# ela ligaria também `openssl/vendored`. Declarar o `dbus` aqui habilita só o libdbus vendorizado —
+# a unificação de features do Cargo aplica isso ao `dbus` que o `dbus-secret-service` usa.
+dbus = { version = "0.9", features = ["vendored"] }
 
 # Plataformas sem backend nativo continuam compilando; `get`/`set` falham com mensagem clara.
 [target.'cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))'.dependencies]

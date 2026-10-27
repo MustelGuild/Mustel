@@ -41,9 +41,10 @@ cargo install mustel
 **Supported targets**: `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu`.
 macOS is **not** supported for now.
 
-**Runtime dependency (Linux)**: `libdbus-1.so.3` — `sudo apt install libdbus-1-3` on
-Debian/Ubuntu. Opening the window additionally needs X11 or Wayland with OpenGL; the CLI alone
-still loads libdbus at start-up.
+**Linux build and runtime**: no `-devel` package is needed — libdbus is compiled from the sources
+shipped with the crate and linked statically (`vendored`), so the binary never loads
+`libdbus-1.so.3`. The credentials still need a running Secret Service (GNOME Keyring/KWallet).
+Opening the window additionally needs X11 or Wayland with OpenGL.
 
 ## Commands
 

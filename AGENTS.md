@@ -36,7 +36,9 @@ como contrato em `fixtures/baseline/` e em `docs/contrato-de-interface.md`.
 - Postgres: `tokio-postgres`, com `with-serde_json-1` · dados exportados com `csv`
 - Config: `serde` + `jsonc-parser`, caminho resolvido por `dirs` · credenciais: `keyring` — **com os
   backends nativos habilitados por plataforma** (`windows-native`, `apple-native`,
-  `sync-secret-service`); sem essas features o crate usa um store mock que aceita `set` e não persiste
+  `sync-secret-service`); sem essas features o crate usa um store mock que aceita `set` e não persiste.
+  No Linux o `dbus` é declarado direto com `vendored` (libdbus estática, decisão `B1` em
+  `docs/explanation/decisoes.md`): não remova essa dependência achando que é código morto
 - Erros: `thiserror` no core, `anyhow` apenas no binário · logs: `tracing`
 - GUI: `eframe`/`egui` (+ `egui_extras`), atrás da feature `gui`
 - Testes: `insta` (snapshots), `expectrl` (PTY), `tempfile`, `tokio-postgres` (integração Postgres)

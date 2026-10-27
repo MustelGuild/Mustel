@@ -15,9 +15,9 @@ dizer coisas diferentes em cada uma: `D6` é "keyring" na migração e "formato 
 de bases. O número sozinho **não** resolve nada — use o texto ao lado dele e a tabela de resolução
 abaixo.
 
-Depois da consolidação entraram mais duas famílias, com letra própria para não colidir com `D*`:
-`A*` (aparência: tema e fontes) e `S*` (queries salvas); o porquê das `S` está em
-[Por que as queries salvas são assim](saved-queries.md).
+Depois da consolidação entraram mais três famílias, com letra própria para não colidir com `D*`:
+`A*` (aparência: tema e fontes), `S*` (queries salvas) e `B*` (build e dependências de sistema); o
+porquê das `S` está em [Por que as queries salvas são assim](saved-queries.md).
 
 ### Onde cada número é citado
 
@@ -35,6 +35,7 @@ Depois da consolidação entraram mais duas famílias, com letra própria para n
 | `D24` | Migração | `.github/workflows/release-build.yml` (CI empacota e publica a release) |
 | `D25` | Migração | manifesto `IF-071`/`IF-072` (`--create-if-not-exists`) |
 | `D26` | Migração | `publish.ps1` / `publish.sh` (release manual) |
+| `B1` | Build | `crates/mustel-core/Cargo.toml`, `README.md`/`README.pt-BR.md`, `.github/workflows/release-build.yml` (libdbus vendorizada) |
 
 Os casos com duas numerações (`D10`, `D11`, `D15`) são os que exigem atenção: o texto entre
 parênteses ao lado do ID indica o tema, e o tema diz a tabela.
@@ -158,6 +159,25 @@ depois da `A` (tema), e não reutiliza as numerações dos planos antigos.
 
 A referência está em [`reference/saved-queries.md`](../reference/saved-queries.md), o porquê em
 [Por que as queries salvas são assim](saved-queries.md); a linha de contrato é `IF-244`.
+
+## Build e dependências de sistema (`B1`)
+
+Numeração própria, aberta em 2026-10-27, para decisões que valem para **qualquer** feature porque
+mudam o que o binário exige da máquina.
+
+| ID | Tema | Decisão | Por quê |
+|---|---|---|---|
+| `B1` | libdbus no Linux | Dependência direta em `dbus` com a feature `vendored`: o libdbus 1.14.4 é compilado das fontes embutidas no crate (via `cc`) e **linkado estaticamente** | Sem isso o `libdbus-sys` exige o `dbus-1.pc` do sistema (`dbus-devel`/`libdbus-1-dev`) e o build falha em distro que não traz o `-devel` — inclusive nas imutáveis (Fedora atomic/Bazzite), onde instalar o pacote exige sobrescrever camada e reiniciar. Efeito colateral: o binário deixa de carregar `libdbus-1.so.3` em runtime |
+
+A feature `vendored` do próprio `keyring` não é usada: ela liga `dbus/vendored` **e**
+`openssl/vendored`, e as credenciais usam `crypto-rust`. Declarar o `dbus` direto habilita só o
+libdbus vendorizado — a **unificação de features** do Cargo aplica isso ao `dbus` que o
+`dbus-secret-service` usa, e nenhum código precisa importá-lo.
+
+O que a decisão **não** muda: o cofre do Linux continua falando com o **Secret Service** por D-Bus,
+então uma sessão com GNOME Keyring/KWallet segue sendo necessária ([Credenciais](credenciais.md)). O
+workflow de release deixou de instalar `libdbus-1-dev`, o que faz o build lá exercitar o caminho
+vendorizado.
 
 ## O que não veio para cá
 

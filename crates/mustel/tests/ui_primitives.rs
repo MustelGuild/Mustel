@@ -72,6 +72,10 @@ fn table_rendering_is_deterministic() {
 
 #[test]
 fn styling_is_plain_without_a_terminal() {
+    // O harness pode manter o stdout em um pty; fixa a decisão do `console` para não depender do
+    // terminal de quem roda a suíte.
+    console::set_colors_enabled(false);
+
     assert_eq!(ui::style::bold("dev"), "dev");
     assert_eq!(ui::style::warning("cuidado"), "cuidado");
 

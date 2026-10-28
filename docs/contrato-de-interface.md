@@ -17,7 +17,7 @@
   [diferenças deliberadas](explanation/diferencas-deliberadas.md);
   `N1`–`N4` → [escada de fidelidade](explanation/escada-de-fidelidade.md); `T*` → tarefa do plano de
   migração já encerrado (histórico do Git, sem definição vigente); `SEC` →
-  [ajustes de segurança](../MustelPlans/seguranca-ajustes.md).
+  [ajustes de segurança](explanation/seguranca.md).
 - **Classe**:
   - `A` — observável por uma invocação de CLI (flag, exit code, mensagem, artefato).
   - `B` — observável por unidade/integração, mas com efeito visível no CLI (cofre, driver, formatos).

@@ -974,6 +974,41 @@ Selection unchanged."
         request
     }
 
+    /// Lista do progresso, que rola sozinha quando passa de 120 px.
+    fn progress_ui(&self, ui: &mut egui::Ui) {
+        egui::ScrollArea::vertical()
+            .id_salt("progress")
+            .max_height(120.0)
+            // `auto_shrink([false, true])`: o padrão (`true`) encolhe a área até a largura do texto,
+            // e aí a barra fica no meio do painel. Sem encolher na horizontal ela encosta na borda
+            // direita; na vertical a altura continua acompanhando o conteúdo.
+            .auto_shrink([false, true])
+            .stick_to_bottom(true)
+            .show(ui, |ui| {
+                for row in &self.progress {
+                    ui.horizontal(|ui| {
+                        if row.error.is_empty() {
+                            crate::icons::inline(ui, crate::icons::Icon::Check);
+                            ui.monospace(format!(
+                                "{}/{} — {} rows — {:.1}s",
+                                row.server, row.database, row.rows, row.seconds
+                            ));
+                        } else {
+                            crate::icons::inline_colored(
+                                ui,
+                                crate::icons::Icon::Cross,
+                                crate::theme::danger(ui),
+                            );
+                            ui.monospace(format!(
+                                "{}/{} — {}",
+                                row.server, row.database, row.error
+                            ));
+                        }
+                    });
+                }
+            });
+    }
+
     /// Grava o texto do editor sob o nome pedido (cria ou substitui) e devolve o pedido.
     ///
     /// `None` quando o nome é inválido (vazio) — o chamador mostra o erro.
@@ -1163,33 +1198,7 @@ Selection unchanged."
         if !self.progress.is_empty() {
             ui.separator();
             ui.label("Progress");
-            egui::ScrollArea::vertical()
-                .id_salt("progress")
-                .max_height(120.0)
-                .stick_to_bottom(true)
-                .show(ui, |ui| {
-                    for row in &self.progress {
-                        ui.horizontal(|ui| {
-                            if row.error.is_empty() {
-                                crate::icons::inline(ui, crate::icons::Icon::Check);
-                                ui.monospace(format!(
-                                    "{}/{} — {} rows — {:.1}s",
-                                    row.server, row.database, row.rows, row.seconds
-                                ));
-                            } else {
-                                crate::icons::inline_colored(
-                                    ui,
-                                    crate::icons::Icon::Cross,
-                                    crate::theme::danger(ui),
-                                );
-                                ui.monospace(format!(
-                                    "{}/{} — {}",
-                                    row.server, row.database, row.error
-                                ));
-                            }
-                        });
-                    }
-                });
+            self.progress_ui(ui);
         }
 
         if !self.files.is_empty() {
@@ -3346,6 +3355,58 @@ mod tests {
                 .iter()
                 .any(|(text, _)| text.contains("connection refused")),
             "o erro do banco aparece: {texts:?}"
+        );
+    }
+
+    /// A barra do progresso encosta na **borda direita** do formulário.
+    ///
+    /// O `ScrollArea` vertical, por padrão, encolhe até a largura do conteúdo: a barra ficava no
+    /// meio do painel, logo depois do texto. `auto_shrink([false, _])` devolve a largura cheia.
+    #[test]
+    fn the_progress_scroll_bar_sits_on_the_right_edge() {
+        let ctx = egui::Context::default();
+        let mut state = State::default();
+        state.push_progress(ProgressRow {
+            server: "Local".to_string(),
+            database: "dev".to_string(),
+            rows: 1,
+            seconds: 0.4,
+            error: String::new(),
+        });
+
+        // `screen_rect` de verdade: com o padrão do `RawInput` (10000 px) não há largura com que
+        // comparar, e um `ScrollArea` encolhido e um cheio parecem iguais.
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(800.0, 600.0),
+            )),
+            ..Default::default()
+        };
+
+        let mut width = 0.0;
+        let mut available = 0.0;
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(raw.clone(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    available = ui.available_width();
+                    width = ui
+                        .vertical(|ui| {
+                            state.progress_ui(ui);
+                            ui.min_rect().width()
+                        })
+                        .inner;
+                });
+            });
+            output.textures_delta.clear();
+        }
+
+        // A barra ocupa a faixa entre o conteúdo e a borda; encolhida até o texto, a diferença
+        // seria de centenas de pixels.
+        let reserved = available - width;
+        assert!(
+            (0.0..=20.0).contains(&reserved),
+            "a barra tem de ficar na borda: disponível {available}, conteúdo {width}"
         );
     }
 

@@ -60,8 +60,8 @@ dono **não** são tocados. Use `-Keep` para inspecionar depois.
 - `query run` em um banco e com `--all` (103 bases), **sem `-W`** (senha vem do cofre do container), conferindo o CSV consolidado;
 - `--csv-escape-formulas`: default intacto e prefixo `'` nos valores `=`, `+`, `-`, `@`;
 - TLS no container: `Disable`, `Prefer` e `Require` conectam com a CA instalada; sem a CA,
-  `Prefer`/`Require` falham sem cair para texto puro; `Prefer` cai com aviso no serviço sem TLS e
-  `Require` falha nele;
+  `Prefer`/`Require` falham sem cair para texto puro; `Prefer` cai **em silêncio** no serviço sem
+  TLS e `Require` falha nele;
 - `sslMode` inválido no cadastro é erro, não `Prefer` silencioso;
 - usuário sem superusuário (`smoke_app`) lendo a tabela;
 - `database backup` de um banco, `--all` (com o banco hostil pulado) e `--strict` (exit não-zero);

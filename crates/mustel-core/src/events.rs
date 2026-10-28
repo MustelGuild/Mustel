@@ -14,7 +14,9 @@ use std::time::Duration;
 /// Como uma execução terminou.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
+    /// A execução terminou bem.
     Success,
+    /// A execução falhou.
     Error,
 }
 

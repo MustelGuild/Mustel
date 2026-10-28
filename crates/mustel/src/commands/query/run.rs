@@ -91,10 +91,18 @@ pub async fn run(args: QueryRunArgs, token: &CancellationToken) -> Result<i32, C
         }
     }
 
+    // A senha é lida uma vez e reaproveitada por todos os servidores: stdin é um fluxo e não pode
+    // ser lido de novo para cada alvo.
+    let stdin_password = if args.password_stdin {
+        Some(crate::ui::password_input::read_from_stdin()?)
+    } else {
+        None
+    };
+
     let request = QueryRunRequest {
         servers: selected
             .iter()
-            .map(|server| settings::server_run(server, &args))
+            .map(|server| settings::server_run(server, &args, stdin_password.as_deref()))
             .collect::<Result<Vec<_>, CoreError>>()?,
         sql: Arc::from(sql.as_str()),
         output_directory: PathBuf::from(settings::output_directory(&args, &defaults)),
@@ -102,6 +110,7 @@ pub async fn run(args: QueryRunArgs, token: &CancellationToken) -> Result<i32, C
         command_timeout: Duration::from_secs(args.command_timeout.unwrap_or(300).max(1) as u64),
         all: args.all,
         exclude: discovery::exclude_names(args.exclude.as_deref()),
+        escape_formulas: args.csv_escape_formulas,
     };
 
     // Os eventos vão para a tabela ao vivo; o que sai depois dela (caminhos e resumo) fica na fila
@@ -260,6 +269,7 @@ mod tests {
             database: None,
             username: None,
             password: Some("senha".to_string()),
+            password_stdin: false,
             ssl_mode: None,
             timeout: None,
             command_timeout: None,
@@ -271,6 +281,7 @@ mod tests {
             all: false,
             exclude: None,
             no_confirm: false,
+            csv_escape_formulas: false,
         }
     }
 

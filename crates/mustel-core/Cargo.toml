@@ -14,10 +14,15 @@ workspace = true
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-dirs = "6"
+dirs = "7"
 thiserror = "2"
 regex = "1"
+url = "2"
 tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
+tokio-postgres-rustls = { version = "0.14", features = ["aws-lc-rs"] }
+rustls = { version = "0.23", features = ["aws_lc_rs"] }
+rustls-native-certs = "0.8"
+sqlparser = "0.63"
 # `Stream`/`FuturesUnordered` para o `query run` (T34): o resultado do driver chega como fluxo de
 # linhas (memória estável em export grande) e o executor junta as consultas paralelas.
 futures-util = "0.3"
@@ -28,27 +33,18 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "tim
 tokio-util = "0.7"
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls"] }
 
-# keyring 3.x não habilita backend nenhum por padrão: sem estas features por plataforma ele usa um
-# store mock que aceita `set` e devolve `None` no `get` (falha silenciosa). Ver T7 no plano.
-[target.'cfg(target_os = "windows")'.dependencies]
-keyring = { version = "3", features = ["windows-native"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-keyring = { version = "3", features = ["apple-native"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
-
-# Plataformas sem backend nativo continuam compilando; `get`/`set` falham com mensagem clara.
-[target.'cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))'.dependencies]
-keyring = "3"
+# keyring 4 com a feature default `v1` escolhe sozinho o backend nativo da plataforma
+# (Credential Manager no Windows, Keychain no macOS, Secret Service no Linux) e mantém a API
+# `Entry`/`Error` da versão 3. Em plataforma sem store, `Entry::new` devolve erro em vez de
+# aceitar `set` e perder o segredo no `get`.
+keyring = "4"
 
 # `killpg` para derrubar a **árvore** de um processo no cancelamento (T27). É API segura sobre a
 # syscall: o utilitário `kill` com pid negativo se mostrou não confiável na prática (testado em
 # container: `/bin/kill -KILL -<pid>` sai com 0 e **não** mata o grupo; o builtin do shell mata),
 # e `libc::kill` direto não é opção por causa de `unsafe_code = "forbid"`.
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["signal", "process"] }
+nix = { version = "0.31", features = ["signal", "process"] }
 
 [dev-dependencies]
 tempfile = "3"

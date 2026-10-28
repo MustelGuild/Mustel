@@ -4,8 +4,7 @@
 //!
 //! - **validação** ([`validate`], [`FailureKind::Usage`] → **2** no CLI): host, porta, usuário (só
 //!   se informado), banco (a menos de `--all`), `--ssl-mode` restrito a
-//!   `Disable|Prefer|Require|VerifyCA|VerifyFull` (**`Allow` é recusado** aqui, embora exista na
-//!   tradução de TLS do núcleo), `--timeout` e `--command-timeout` positivos;
+//!   `Disable|Prefer|Require`, `--timeout` e `--command-timeout` positivos;
 //! - **tipos de falha**: binário ausente e falha do `pg_restore` são
 //!   [`FailureKind::MissingBinary`]/[`FailureKind::OperationFailed`] (o CLI mapeia os dois para **1** —
 //!   no `backup` o binário ausente é **3**, porque os `catch` dos dois comandos são diferentes);
@@ -28,10 +27,12 @@
 
 use std::path::PathBuf;
 
+use crate::error::CoreError;
 use crate::events::{CoreEvent, DatabaseStep, EventSink};
 use crate::postgres::client;
 use crate::postgres::locator::{PG_RESTORE, PSQL, PostgresBinaryLocator};
 use crate::postgres::settings::ConnectionSettings;
+use crate::postgres::tls::SslMode;
 use crate::process::{self, ProcessOptions};
 use crate::signal::CancellationToken;
 use crate::usecases::database::{
@@ -40,8 +41,8 @@ use crate::usecases::database::{
 };
 use crate::validation;
 
-/// Modos de `--ssl-mode` que o legado aceita neste comando.
-const VALID_SSL_MODES: [&str; 5] = ["Disable", "Prefer", "Require", "VerifyCA", "VerifyFull"];
+/// Modos de `--ssl-mode` aceitos: os três do `tokio-postgres`.
+const VALID_SSL_MODES: [&str; 3] = ["Disable", "Prefer", "Require"];
 
 /// Entrada do `restore`, como o frontend a tem (flags cruas, senha já resolvida).
 #[derive(Debug, Clone, Default)]
@@ -134,8 +135,7 @@ pub fn validate(options: &RestoreOptions) -> Result<Connection, CommandFailure> 
         return Err(CommandFailure::new(
             FailureKind::Usage,
             format!(
-                "Error: Invalid SSL mode: '{ssl_mode}'. Valid values: Disable, Prefer, Require, \
-                 VerifyCA, VerifyFull."
+                "Error: Invalid SSL mode: '{ssl_mode}'. Valid values: Disable, Prefer, Require."
             ),
         ));
     }
@@ -498,18 +498,24 @@ async fn create_database_through_driver(
     password: &str,
     database: &str,
 ) -> Result<(), DatabaseFailure> {
+    let ssl_mode = match options
+        .ssl_mode
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        Some(raw) => raw.parse::<SslMode>().map_err(|error| {
+            DatabaseFailure::Fatal(CoreError::InvalidArgument(error.to_string()))
+        })?,
+        None => SslMode::default(),
+    };
+
     let settings = ConnectionSettings {
         host: connection.host.clone(),
         port: connection.port.parse().unwrap_or(5432),
         user: connection.username.clone().unwrap_or_default(),
         password: Some(password.to_string()),
         database: Some("postgres".to_string()),
-        ssl_mode: options
-            .ssl_mode
-            .as_deref()
-            .unwrap_or_default()
-            .parse()
-            .unwrap_or_default(),
+        ssl_mode,
         connect_timeout: std::time::Duration::from_secs(options.timeout.unwrap_or(30).max(1) as u64),
         ..ConnectionSettings::default()
     };
@@ -613,8 +619,7 @@ mod tests {
         assert_eq!(error.kind, FailureKind::Usage);
         assert_eq!(
             error.message,
-            "Error: Invalid SSL mode: 'Allow'. Valid values: Disable, Prefer, Require, VerifyCA, \
-             VerifyFull."
+            "Error: Invalid SSL mode: 'Allow'. Valid values: Disable, Prefer, Require."
         );
 
         let mut zero_timeout = options(Some("mydb"));

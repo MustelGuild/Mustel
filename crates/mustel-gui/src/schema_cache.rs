@@ -28,7 +28,11 @@ impl SchemaCache {
             .insert((server.to_string(), database.to_string()), schema);
     }
 
-    /// Esquece o esquema de um par — usado pelo `⟳` antes de recarregar.
+    /// Esquece o esquema de um par — IF-203: invalidar remove **só** aquele par.
+    ///
+    /// O `⟳` da tela recarrega por [`SchemaCache::insert`], que já **substitui** a entrada (não há
+    /// janela de esquema velho). O método fica como operação explícita do cache, coberta pelo
+    /// contrato e pelo teste.
     pub fn invalidate(&mut self, server: &str, database: &str) {
         self.loaded
             .remove(&(server.to_string(), database.to_string()));

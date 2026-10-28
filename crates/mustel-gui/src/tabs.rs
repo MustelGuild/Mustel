@@ -14,7 +14,7 @@ pub fn tab(ui: &mut egui::Ui, selected: bool, icon: Icon, label: &str) -> egui::
     let text_color = ui.visuals().text_color();
     let galley = ui
         .painter()
-        .layout_no_wrap(label.to_owned(), font.clone(), text_color);
+        .layout_no_wrap(label.to_owned(), font, text_color);
 
     // O ícone acompanha a altura do texto: nada de tamanho fixo que desalinhe quando a fonte cresce.
     let icon_size = galley.size().y;

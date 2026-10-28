@@ -15,6 +15,7 @@ pub mod error;
 pub mod events;
 pub mod pgpass;
 pub mod postgres;
+pub mod private_fs;
 pub mod process;
 pub mod query;
 pub mod signal;

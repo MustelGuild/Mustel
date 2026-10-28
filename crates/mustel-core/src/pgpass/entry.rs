@@ -10,6 +10,8 @@
 //! - linha com menos de 5 campos é **ignorada** (não é erro);
 //! - a identidade de uma entrada são os 4 primeiros campos (a senha não participa).
 
+use std::fmt;
+
 /// Host usado quando o chamador não informa um (`FurLabConstants.DefaultHost`).
 pub const DEFAULT_HOST: &str = "localhost";
 
@@ -26,7 +28,7 @@ pub const DEFAULT_USERNAME: &str = "postgres";
 ///
 /// Os campos `hostname`, `port`, `database` e `username` aceitam `*` como curinga. A senha é
 /// gravada **em texto claro**, escapando apenas `\` e `:` — é o formato do arquivo.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PgPassEntry {
     /// Hostname ou IP. Curinga: `*`.
     pub hostname: String,
@@ -38,6 +40,19 @@ pub struct PgPassEntry {
     pub username: String,
     /// Senha em texto claro (nunca vazia, nunca curinga).
     pub password: String,
+}
+
+impl fmt::Debug for PgPassEntry {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PgPassEntry")
+            .field("hostname", &self.hostname)
+            .field("port", &self.port)
+            .field("database", &self.database)
+            .field("username", &self.username)
+            .field("password", &"<oculta>")
+            .finish()
+    }
 }
 
 impl Default for PgPassEntry {
@@ -53,14 +68,6 @@ impl Default for PgPassEntry {
 }
 
 impl PgPassEntry {
-    /// Entrada com todos os defaults do legado e a senha informada.
-    pub fn with_password(password: impl Into<String>) -> Self {
-        Self {
-            password: password.into(),
-            ..Self::default()
-        }
-    }
-
     /// Identidade da entrada: os quatro campos que decidem duplicata e remoção.
     pub fn identity_key(&self) -> (&str, &str, &str, &str) {
         (
@@ -182,6 +189,18 @@ pub fn unescape_password(escaped: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_never_shows_the_password() {
+        let entry = PgPassEntry {
+            password: "s3cret".to_string(),
+            ..PgPassEntry::default()
+        };
+
+        let text = format!("{entry:?}");
+        assert!(text.contains("<oculta>"), "{text}");
+        assert!(!text.contains("s3cret"), "{text}");
+    }
 
     fn entry(
         host: &str,

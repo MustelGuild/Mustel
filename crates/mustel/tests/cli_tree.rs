@@ -7,8 +7,9 @@
 //! um diretório temporário. Sem isso, um comando de `pgpass` ou de `settings` da suíte escreveria no
 //! `mustel.jsonc` e no `pgpass.conf` **reais** do usuário (o último guarda senhas de verdade).
 
+use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 /// Diretório temporário compartilhado pelas invocações de um teste.
 fn sandbox_dir() -> PathBuf {
@@ -27,6 +28,36 @@ fn mustel(args: &[&str]) -> Output {
         .args(args)
         .env("MUSTEL_CONFIG_DIR", sandbox_dir().join("config"))
         .env("MUSTEL_PGPASS_FILE", sandbox_pgpass_file())
+        .output()
+        .expect("binary must run")
+}
+
+fn mustel_with_stdin(args: &[&str], input: &str) -> Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_mustel"))
+        .args(args)
+        .env("MUSTEL_CONFIG_DIR", sandbox_dir().join("config"))
+        .env("MUSTEL_PGPASS_FILE", sandbox_pgpass_file())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("binary must start");
+
+    child
+        .stdin
+        .take()
+        .expect("stdin")
+        .write_all(input.as_bytes())
+        .expect("stdin write");
+    child.wait_with_output().expect("binary must run")
+}
+
+fn mustel_with_env(args: &[&str], key: &str, value: &str) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_mustel"))
+        .args(args)
+        .env("MUSTEL_CONFIG_DIR", sandbox_dir().join("config"))
+        .env("MUSTEL_PGPASS_FILE", sandbox_pgpass_file())
+        .env(key, value)
         .output()
         .expect("binary must run")
 }
@@ -101,6 +132,7 @@ fn flags_follow_the_legacy_contract() {
         "-d, --database",
         "-U, --username",
         "-W, --password",
+        "--password-stdin",
         "--ssl-mode",
         "--command-timeout",
         "--pooling",
@@ -173,6 +205,92 @@ fn flags_follow_the_legacy_contract() {
             "missing `{flag}` in db-servers add"
         );
     }
+}
+
+#[test]
+/// CONTRACT: IF-252
+fn password_stdin_is_accepted_and_conflicts_with_password() {
+    let _ = std::fs::remove_file(sandbox_pgpass_file());
+
+    let output = mustel_with_stdin(
+        &["database", "pgpass", "add", "stdin_db", "--password-stdin"],
+        "segredo\r\n",
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout: {} stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Entry added: localhost:5432:stdin_db:postgres"),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+
+    let conflict = mustel(&[
+        "query",
+        "run",
+        "--password-stdin",
+        "--password",
+        "x",
+        "-c",
+        "select 1",
+    ]);
+    assert_eq!(conflict.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&conflict.stdout).contains("cannot be used with"),
+        "{}",
+        String::from_utf8_lossy(&conflict.stdout)
+    );
+}
+
+#[test]
+/// CONTRACT: IF-253
+fn mustel_password_is_used_by_pgpass_add_without_a_flag() {
+    let _ = std::fs::remove_file(sandbox_pgpass_file());
+
+    let output = mustel_with_env(
+        &["database", "pgpass", "add", "env_db"],
+        "MUSTEL_PASSWORD",
+        "from-env",
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout: {} stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Entry added: localhost:5432:env_db:postgres"),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
+/// CONTRACT: IF-252
+fn an_empty_password_stdin_is_an_argument_error() {
+    let output = mustel_with_stdin(
+        &[
+            "database",
+            "pgpass",
+            "add",
+            "empty_stdin_db",
+            "--password-stdin",
+        ],
+        "\r\n",
+    );
+    assert_eq!(output.status.code(), Some(41), "{output:?}");
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("password read from stdin is empty"),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
 }
 
 #[test]

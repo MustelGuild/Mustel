@@ -23,7 +23,7 @@ use mustel_core::pgpass::store::PgPassStore;
 use mustel_core::validation;
 
 use crate::cli::PgpassAddArgs;
-use crate::ui::prompts;
+use crate::ui::{password_input, prompts};
 
 use super::map_error;
 
@@ -48,7 +48,19 @@ pub fn run(args: PgpassAddArgs) -> Result<i32, CoreError> {
         }
     };
 
-    let password = resolve_password(args.password.as_deref(), || prompts::password("Password: "))?;
+    let stdin_password = if args.password_stdin {
+        Some(password_input::read_from_stdin()?)
+    } else {
+        None
+    };
+    let environment_password = std::env::var("MUSTEL_PASSWORD").ok();
+    let provided = stdin_password
+        .as_deref()
+        .or(args.password.as_deref())
+        .or(environment_password
+            .as_deref()
+            .filter(|value| !value.is_empty()));
+    let password = resolve_password(provided, || prompts::password("Password: "))?;
     if password.is_empty() {
         println!("Error: password cannot be empty.");
         return Ok(2);
@@ -136,6 +148,7 @@ mod tests {
             port: None,
             username: None,
             password: None,
+            password_stdin: false,
         }
     }
 

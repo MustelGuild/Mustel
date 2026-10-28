@@ -4,10 +4,10 @@
 //! `--max-pool-size`, `--keepalive`, `--connection-lifetime`, `--timeout`, `--command-timeout`,
 //! `--ssl-mode`) e no cadastro do servidor, com os **defaults do legado**.
 
-use std::str::FromStr;
+use std::fmt;
 use std::time::Duration;
 
-use crate::postgres::tls::{SslMode, SslModeError};
+use crate::postgres::tls::SslMode;
 
 /// Defaults herdados do FurLab.
 pub const DEFAULT_PORT: u16 = 5432;
@@ -21,7 +21,7 @@ pub const DEFAULT_MIN_POOL_SIZE: u32 = 1;
 pub const DEFAULT_MAX_POOL_SIZE: u32 = 100;
 
 /// O que é preciso para abrir uma conexão.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ConnectionSettings {
     /// Host do servidor.
     pub host: String,
@@ -39,16 +39,37 @@ pub struct ConnectionSettings {
     pub connect_timeout: Duration,
     /// Timeout de comando.
     pub command_timeout: Duration,
-    /// Habilita pool de conexões.
+    /// Habilita pool de conexões. **Aceito por paridade; sem efeito** (não há pool).
     pub pooling: bool,
-    /// Tamanho mínimo do pool.
+    /// Tamanho mínimo do pool. **Aceito por paridade; sem efeito** (não há pool).
     pub min_pool_size: u32,
-    /// Tamanho máximo do pool.
+    /// Tamanho máximo do pool. **Aceito por paridade; sem efeito** (não há pool).
     pub max_pool_size: u32,
     /// Keepalive (0 = desligado, como no legado).
     pub keepalive: Duration,
-    /// Tempo de vida máximo de uma conexão (0 = ilimitado, como no legado).
+    /// Tempo de vida máximo de uma conexão (0 = ilimitado). **Aceito por paridade; sem efeito.**
     pub connection_lifetime: Duration,
+}
+
+impl fmt::Debug for ConnectionSettings {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ConnectionSettings")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("user", &self.user)
+            .field("password", &self.password.as_ref().map(|_| "<oculta>"))
+            .field("database", &self.database)
+            .field("ssl_mode", &self.ssl_mode)
+            .field("connect_timeout", &self.connect_timeout)
+            .field("command_timeout", &self.command_timeout)
+            .field("pooling", &self.pooling)
+            .field("min_pool_size", &self.min_pool_size)
+            .field("max_pool_size", &self.max_pool_size)
+            .field("keepalive", &self.keepalive)
+            .field("connection_lifetime", &self.connection_lifetime)
+            .finish()
+    }
 }
 
 impl Default for ConnectionSettings {
@@ -72,12 +93,6 @@ impl Default for ConnectionSettings {
 }
 
 impl ConnectionSettings {
-    /// Aplica um texto de `sslMode` vindo do cadastro ou da flag.
-    pub fn with_ssl_mode_text(mut self, text: &str) -> Result<Self, SslModeError> {
-        self.ssl_mode = SslMode::from_str(text)?;
-        Ok(self)
-    }
-
     /// Traduz para a configuração do `tokio-postgres`.
     ///
     /// A senha vai junto porque o driver a exige na configuração; ela **nunca** é registrada em log
@@ -124,6 +139,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn debug_never_shows_the_password() {
+        let settings = ConnectionSettings {
+            password: Some("s3cret".to_string()),
+            ..ConnectionSettings::default()
+        };
+
+        let text = format!("{settings:?}");
+        assert!(text.contains("<oculta>"), "{text}");
+        assert!(!text.contains("s3cret"), "{text}");
+    }
+
+    #[test]
     /// CONTRACT: IF-024
     fn defaults_match_the_legacy() {
         let settings = ConnectionSettings::default();
@@ -136,20 +163,6 @@ mod tests {
         assert_eq!(settings.ssl_mode, SslMode::Prefer);
         assert_eq!(settings.keepalive, Duration::ZERO);
         assert_eq!(settings.connection_lifetime, Duration::ZERO);
-    }
-
-    #[test]
-    fn ssl_mode_text_is_parsed_into_the_settings() {
-        let settings = ConnectionSettings::default()
-            .with_ssl_mode_text("Require")
-            .expect("valid mode");
-        assert_eq!(settings.ssl_mode, SslMode::Require);
-
-        assert!(
-            ConnectionSettings::default()
-                .with_ssl_mode_text("nope")
-                .is_err()
-        );
     }
 
     #[test]

@@ -113,14 +113,8 @@ pub fn validate(
             }
         };
 
-        // Aviso de credencial (D8): usuário diferente do cadastro e sem senha na linha.
-        let warning = match (&row.user, &row.password) {
-            (Some(user), None) if !user.eq_ignore_ascii_case(&server.username) => Some(format!(
-                "user '{user}' has no password in the query; the vault only holds '{0}'",
-                server.username
-            )),
-            _ => None,
-        };
+        // Aviso de credencial (D8), decidido em **um lugar só** ([`resolve_credential`], IF-226).
+        let warning = resolve_credential(row, server, None).warning;
 
         let blocked_by = server
             .exclude_patterns
@@ -183,8 +177,11 @@ impl core::fmt::Debug for ResolvedCredential {
     }
 }
 
-/// Decide usuário e senha de uma linha, na ordem que o dono definiu: **o que vier da linha vale**;
-/// o que faltar sai do cadastro + cofre.
+/// Decide usuário e senha de uma linha, na ordem que o dono definiu (IF-226): **o que vier da linha
+/// vale**; o que faltar sai do cadastro + cofre.
+///
+/// [`validate`] consome o `warning`; `user`/`password` são a decisão que o caminho de execução da
+/// seleção deve usar (hoje ele ainda conecta com a credencial do servidor).
 pub fn resolve_credential(
     row: &SelectionRow,
     server: &ServerConfigEntry,

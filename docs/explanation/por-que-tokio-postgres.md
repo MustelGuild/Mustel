@@ -16,17 +16,16 @@
 
 | Peça | Onde | Cobertura |
 |---|---|---|
-| Tradução do `sslMode` (6 modos) | `postgres/tls.rs` | nomes, rejeição de inválido, semântica de `requires_tls`/`tries_tls`/`verifies_hostname` |
+| Tradução do `sslMode` (3 modos) | `postgres/tls.rs` | `Disable`/`Prefer`/`Require`, rejeição dos nomes removidos e conector rustls com o store nativo |
 | Configuração de conexão com os defaults herdados | `postgres/settings.rs` | defaults (`5432`, `30`, `300`, `1`, `100`, `Prefer`), parsing do modo, endpoint, `Config` do driver |
 | Formatação de célula para CSV | `postgres/value.rs` | `NULL` → vazio, escalares, `float` com `.0`, listas, `bytea` em hex, datas en-US |
 | Conexão e classificação de erro | `postgres/client.rs` | erro com SQLSTATE vira exit 10; sem SQLSTATE, 11 |
 
-## O que falta (estado atual, 2026-10-22)
+## O que falta (estado atual, 2026-10-28)
 
-1. **TLS não está ligada.** `Require`, `VerifyCA` e `VerifyFull` devolvem erro explícito pedindo para
-   usar `Prefer`/`Allow`/`Disable`. Ligar `tokio-postgres-rustls` + certificados do sistema é o
-   próximo passo; `VerifyCA` exige um `ServerCertVerifier` próprio, porque o rustls valida hostname
-   sempre e o Npgsql **não** valida em `VerifyCA`.
+1. ~~TLS não está ligada~~ — **resolvido**: `Prefer` e `Require` usam `tokio-postgres-rustls` com o
+   store nativo e validação de cadeia + hostname; `Require` não cai e `Prefer` só cai quando o
+   servidor não oferece TLS. A matriz contra Postgres real é manual, no `smoke/`.
 2. ~~Testes de integração não executados~~ — **resolvido**: a suíte roda contra Postgres real, gateada
    por `MUSTEL_PG_TEST_URL` (8/8 verdes, inclusive contra PostgreSQL 18.6).
 3. ~~Formato do CSV não confirmado~~ — **resolvido**: conferido byte a byte contra o baseline

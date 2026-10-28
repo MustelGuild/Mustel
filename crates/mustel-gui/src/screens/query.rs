@@ -1672,6 +1672,7 @@ Selection unchanged."
         self.form_scroll.start(current, max_offset);
     }
 
+    /// Desenha a aba Query (referência, editor, saída e resultados) e devolve os pedidos da tela.
     pub fn ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -1806,7 +1807,7 @@ Selection unchanged."
         }
 
         self.confirmation = Some(Confirmation {
-            description: analyzer::description(&self.sql).to_string(),
+            description: analyzer::description(&self.sql),
             servers: targets.len(),
             // As bases são **explícitas**: o plano roda exatamente as marcadas (D15).
             databases: targets.iter().map(|(_, databases)| databases.len()).sum(),
@@ -1979,14 +1980,14 @@ mod tests {
 
         state.scroll_to_end(0.0, 400.0);
         assert!(
-            state.form_scroll.is_active(),
+            state.form_scroll.step(0.0).is_some(),
             "clicar precisa começar a rolagem suave"
         );
 
         let mut already_there = State::default();
         already_there.scroll_to_end(400.0, 400.0);
         assert!(
-            !already_there.form_scroll.is_active(),
+            already_there.form_scroll.step(0.0).is_none(),
             "já no fim não anima nada"
         );
     }

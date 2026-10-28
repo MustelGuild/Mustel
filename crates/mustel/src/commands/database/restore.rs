@@ -17,7 +17,7 @@ use mustel_core::usecases::database::{DatabaseFailure, FailureKind};
 use mustel_core::usecases::database_restore::{self, RestoreOptions};
 
 use crate::cli::DatabaseRestoreArgs;
-use crate::ui::{progress, prompts};
+use crate::ui::{password_input, progress, prompts};
 
 /// Código de saída de uma falha de comando do `restore` (tabela do legado).
 ///
@@ -41,8 +41,13 @@ pub async fn run(args: DatabaseRestoreArgs, token: &CancellationToken) -> Result
         }
     };
 
+    let stdin_password = if args.password_stdin {
+        Some(password_input::read_from_stdin()?)
+    } else {
+        None
+    };
     let password = password::resolve_password(
-        args.password.as_deref(),
+        stdin_password.as_deref().or(args.password.as_deref()),
         stored_password(&connection.host, &connection.port).as_deref(),
         || prompts::password(PASSWORD_PROMPT),
     )?;
@@ -115,6 +120,7 @@ mod tests {
             port: None,
             username: None,
             password: Some("senha".to_string()),
+            password_stdin: false,
             ssl_mode: None,
             timeout: None,
             command_timeout: None,

@@ -1,0 +1,31 @@
+# Parâmetros dos lints do Clippy.
+#
+# Este arquivo **não** define severidade: quem faz isso é o `[workspace.lints]` do `Cargo.toml`
+# (o papel que o `.editorconfig` de analyzers faz no .NET). Aqui ficam só os limites e o
+# vocabulário aceito pelos lints — o equivalente aos `dotnet_diagnostic.*.maximum`.
+
+# `too_many_arguments`: o adapter do backup/restore já tem funções com 7; 8 é o teto do projeto.
+too-many-arguments-threshold = 8
+# `too_many_lines` (fase 2, com `pedantic`): telas do egui passam de 100 linhas por natureza.
+too-many-lines-threshold = 120
+# `type_complexity`: o `QueryStream` e os callbacks de job chegam perto de 250.
+type-complexity-threshold = 300
+
+# `doc_markdown` (fase 2): nomes próprios e comandos que aparecem nos doc-comments.
+# O `..` mantém a lista padrão do Clippy.
+doc-valid-idents = [
+    "Mustel",
+    "Postgres",
+    "PostgreSQL",
+    "Npgsql",
+    "SQLSTATE",
+    "pgpass",
+    "pg_dump",
+    "pg_restore",
+    "psql",
+    "keyring",
+    "egui",
+    "jsonc",
+    "DPAPI",
+    "..",
+]

@@ -15,7 +15,7 @@ cargo install cargo-release --version =1.1.7 --locked
 cargo login                   # token do crates.io, uma vez por máquina
 ```
 
-Quem só consome a release **não** precisa dele — o workflow do GitHub empacota sem a ferramenta.
+Quem só consome a release **não** precisa dele.
 
 A versão vive em **um** lugar: `[workspace.package] version` no `Cargo.toml` da raiz. Os quatro crates
 herdam com `version.workspace = true`, então não há versão para sincronizar à mão.
@@ -37,7 +37,7 @@ O `cargo-release` está configurado em `[workspace.metadata.release]` (e `[packa
 nos três crates) para:
 
 - usar **versão compartilhada** no workspace;
-- criar a tag `v<versao>` — o mesmo formato que o workflow espera;
+- criar a tag `v<versao>`;
 - atualizar as dependências internas (`mustel-core`, `mustel-gui`) junto;
 - **não** publicar no crates.io e **não** empurrar para o remoto (são passos separados, abaixo).
 
@@ -61,15 +61,56 @@ git tag --list 'v*'
 git push --follow-tags
 ```
 
-## 4. Publicar os binários (página de release)
+## 4. Empacotar localmente
 
-No GitHub: **Actions › release-build › Run workflow**, informando a tag (ex.: `v1.1.0`).
+Cada plataforma é empacotada na máquina dela. Não há build cruzado nem workflow de release.
 
-O workflow roda `publish.ps1` (Windows) e `publish.sh` (Linux), **confere que a tag casa com a
-versão** do nome dos artefatos e cria a release com `.zip`, `.tar.gz` e `.sha256`. Tag divergente da
-versão do `Cargo.toml` falha ali, antes de publicar.
+No Windows:
 
-## 5. Publicar no crates.io
+```powershell
+./publish.ps1
+```
+
+No Linux:
+
+```bash
+./publish.sh
+```
+
+Os dois scripts geram os arquivos em `packaging/`:
+
+- `mustel-<versao>-x86_64-pc-windows-msvc.zip` e `.sha256`;
+- `mustel-<versao>-x86_64-unknown-linux-gnu.tar.gz` e `.sha256`.
+
+Confira que o número nos nomes é o mesmo de `Cargo.toml` e da tag:
+
+```bash
+git tag --points-at HEAD
+ls packaging/
+```
+
+## 5. Criar a release no GitHub (manual)
+
+A release não é criada por workflow. Depois de empurrar a tag, crie a release manualmente na página
+**Releases → Draft a new release** do repositório, escolha a tag e anexe:
+
+- o `.zip` e o `.sha256` do Windows;
+- o `.tar.gz` e o `.sha256` do Linux;
+- o `sbom.cdx.json` da raiz.
+
+Alternativa por linha de comando, se você usa o GitHub CLI:
+
+```bash
+gh release create "v<versao>" \
+  packaging/*.zip packaging/*.tar.gz packaging/*.sha256 \
+  sbom.cdx.json \
+  --title "Mustel v<versao>" --generate-notes
+```
+
+Antes de publicar, confira que a tag, a versão do `Cargo.toml` e os nomes dos artefatos são os
+mesmos. O workflow antigo fazia essa conferência; agora ela é um passo manual.
+
+## 6. Publicar no crates.io
 
 A ordem é obrigatória — cada crate depende do anterior:
 
@@ -85,7 +126,7 @@ cargo publish -p mustel
 Cada `cargo publish` é **irreversível**: a versão publicada não pode ser reaproveitada, e uma falha
 no meio exige subir a versão para tentar de novo.
 
-## 6. Conferir
+## 7. Conferir
 
 ```bash
 cargo install mustel --force
@@ -94,7 +135,11 @@ mustel --version        # deve dizer a versão nova
 
 E na página de release: os dois arquivos, os dois `.sha256`, e a nota de release gerada.
 
-## O que **não** é automático
+## O que é automático
 
-O gate de qualidade (`fmt`, `clippy`, `test`) e o `cargo publish` são **manuais** — o workflow de
-release só empacota e publica o artefato (decisões `D24` e `D27`).
+Só o gate de qualidade em push/PR (`.github/workflows/ci.yml`: `fmt`, `clippy`, `test`). O release
+é **inteiramente manual**: empacotamento por `publish.ps1`/`publish.sh`, criação da release no
+GitHub, upload dos artefatos e `cargo publish` (decisões `D24`, `D26` e `D29`).
+
+Não existe `.github/workflows/release-build.yml`; release não é disparada por tag, botão do Actions
+nem `workflow_dispatch`.

@@ -43,6 +43,8 @@ pub struct QueryRunRequest {
     pub all: bool,
     /// Nomes exatos do `--exclude`, já normalizados (sem diferenciar maiúsculas).
     pub exclude: HashSet<String>,
+    /// `--csv-escape-formulas`: prefixa `'` em campo que uma planilha avaliaria como fórmula.
+    pub escape_formulas: bool,
 }
 
 /// Como a execução terminou.
@@ -92,6 +94,7 @@ pub async fn run(
         timestamp,
         max_parallelism: request.max_parallelism.max(1),
         command_timeout: request.command_timeout,
+        escape_formulas: request.escape_formulas,
     };
 
     let outcome = executor::execute(&execution, events, token).await?;
@@ -143,6 +146,7 @@ mod tests {
             command_timeout: Duration::from_secs(300),
             all: false,
             exclude: HashSet::new(),
+            escape_formulas: false,
         }
     }
 

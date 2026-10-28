@@ -8,6 +8,7 @@
 //! interação chama [`ensure_interactive`] antes e falha com mensagem clara — o legado, nesse cenário,
 //! quebrava com erro de console (ver `docs/explanation/diferencas-deliberadas.md`).
 
+pub mod password_input;
 pub mod progress;
 pub mod prompts;
 pub mod style;

@@ -27,6 +27,11 @@ cache, o painel pede `Load schema`.
 > (`server version 18.3; pg_dump version 16.6`). Pelo catálogo, funciona em qualquer versão de servidor
 > que o app já consiga consultar.
 
+O schema vai **inteiro** em cada pedido (sem truncar). Quando passa de **200.000 caracteres**, o
+cabeçalho mostra `Large schema (<tamanho> KB): the whole schema is sent with every message…`: é um
+aviso, não um bloqueio — o provedor pode recusar o pedido por tamanho de contexto ou cobrar mais.
+O texto continua indo completo; para reduzir, use um banco com menos relações.
+
 ## A conversa
 
 O campo de envio aceita texto livre ("vendas por mês"). Cada resposta vem com o SQL realçado e
@@ -68,6 +73,12 @@ A conversa **persiste entre reinícios** em `%APPDATA%/mustel/ai/session.json`:
 
 O arquivo guarda **só** a conversa e o contexto: o DDL **não** é copiado para lá (ele já está no
 cache) e nenhuma chave aparece nele. Apagar o arquivo é o mesmo que começar do zero.
+
+## Endereço do provedor
+
+O `baseUrl` precisa ser `https`. `http` só é aceito em loopback (`localhost`, `127.0.0.1`, `[::1]`);
+qualquer outro `http` é recusado ao salvar o perfil e antes de cada requisição, porque a chave e o
+DDL do banco iriam em texto puro. URL com usuário/senha embutidos também é recusada.
 
 ## O que a IA não faz
 

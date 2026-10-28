@@ -54,7 +54,8 @@ impl PostgresBinaryLocator {
         Self::default()
     }
 
-    /// Localizador com diretórios de busca explícitos (testes e harness).
+    /// Localizador com diretórios de busca explícitos (só teste: injeta um PATH falso).
+    #[cfg(test)]
     pub fn with_search_paths(
         path_env: Option<OsString>,
         windows_roots: Vec<PathBuf>,

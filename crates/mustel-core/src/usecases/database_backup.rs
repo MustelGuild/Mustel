@@ -14,8 +14,8 @@
 //! - `--all`: o `pg_dump` é procurado **dentro do laço** (uma vez por banco, como no legado), a falha
 //!   de listagem sobe como [`CoreError::InvalidState`] (exit **40**) e uma falha por banco **não**
 //!   derruba o comando: emite [`CoreEvent::DatabaseStepFailed`] e segue, terminando com **0**;
-//! - `--ssl-mode`, `--timeout` e `--command-timeout` são aceitos e **ignorados**, como no legado: não
-//!   entram nos argumentos do `pg_dump` nem na conexão de `--all`;
+//! - `--ssl-mode` é usado na descoberta do `--all`, mas **não** entra no `pg_dump`;
+//!   `--timeout`/`--command-timeout` continuam aceitos e ignorados;
 //! - listar bancos usa o **driver** (D12) com a mesma query que o legado faz por `psql` — a
 //!   divergência já registrada do `settings db-servers test`;
 //! - **sucesso não imprime nada**: o progresso do legado é `ILogger.LogInformation` e o container
@@ -23,13 +23,14 @@
 //!
 //! No cancelamento a árvore do `pg_dump` é morta e o comando sai com **130**.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::error::CoreError;
 use crate::events::{CoreEvent, DatabaseStep, EventSink};
 use crate::postgres::client::{connect, list_databases};
 use crate::postgres::locator::{PG_DUMP, PostgresBinaryLocator};
 use crate::postgres::settings::ConnectionSettings;
+use crate::postgres::tls::SslMode;
 use crate::process::{self, ProcessOptions};
 use crate::signal::CancellationToken;
 use crate::usecases::database::{
@@ -48,8 +49,12 @@ pub struct BackupOptions {
     pub port: Option<String>,
     /// Usuário; `None`/branco não é validado, como no legado.
     pub username: Option<String>,
+    /// `--ssl-mode`: aceito por compatibilidade, mas não vai para o `pg_dump`.
+    pub ssl_mode: Option<String>,
     /// `--all`: copia todos os bancos do servidor.
     pub all: bool,
+    /// Falha com código não-zero quando qualquer banco falha (default: avisa e sai 0).
+    pub strict: bool,
     /// Arquivo de saída (banco único) ou diretório (`--all`).
     pub output: Option<String>,
     /// Formato do `-F` (default `c`).
@@ -92,6 +97,20 @@ pub fn validate(options: &BackupOptions) -> Result<Connection, CommandFailure> {
         return Err(CommandFailure::new(
             FailureKind::Usage,
             format!("Error: Invalid username: '{username}'"),
+        ));
+    }
+
+    if let Some(ssl_mode) = options
+        .ssl_mode
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        && ssl_mode.parse::<SslMode>().is_err()
+    {
+        return Err(CommandFailure::new(
+            FailureKind::Usage,
+            format!(
+                "Error: Invalid SSL mode: '{ssl_mode}'. Valid values: Disable, Prefer, Require."
+            ),
         ));
     }
 
@@ -145,6 +164,16 @@ async fn backup_single(
         )));
     };
 
+    if options.output.is_none() && !validation::is_safe_file_stem(&connection.database) {
+        return Err(DatabaseFailure::Command(CommandFailure::new(
+            FailureKind::OperationFailed,
+            format!(
+                "Error: unsafe database name for dump file: {}",
+                connection.database
+            ),
+        )));
+    }
+
     let output_path = options
         .output
         .clone()
@@ -163,6 +192,28 @@ async fn backup_single(
     }
 }
 
+/// Falha de comando quando `--strict` foi pedido e algum banco falhou.
+fn strict_failure(failures: usize) -> Option<DatabaseFailure> {
+    (failures > 0).then(|| {
+        DatabaseFailure::Command(CommandFailure::new(
+            FailureKind::OperationFailed,
+            format!("Error: {failures} database(s) failed."),
+        ))
+    })
+}
+
+/// Caminho de saída do dump de um banco, ou erro quando o nome não serve como nome de arquivo.
+///
+/// O `datname` vem do servidor: sem esta checagem, `..\..\Startup\a` escreveria fora de
+/// `output_dir` (CWE-22).
+fn dump_path(output_dir: &Path, database: &str) -> Result<PathBuf, String> {
+    if !validation::is_safe_file_stem(database) {
+        return Err(format!("unsafe database name for dump file: {database}"));
+    }
+
+    Ok(output_dir.join(dump_file_name(database)))
+}
+
 /// Dump de todos os bancos do servidor, um arquivo por banco.
 async fn backup_all(
     options: &BackupOptions,
@@ -172,7 +223,17 @@ async fn backup_all(
     events: &dyn EventSink,
     token: &CancellationToken,
 ) -> Result<(), DatabaseFailure> {
-    let databases = list_all_databases(connection, password).await?;
+    let ssl_mode = options
+        .ssl_mode
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(str::parse::<SslMode>)
+        .transpose()
+        .map_err(|error: crate::postgres::tls::SslModeError| {
+            DatabaseFailure::Fatal(CoreError::InvalidArgument(error.to_string()))
+        })?
+        .unwrap_or_default();
+    let databases = list_all_databases(connection, password, ssl_mode).await?;
 
     if databases.is_empty() {
         // O legado usa `LogWarning`, que **aparece** (o nível mínimo é Warning).
@@ -192,6 +253,8 @@ async fn backup_all(
         std::fs::create_dir_all(&output_dir).map_err(CoreError::Io)?;
     }
 
+    let mut failures = 0usize;
+
     for database in databases {
         if token.is_cancelled() {
             break;
@@ -203,12 +266,24 @@ async fn backup_all(
             username: connection.username.clone(),
             database: database.clone(),
         };
-        let output_path = output_dir.join(dump_file_name(&database));
+        let output_path = match dump_path(&output_dir, &database) {
+            Ok(path) => path,
+            Err(error) => {
+                failures += 1;
+                events.emit(CoreEvent::DatabaseStepFailed {
+                    step: DatabaseStep::Backup,
+                    database: &database,
+                    error: &error,
+                });
+                continue;
+            }
+        };
         let output_path = output_path.display().to_string();
 
         // O `pg_dump` é localizado dentro do laço, como no legado: um banco sem binário conta como
         // falha daquele banco, não do comando.
         let Some(pg_dump) = locator.find_pg_dump() else {
+            failures += 1;
             events.emit(CoreEvent::DatabaseStepFailed {
                 step: DatabaseStep::Backup,
                 database: &database,
@@ -221,6 +296,7 @@ async fn backup_all(
             // Uma falha por banco não derruba o comando: o legado embrulha a mensagem da exceção no
             // `LogError` (`Failed to backup database 'x': {ex.Message}`) e segue.
             Ok(PgDumpOutcome::Failed { exit_code, stderr }) => {
+                failures += 1;
                 let error = format!("pg_dump failed with exit code {exit_code}. Error: {stderr}");
                 events.emit(CoreEvent::DatabaseStepFailed {
                     step: DatabaseStep::Backup,
@@ -234,7 +310,14 @@ async fn backup_all(
         }
     }
 
-    // O legado devolve 0 mesmo com bancos falhando (o resumo dele é `LogInformation`, filtrado).
+    // Sem `--strict` o legado devolve 0 mesmo com bancos falhando (IF-060); com a flag, o resumo
+    // de falhas vira código não-zero.
+    if options.strict
+        && let Some(failure) = strict_failure(failures)
+    {
+        return Err(failure);
+    }
+
     Ok(())
 }
 
@@ -242,6 +325,7 @@ async fn backup_all(
 async fn list_all_databases(
     connection: &Connection,
     password: &str,
+    ssl_mode: SslMode,
 ) -> Result<Vec<String>, DatabaseFailure> {
     let settings = ConnectionSettings {
         host: connection.host.clone(),
@@ -249,6 +333,7 @@ async fn list_all_databases(
         user: connection.username.clone().unwrap_or_default(),
         password: Some(password.to_string()),
         database: Some("postgres".to_string()),
+        ssl_mode,
         ..ConnectionSettings::default()
     };
 
@@ -358,6 +443,37 @@ pub use crate::usecases::database::DUMP_EXTENSION;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    /// CONTRACT: IF-065
+    fn strict_only_fails_when_a_database_failed() {
+        assert!(strict_failure(0).is_none());
+
+        let DatabaseFailure::Command(command) = strict_failure(2).expect("falha") else {
+            panic!("esperava falha de comando");
+        };
+        assert!(
+            command.message.contains("2 database"),
+            "{}",
+            command.message
+        );
+    }
+
+    #[test]
+    /// CONTRACT: IF-063
+    fn a_hostile_database_name_cannot_escape_the_output_directory() {
+        let directory = std::path::Path::new("saida");
+
+        assert_eq!(
+            dump_path(directory, "my-db").expect("nome válido"),
+            std::path::Path::new("saida").join("my-db.dump")
+        );
+
+        for invalid in ["..\\..\\Startup\\a", "../../etc/cron.d/a", "a/b"] {
+            let error = dump_path(directory, invalid).expect_err("nome hostil");
+            assert!(error.contains("unsafe database name"), "{error}");
+        }
+    }
     use crate::events::CoreEvent;
     use crate::signal::cancellation_token;
     use std::sync::Mutex;
@@ -446,6 +562,18 @@ mod tests {
         let mut blank = options(Some("mydb"));
         blank.username = Some("   ".to_string());
         assert_eq!(validate(&blank).expect("válido").username, None);
+    }
+
+    #[test]
+    fn an_invalid_ssl_mode_is_refused_with_the_three_supported_values() {
+        let mut invalid = options(Some("mydb"));
+        invalid.ssl_mode = Some("Allow".to_string());
+        let error = validate(&invalid).expect_err("Allow foi removido");
+        assert_eq!(error.kind, FailureKind::Usage);
+        assert_eq!(
+            error.message,
+            "Error: Invalid SSL mode: 'Allow'. Valid values: Disable, Prefer, Require."
+        );
     }
 
     #[test]

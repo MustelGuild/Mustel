@@ -18,7 +18,7 @@ use mustel_core::usecases::database::{DatabaseFailure, FailureKind};
 use mustel_core::usecases::database_backup::{self, BackupOptions};
 
 use crate::cli::DatabaseBackupArgs;
-use crate::ui::{progress, prompts};
+use crate::ui::{password_input, progress, prompts};
 
 /// Código de saída de uma falha de comando do `backup` (tabela do legado).
 fn exit_code(kind: FailureKind) -> i32 {
@@ -42,8 +42,13 @@ pub async fn run(args: DatabaseBackupArgs, token: &CancellationToken) -> Result<
         }
     };
 
+    let stdin_password = if args.password_stdin {
+        Some(password_input::read_from_stdin()?)
+    } else {
+        None
+    };
     let password = password::resolve_password(
-        args.password.as_deref(),
+        stdin_password.as_deref().or(args.password.as_deref()),
         stored_password(&connection.host, &connection.port).as_deref(),
         || prompts::password(PASSWORD_PROMPT),
     )?;
@@ -93,7 +98,9 @@ fn options_from(args: &DatabaseBackupArgs) -> BackupOptions {
         host: args.host.clone(),
         port: args.port.clone(),
         username: args.username.clone(),
+        ssl_mode: args.ssl_mode.clone(),
         all: args.all,
+        strict: args.strict,
         output: args.output.clone(),
         format: args.format.clone(),
         verbose: args.verbose,
@@ -113,10 +120,12 @@ mod tests {
             port: None,
             username: None,
             password: Some("senha".to_string()),
+            password_stdin: false,
             ssl_mode: None,
             timeout: None,
             command_timeout: None,
             all: false,
+            strict: false,
             exclude: Vec::new(),
             exclude_table_data: Vec::new(),
             verbose: false,
@@ -153,6 +162,7 @@ mod tests {
         let mut command = args(Some("mydb"));
         command.host = Some("127.0.0.1".to_string());
         command.port = Some("55432".to_string());
+        command.ssl_mode = Some("Disable".to_string());
         command.format = Some("p".to_string());
         command.exclude = vec!["log*".to_string()];
 
@@ -161,6 +171,7 @@ mod tests {
         assert_eq!(options.database.as_deref(), Some("mydb"));
         assert_eq!(options.host.as_deref(), Some("127.0.0.1"));
         assert_eq!(options.port.as_deref(), Some("55432"));
+        assert_eq!(options.ssl_mode.as_deref(), Some("Disable"));
         assert_eq!(options.format.as_deref(), Some("p"));
         assert_eq!(options.exclude, vec!["log*".to_string()]);
     }

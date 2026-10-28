@@ -15,6 +15,7 @@ use crate::credentials::{CredentialStore, SystemKeyring};
 use crate::error::CoreError;
 use crate::postgres::client::{connect, list_catalog_databases};
 use crate::postgres::settings::ConnectionSettings;
+use crate::postgres::tls::SslMode;
 use crate::validation::{is_valid_host, is_valid_username};
 
 /// Uma base do catálogo do servidor (nome + o que o `pg_database` diz dela).
@@ -37,6 +38,8 @@ pub fn list(store: &ConfigStore) -> Result<Vec<ServerConfigEntry>, CoreError> {
 /// servidor sem usuário definido. A **porta** não é checada aqui: quem tem o valor cru da flag (e
 /// portanto pode dizer qual número foi recusado) é o frontend, que já entrega a entrada num `u16`.
 pub fn add(store: &ConfigStore, server: &ServerConfigEntry) -> Result<(), CoreError> {
+    validate_ssl_mode(server)?;
+
     if !is_valid_host(&server.host) {
         return Err(CoreError::InvalidArgument(format!(
             "Invalid host: '{}'.",
@@ -76,6 +79,8 @@ pub fn save(
     original: Option<&str>,
     server: &ServerConfigEntry,
 ) -> Result<(), CoreError> {
+    validate_ssl_mode(server)?;
+
     if !is_valid_host(&server.host) {
         return Err(CoreError::InvalidArgument(format!(
             "Invalid host: '{}'.",
@@ -180,6 +185,21 @@ pub struct TestReport {
     pub catalog: Vec<CatalogDatabase>,
 }
 
+/// `sslMode` do cadastro como enum; valor inválido é erro, nunca `Prefer` em silêncio.
+fn parse_ssl_mode(raw: &str) -> Result<SslMode, CoreError> {
+    raw.parse::<SslMode>()
+        .map_err(|error| CoreError::InvalidState(error.to_string()))
+}
+
+/// Valida o `sslMode` de um cadastro; vazio fica para o `apply_defaults`/default do produto.
+fn validate_ssl_mode(server: &ServerConfigEntry) -> Result<(), CoreError> {
+    if server.ssl_mode.trim().is_empty() {
+        return Ok(());
+    }
+
+    parse_ssl_mode(&server.ssl_mode).map(|_| ())
+}
+
 /// Testa a conexão de um servidor cadastrado, com a senha já resolvida pelo frontend.
 ///
 /// O legado embrulha qualquer falha em `InvalidOperationException` — exit **40**, com prefixo
@@ -195,7 +215,7 @@ pub async fn test_connection(
         user: server.username.clone(),
         password: Some(password.to_string()),
         database: Some("postgres".to_string()),
-        ssl_mode: server.ssl_mode.parse().unwrap_or_default(),
+        ssl_mode: parse_ssl_mode(&server.ssl_mode)?,
         connect_timeout: std::time::Duration::from_secs(u64::from(server.timeout)),
         ..ConnectionSettings::default()
     };
@@ -250,6 +270,14 @@ fn forget_password(server: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    /// CONTRACT: IF-066
+    fn an_invalid_ssl_mode_in_the_config_is_an_error() {
+        let error = parse_ssl_mode("Requiree").expect_err("inválido");
+        assert!(error.to_string().contains("invalid ssl mode"), "{error}");
+        assert_eq!(parse_ssl_mode("Require").expect("válido"), SslMode::Require);
+    }
     use crate::error::exit_code;
 
     fn store() -> (tempfile::TempDir, ConfigStore) {

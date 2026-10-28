@@ -8,8 +8,12 @@
 //! única implementação das regras (exit code e artefatos como contrato, texto como N4).
 //!
 //! Cada arquivo de teste de integração compila este módulo como crate próprio, então nem toda função
-//! é usada em todo alvo — daí o `allow(dead_code)`.
-#![allow(dead_code)]
+//! é usada em todo alvo — daí o `allow(dead_code, unreachable_pub)`.
+#![allow(
+    dead_code,
+    unreachable_pub,
+    reason = "módulo de suporte compartilhado pelos alvos de teste; cada alvo usa um subconjunto e o `pub` é necessário para os testes de integração"
+)]
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -80,11 +84,6 @@ impl Sandbox {
             stdout: String::from_utf8_lossy(&output.stdout).to_string(),
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         }
-    }
-
-    /// Conteúdo do `mustel.jsonc` do sandbox, se existir.
-    pub fn config_text(&self) -> Option<String> {
-        std::fs::read_to_string(self.config_file()).ok()
     }
 }
 

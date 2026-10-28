@@ -3,6 +3,7 @@
 //! Só o conteúdo de exemplo permanece: o sandbox do arquivo do **legado** existia para a captura e
 //! saiu com o `legacy/` (o lado do Mustel é isolado por `MUSTEL_CONFIG_DIR`).
 
+/// Configuração de exemplo usada pelos casos do baseline e pelo seed `Fixture` do comparador.
 pub const SAMPLE_CONFIG: &str = r#"{
   "servers": [
     {

@@ -89,6 +89,8 @@ pub struct ExecutionRequest {
     pub max_parallelism: usize,
     /// `--command-timeout`, aplicado por leitura de linha.
     pub command_timeout: Duration,
+    /// Escapa fórmulas de planilha nos CSVs (`--csv-escape-formulas`).
+    pub escape_formulas: bool,
 }
 
 /// Números do resumo final e os arquivos gerados.
@@ -120,7 +122,12 @@ pub async fn execute(
 ) -> Result<ExecutionOutcome, CoreError> {
     let (sender, receiver) = mpsc::channel::<Message>(request.max_parallelism.max(1) * 2);
 
-    let writer = write_loop(&request.directory, &request.timestamp, receiver);
+    let writer = write_loop(
+        &request.directory,
+        &request.timestamp,
+        request.escape_formulas,
+        receiver,
+    );
     let producers = async move {
         let servers = Semaphore::new(request.max_parallelism.max(1));
         let mut running = FuturesUnordered::new();
@@ -465,9 +472,10 @@ struct LogEntry {
 async fn write_loop(
     directory: &Path,
     timestamp: &str,
+    escape_formulas: bool,
     mut receiver: mpsc::Receiver<Message>,
 ) -> std::io::Result<()> {
-    let mut outputs = OutputFiles::new(directory, timestamp);
+    let mut outputs = OutputFiles::new(directory, timestamp, escape_formulas);
 
     while let Some(message) = receiver.recv().await {
         match message {
@@ -492,16 +500,18 @@ struct OutputFiles {
     servers: HashMap<String, Appender>,
     errors: Option<Appender>,
     log: Option<Appender>,
+    escape_formulas: bool,
 }
 
 impl OutputFiles {
-    fn new(directory: &Path, timestamp: &str) -> Self {
+    fn new(directory: &Path, timestamp: &str, escape_formulas: bool) -> Self {
         Self {
             directory: directory.to_path_buf(),
             timestamp: timestamp.to_string(),
             servers: HashMap::new(),
             errors: None,
             log: None,
+            escape_formulas,
         }
     }
 
@@ -518,7 +528,8 @@ impl OutputFiles {
             self.directory
                 .join(csv_writer::server_file_name(server, &self.timestamp)),
             csv_writer::header_for(columns),
-        );
+        )
+        .escaping_formulas(self.escape_formulas);
         appender.append(&[])?;
 
         self.servers.insert(server.to_string(), appender);
@@ -563,14 +574,17 @@ impl OutputFiles {
 
         if entry.status == Status::Error {
             if self.errors.is_none() {
-                self.errors = Some(Appender::new(
-                    self.directory
-                        .join(csv_writer::errors_file_name(&self.timestamp)),
-                    ["Server", "Database", "ExecutedAt", "Error"]
-                        .iter()
-                        .map(|field| (*field).to_string())
-                        .collect(),
-                ));
+                self.errors = Some(
+                    Appender::new(
+                        self.directory
+                            .join(csv_writer::errors_file_name(&self.timestamp)),
+                        ["Server", "Database", "ExecutedAt", "Error"]
+                            .iter()
+                            .map(|field| (*field).to_string())
+                            .collect(),
+                    )
+                    .escaping_formulas(self.escape_formulas),
+                );
             }
 
             self.errors
@@ -585,22 +599,25 @@ impl OutputFiles {
         }
 
         if self.log.is_none() {
-            self.log = Some(Appender::new(
-                self.directory
-                    .join(csv_writer::log_file_name(&self.timestamp)),
-                [
-                    "Server",
-                    "Database",
-                    "ExecutedAt",
-                    "Status",
-                    "RowCount",
-                    "DurationMs",
-                    "Error",
-                ]
-                .iter()
-                .map(|field| (*field).to_string())
-                .collect(),
-            ));
+            self.log = Some(
+                Appender::new(
+                    self.directory
+                        .join(csv_writer::log_file_name(&self.timestamp)),
+                    [
+                        "Server",
+                        "Database",
+                        "ExecutedAt",
+                        "Status",
+                        "RowCount",
+                        "DurationMs",
+                        "Error",
+                    ]
+                    .iter()
+                    .map(|field| (*field).to_string())
+                    .collect(),
+                )
+                .escaping_formulas(self.escape_formulas),
+            );
         }
 
         self.log
@@ -667,7 +684,7 @@ mod tests {
         let written = {
             let path = directory.path().to_path_buf();
             let stamp = timestamp.clone();
-            tokio::spawn(async move { write_loop(&path, &stamp, receiver).await })
+            tokio::spawn(async move { write_loop(&path, &stamp, false, receiver).await })
         };
         for message in messages {
             let _ = sender.send(message).await;
@@ -787,6 +804,7 @@ mod tests {
             timestamp: "ts".to_string(),
             max_parallelism: 4,
             command_timeout: Duration::from_secs(300),
+            escape_formulas: false,
         };
 
         let events = std::sync::Mutex::new(Vec::new());

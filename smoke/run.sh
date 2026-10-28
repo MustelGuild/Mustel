@@ -167,6 +167,17 @@ echo "== TLS"
 "$BIN" query run -c 'select 1' --ssl-mode Prefer -o "$OUT/tls-prefer" >/dev/null 2>&1
 [ $? -eq 0 ] && pass "ssl-mode Prefer conecta" || fail "ssl-mode Prefer conecta"
 
+wrong_ad_hoc='Host=postgres-wrong;Port=5432;Database=mustel_001;Username=postgres'
+"$BIN" query run --npgsql-connection-string "$wrong_ad_hoc" -W smoke \
+    -c 'select 1' --ssl-mode Require -o "$OUT/tls-wrong-host" >/tmp/wrong-host.log 2>&1
+code=$?
+err_csv=$(find "$OUT/tls-wrong-host" -name '*_erros.csv' | head -1)
+if [ "$code" -ne 0 ] && { [ -z "$err_csv" ] || grep -Eqi 'certificate|hostname|TLS handshake' "$err_csv"; }; then
+    pass "Require rejeita hostname fora do SAN"
+else
+    fail "Require rejeita hostname fora do SAN: $code"
+fi
+
 # Sem o CA, Prefer/Require precisam falhar; o Prefer não pode cair para texto puro.
 mv "$CA_FILE" /tmp/mustel-smoke-ca.crt
 update-ca-certificates --fresh >/tmp/update-ca-fresh.log 2>&1
@@ -174,7 +185,7 @@ update-ca-certificates --fresh >/tmp/update-ca-fresh.log 2>&1
     >/tmp/require-no-ca.log 2>&1
 code=$?
 err_csv=$(find "$OUT/tls-require-no-ca" -name '*_erros.csv' | head -1)
-if [ "$code" -ne 0 ] && { [ -z "$err_csv" ] || grep -qi 'certificate\|TLS' "$err_csv"; }; then
+if [ "$code" -eq 1 ] && { [ -z "$err_csv" ] || grep -qi 'certificate\|TLS' "$err_csv"; }; then
     pass "Require falha sem o CA"
 else
     fail "Require falha sem o CA: $code"
@@ -182,11 +193,15 @@ fi
 "$BIN" query run -c 'select 1' --ssl-mode Prefer -o "$OUT/tls-prefer-no-ca" \
     >/tmp/prefer-no-ca.log 2>&1
 code=$?
-if [ "$code" -ne 0 ]; then
+if [ "$code" -eq 1 ]; then
     pass "Prefer falha sem o CA (não cai para texto puro)"
 else
     fail "Prefer falha sem o CA (não cai para texto puro): $code"
 fi
+"$BIN" settings db-servers test -n Smoke >/tmp/test-no-ca.log 2>&1
+code=$?
+[ "$code" -eq 40 ] && pass "settings test sem o CA sai 40" ||
+    fail "settings test sem o CA sai 40: $code"
 mv /tmp/mustel-smoke-ca.crt "$CA_FILE"
 update-ca-certificates >/tmp/update-ca-restore.log 2>&1
 
@@ -204,7 +219,7 @@ fi
     -c 'select 1' --ssl-mode Require -o "$OUT/tls-require-notls" >/tmp/require-notls.log 2>&1
 code=$?
 err_csv=$(find "$OUT/tls-require-notls" -name '*_erros.csv' | head -1)
-if [ "$code" -ne 0 ] && { [ -z "$err_csv" ] || grep -Eqi 'does not support TLS|TLS handshake' "$err_csv"; }; then
+if [ "$code" -eq 1 ] && { [ -z "$err_csv" ] || grep -Eqi 'does not support TLS|TLS handshake' "$err_csv"; }; then
     pass "Require falha sem TLS"
 else
     fail "Require falha sem TLS: $code"

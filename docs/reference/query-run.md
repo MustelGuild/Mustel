@@ -42,6 +42,9 @@ Reconhecidas como destrutivas: `INSERT`, `UPDATE`, `DELETE`, `ALTER`, `DROP`, `C
 `EXPLAIN ANALYZE` de DML. `EXPLAIN` sem `ANALYZE` continua seguro. O analisador usa `sqlparser`;
 se o parse falhar, procura as palavras destrutivas fora de strings/comentários.
 
+A página [Por que o classificador é assim](../explanation/classificador-de-query.md) explica os
+bypasses, o fallback e a mudança de descrição.
+
 ## Arquivos
 
 Cada execução cria uma pasta `<saída>/<timestamp>/`:

@@ -5,6 +5,10 @@ services:
     build: .
     image: mustel-smoke-postgres:local
     container_name: mustel-smoke-postgres
+    networks:
+      default:
+        aliases:
+          - postgres-wrong
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: smoke

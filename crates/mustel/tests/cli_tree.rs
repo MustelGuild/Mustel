@@ -273,6 +273,27 @@ fn mustel_password_is_used_by_pgpass_add_without_a_flag() {
 }
 
 #[test]
+/// CONTRACT: IF-252
+fn an_empty_password_stdin_is_an_argument_error() {
+    let output = mustel_with_stdin(
+        &[
+            "database",
+            "pgpass",
+            "add",
+            "empty_stdin_db",
+            "--password-stdin",
+        ],
+        "\r\n",
+    );
+    assert_eq!(output.status.code(), Some(41), "{output:?}");
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("password read from stdin is empty"),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
 /// CONTRACT: IF-090
 fn pgpass_add_accepts_the_database_as_a_positional_argument() {
     // Decisão do usuário: `pgpass add <banco>` (documentado) é a forma correta, e `--database` fica

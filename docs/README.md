@@ -39,6 +39,7 @@ só é a origem da maior parte da documentação ruim.
 | | | | [Por que a IA escreve e o humano roda](explanation/ia.md) |
 | | | | [Decisões de engenharia](explanation/decisoes.md) |
 | | | | [Diferenças deliberadas](explanation/diferencas-deliberadas.md) |
+| | | | [Ajustes de segurança](explanation/seguranca.md) |
 
 ## A bússola
 

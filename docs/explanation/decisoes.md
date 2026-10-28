@@ -15,9 +15,9 @@ dizer coisas diferentes em cada uma: `D6` é "keyring" na migração e "formato 
 de bases. O número sozinho **não** resolve nada — use o texto ao lado dele e a tabela de resolução
 abaixo.
 
-Depois da consolidação entraram mais duas famílias, com letra própria para não colidir com `D*`:
-`A*` (aparência: tema e fontes) e `S*` (queries salvas); o porquê das `S` está em
-[Por que as queries salvas são assim](saved-queries.md).
+Depois da consolidação entraram mais três famílias, com letra própria para não colidir com `D*`:
+`A*` (aparência: tema e fontes), `S*` (queries salvas) e `B*` (build e dependências de sistema); o
+porquê das `S` está em [Por que as queries salvas são assim](saved-queries.md).
 
 ### Onde cada número é citado
 
@@ -36,6 +36,7 @@ Depois da consolidação entraram mais duas famílias, com letra própria para n
 | `D25` | Migração | manifesto `IF-071`/`IF-072` (`--create-if-not-exists`) |
 | `D26` | Migração | `publish.ps1` / `publish.sh` (release manual) |
 | `D29` | Release | `docs/how-to/publicar-release.md` (release manual, sem workflow) |
+| `B1` | Build | `crates/mustel-core/Cargo.toml`, `README.md`/`README.pt-BR.md` (nenhuma libdbus: o store do `keyring` 4 fala D-Bus por `zbus`) |
 
 Os casos com duas numerações (`D10`, `D11`, `D15`) são os que exigem atenção: o texto entre
 parênteses ao lado do ID indica o tema, e o tema diz a tabela.
@@ -160,6 +161,23 @@ depois da `A` (tema), e não reutiliza as numerações dos planos antigos.
 
 A referência está em [`reference/saved-queries.md`](../reference/saved-queries.md), o porquê em
 [Por que as queries salvas são assim](saved-queries.md); a linha de contrato é `IF-244`.
+
+## Build e dependências de sistema (`B1`)
+
+Numeração própria, aberta em 2026-10-27, para decisões que valem para **qualquer** feature porque
+mudam o que o binário exige da máquina.
+
+| ID | Tema | Decisão | Por quê |
+|---|---|---|---|
+| `B1` | libdbus no Linux | **Nenhuma** dependência de `libdbus`: o store do `keyring` 4 (`v1`) no Linux é o `zbus-secret-service`, que implementa D-Bus em Rust puro | Sem isso o `libdbus-sys` exige o `dbus-1.pc` do sistema (`dbus-devel`/`libdbus-1-dev`) e o build falha em distro que não traz o `-devel` — inclusive nas imutáveis (Fedora atomic/Bazzite), onde instalar o pacote exige sobrescrever camada e reiniciar. Dispensa também carregar `libdbus-1.so.3` em runtime |
+
+A redação anterior desta decisão (2026-10-27, ainda com o `keyring` 3) vendorizava o `dbus`
+(`dbus = { version = "0.9", features = ["vendored"] }`), compilando a libdbus 1.14.4 das fontes
+embutidas. Com o `keyring` 4 a dependência saiu do grafo e o problema deixou de existir na origem:
+não reintroduza `dbus`/`libdbus-sys` "por garantia" — eles não são usados por ninguém.
+
+O que a decisão **não** muda: o cofre do Linux continua falando com o **Secret Service** por D-Bus,
+então uma sessão com GNOME Keyring/KWallet segue sendo necessária ([Credenciais](credenciais.md)).
 
 ## O que não veio para cá
 

@@ -46,6 +46,10 @@ mod tests {
 
     #[test]
     fn plain_text_outside_a_terminal() {
+        // O harness de teste pode manter o stdout em um pty (com o stdin em pipe), e aí o
+        // `console` coloriria. Fixar a decisão mantém o teste independente de onde a suíte roda.
+        console::set_colors_enabled(false);
+
         for styled in [bold("x"), dim("x"), success("x"), warning("x"), danger("x")] {
             assert_eq!(styled, "x", "sem terminal não deve haver ANSI");
         }

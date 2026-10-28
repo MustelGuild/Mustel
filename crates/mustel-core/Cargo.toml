@@ -37,6 +37,10 @@ reqwest = { version = "0.13.5", default-features = false, features = ["rustls"] 
 # (Credential Manager no Windows, Keychain no macOS, Secret Service no Linux) e mantém a API
 # `Entry`/`Error` da versão 3. Em plataforma sem store, `Entry::new` devolve erro em vez de
 # aceitar `set` e perder o segredo no `get`.
+#
+# No Linux o store do `v1` é o `zbus-secret-service`, que implementa D-Bus em Rust puro: não há
+# `libdbus-sys` no grafo, então o build dispensa o `dbus-1.pc` (`dbus-devel`/`libdbus-1-dev`) e o
+# binário não carrega `libdbus-1.so.3` em runtime (B1).
 keyring = "4"
 
 # `killpg` para derrubar a **árvore** de um processo no cancelamento (T27). É API segura sobre a

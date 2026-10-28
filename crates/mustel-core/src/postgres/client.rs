@@ -3,7 +3,8 @@
 //! `Disable` abre sem TLS. `Prefer` e `Require` usam `tokio-postgres-rustls` com os certificados
 //! nativos do sistema; o verificador padrão do rustls valida cadeia **e** hostname. O driver já
 //! implementa o fallback do `Prefer` somente quando o servidor não suporta TLS; erro de certificado
-//! não vira texto puro.
+//! não vira texto puro. Cair para texto puro é o que o `Prefer` pede, então a conexão não avisa:
+//! quem quer TLS garantido escolhe `Require`.
 
 use std::pin::Pin;
 use std::time::Duration;
@@ -44,10 +45,6 @@ pub async fn connect(settings: &ConnectionSettings) -> Result<tokio_postgres::Cl
                 let _ = connection.await;
             });
 
-            if settings.ssl_mode == SslMode::Prefer {
-                warn_if_plaintext(&client).await;
-            }
-
             Ok(client)
         }
     }
@@ -59,31 +56,6 @@ fn driver_ssl_mode(mode: SslMode) -> tokio_postgres::config::SslMode {
         SslMode::Disable => tokio_postgres::config::SslMode::Disable,
         SslMode::Prefer => tokio_postgres::config::SslMode::Prefer,
         SslMode::Require => tokio_postgres::config::SslMode::Require,
-    }
-}
-
-/// Avisa quando `Prefer` terminou em texto puro porque o servidor não suporta TLS.
-///
-/// A consulta é feita depois da conexão; se `pg_stat_ssl` não existir ou falhar, o aviso é omitido
-/// para não transformar uma conexão válida em erro.
-async fn warn_if_plaintext(client: &tokio_postgres::Client) {
-    let Ok(row) = client
-        .query_one(
-            "select ssl from pg_stat_ssl where pid = pg_backend_pid()",
-            &[],
-        )
-        .await
-    else {
-        return;
-    };
-    let Ok(ssl) = row.try_get::<_, bool>(0) else {
-        return;
-    };
-    if !ssl {
-        eprintln!(
-            "Warning: sslMode Prefer connected without TLS; use Require to enforce an encrypted \
-             connection."
-        );
     }
 }
 

@@ -34,9 +34,12 @@ como contrato em `fixtures/baseline/` e em `docs/contrato-de-interface.md`.
 - CLI: `clap` (derive) · prompts `inquire` · tabelas `tabled` · progresso `indicatif` · estilo `console` + `owo-colors`
 - Async: `tokio` (+ `tokio-util` para `CancellationToken`) — **somente para I/O**
 - Postgres: `tokio-postgres`, com `with-serde_json-1` · dados exportados com `csv`
-- Config: `serde` + `jsonc-parser`, caminho resolvido por `dirs` · credenciais: `keyring` — **com os
-  backends nativos habilitados por plataforma** (`windows-native`, `apple-native`,
-  `sync-secret-service`); sem essas features o crate usa um store mock que aceita `set` e não persiste
+- Config: `serde` + `jsonc-parser`, caminho resolvido por `dirs` · credenciais: `keyring` **4**, cuja
+  feature default `v1` escolhe o backend nativo por plataforma (Credential Manager, Keychain, Secret
+  Service); sem store, `Entry::new` falha em vez de aceitar `set` e perder o segredo no `get`. No
+  Linux o store é o `zbus-secret-service`, D-Bus em Rust puro: não há `dbus`/`libdbus-sys` no grafo
+  (decisão `B1` em `docs/explanation/decisoes.md`) — não reintroduza essa dependência achando que é
+  código morto
 - Erros: `thiserror` no core, `anyhow` apenas no binário · logs: `tracing`
 - GUI: `eframe`/`egui` (+ `egui_extras`), atrás da feature `gui`
 - Testes: `insta` (snapshots), `expectrl` (PTY), `tempfile`, `tokio-postgres` (integração Postgres)

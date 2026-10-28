@@ -16,7 +16,8 @@ O `sslMode` acompanha os três valores do driver:
 
 `Prefer` é o default. Se o servidor oferece TLS mas o certificado é inválido (CA desconhecida,
 hostname errado, certificado expirado), a conexão **falha**; ela não cai para texto puro. O driver
-só faz o fallback quando recebe a resposta "sem TLS" do servidor.
+só faz o fallback quando recebe a resposta "sem TLS" do servidor. O fallback é o que o `Prefer`
+pede, então ele acontece **sem aviso**: quem precisa de TLS garantido escolhe `Require`.
 
 `Require` falha se o servidor não oferecer TLS, se o certificado não for confiável ou se o hostname
 não casar.
@@ -55,7 +56,7 @@ O ambiente de `smoke/` sobe o PostgreSQL 18.6 com um certificado próprio. Para 
 - `Prefer` e `Require`, com a CA do servidor no store do runner, devem mostrar `t`;
 - `Require` sem a CA deve falhar;
 - `Prefer` sem a CA também deve falhar, sem cair para texto puro;
-- `Prefer` contra um serviço sem TLS deve mostrar `f` e emitir o aviso;
+- `Prefer` contra um serviço sem TLS deve mostrar `f`, sem aviso;
 - `Require` contra um serviço sem TLS deve falhar.
 
 A matriz é manual; não há workflow de CI para o smoke.

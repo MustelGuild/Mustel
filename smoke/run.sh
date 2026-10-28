@@ -205,15 +205,15 @@ code=$?
 mv /tmp/mustel-smoke-ca.crt "$CA_FILE"
 update-ca-certificates >/tmp/update-ca-restore.log 2>&1
 
-# Serviço sem TLS: Prefer cai com aviso; Require falha.
+# Serviço sem TLS: Prefer cai em silêncio; Require falha.
 ad_hoc='Host=postgres-notls;Port=5432;Database=smoke_notls;Username=postgres'
 "$BIN" query run --npgsql-connection-string "$ad_hoc" -W smoke \
     -c 'select 1' --ssl-mode Prefer -o "$OUT/tls-prefer-notls" >/tmp/prefer-notls.log 2>&1
 code=$?
-if [ "$code" -eq 0 ] && grep -q 'without TLS' /tmp/prefer-notls.log; then
-    pass "Prefer sem TLS cai com aviso"
+if [ "$code" -eq 0 ] && ! grep -qi 'without TLS' /tmp/prefer-notls.log; then
+    pass "Prefer sem TLS cai sem aviso"
 else
-    fail "Prefer sem TLS cai com aviso: $code"
+    fail "Prefer sem TLS cai sem aviso: $code"
 fi
 "$BIN" query run --npgsql-connection-string "$ad_hoc" -W smoke \
     -c 'select 1' --ssl-mode Require -o "$OUT/tls-require-notls" >/tmp/require-notls.log 2>&1

@@ -20,8 +20,17 @@ Dentro de cada servidor:
 
 ## Precedência da senha
 
-`-W` → `MUSTEL_PASSWORD` → cofre (chave = nome do servidor) → prompt. No máximo **um** prompt por
-servidor, não por banco. `-W` num terminal avisa que a senha fica visível no `ps` e no histórico.
+`--password-stdin` → `-W` → `MUSTEL_PASSWORD` → cofre (chave = nome do servidor) → prompt. No
+máximo **um** prompt por servidor, não por banco. `--password-stdin` e `-W` são exclusivos; `-W`
+num terminal avisa que a senha fica visível no `ps` e no histórico.
+
+## TLS
+
+`--ssl-mode` aceita `Disable`, `Prefer` (default) e `Require`. Quando há TLS, o certificado é
+validado por cadeia **e** hostname. `Prefer` só cai para texto puro quando o servidor não oferece
+TLS; `Require` nunca cai. `Allow`, `VerifyCA` e `VerifyFull` foram removidos e são recusados com
+mensagem de migração. A página [TLS do PostgreSQL](../explanation/tls-postgres.md) explica a
+matriz e o caso de certificado self-signed.
 
 ## Confirmação
 
@@ -29,7 +38,9 @@ Consulta classificada como destrutiva pede confirmação **se**: `--no-confirm` 
 `requireConfirmation` está ligado no cadastro. Leitura nunca pede.
 
 Reconhecidas como destrutivas: `INSERT`, `UPDATE`, `DELETE`, `ALTER`, `DROP`, `CREATE`, `TRUNCATE`,
-`MERGE`, `GRANT`, `REVOKE`, `SET ROLE` — inclusive dentro de CTE que escreve.
+`MERGE`, `GRANT`, `REVOKE`, `SET ROLE` — inclusive dentro de **qualquer** CTE e em
+`EXPLAIN ANALYZE` de DML. `EXPLAIN` sem `ANALYZE` continua seguro. O analisador usa `sqlparser`;
+se o parse falhar, procura as palavras destrutivas fora de strings/comentários.
 
 ## Arquivos
 

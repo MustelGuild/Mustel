@@ -16,26 +16,32 @@ use mustel_core::usecases::db_servers;
 use mustel_core::validation::{is_port_in_range, is_valid_host, is_valid_username};
 
 use crate::cli::DbServersAddArgs;
-use crate::ui::prompts;
+use crate::ui::{password_input, prompts};
 
 /// Nome do binário usado nas mensagens de orientação (o legado dizia `fur`).
 const BINARY: &str = "mustel";
 
 /// Executa o comando.
 pub fn run(args: DbServersAddArgs) -> Result<i32, CoreError> {
+    let stdin_password = if args.password_stdin {
+        Some(password_input::read_from_stdin()?)
+    } else {
+        None
+    };
+
     let interactive_requested = args.interactive
         || args.name.as_deref().is_none_or(str::is_empty)
         || args.host.as_deref().is_none_or(str::is_empty);
 
     if interactive_requested {
-        return add_interactive(&args);
+        return add_interactive(&args, stdin_password.as_deref());
     }
 
-    add_direct(&args)
+    add_direct(&args, stdin_password.as_deref())
 }
 
 /// Caminho com todas as flags: valida, grava e (com `-W`) guarda a senha no cofre.
-fn add_direct(args: &DbServersAddArgs) -> Result<i32, CoreError> {
+fn add_direct(args: &DbServersAddArgs, stdin_password: Option<&str>) -> Result<i32, CoreError> {
     let name = require(args.name.as_deref(), "--name (-n)")?;
     let host = require(args.host.as_deref(), "--host (-H)")?;
 
@@ -43,9 +49,9 @@ fn add_direct(args: &DbServersAddArgs) -> Result<i32, CoreError> {
     let server = build_entry(args, name, host)?;
     db_servers::add(&store, &server)?;
 
-    let password = args
-        .password
-        .clone()
+    let password = stdin_password
+        .map(str::to_string)
+        .or_else(|| args.password.clone())
         .or_else(|| std::env::var("MUSTEL_PASSWORD").ok());
 
     if let Some(password) = password.as_deref() {
@@ -58,7 +64,10 @@ fn add_direct(args: &DbServersAddArgs) -> Result<i32, CoreError> {
 }
 
 /// Fluxo interativo: mesmos campos e ordem do legado.
-fn add_interactive(args: &DbServersAddArgs) -> Result<i32, CoreError> {
+fn add_interactive(
+    args: &DbServersAddArgs,
+    stdin_password: Option<&str>,
+) -> Result<i32, CoreError> {
     let name = prompts::text("Server name*: ", args.name.as_deref())?;
     if name.trim().is_empty() {
         println!("Server name is required.");
@@ -106,16 +115,8 @@ fn add_interactive(args: &DbServersAddArgs) -> Result<i32, CoreError> {
         default_exclude_patterns()
     };
 
-    let ssl_choices = [
-        "Disable",
-        "Allow",
-        "Prefer",
-        "Require",
-        "VerifyCA",
-        "VerifyFull",
-    ]
-    .map(str::to_string);
-    let ssl_mode = prompts::select_one("SSL Mode [Prefer]: ", &ssl_choices, Some(2))?;
+    let ssl_choices = ["Disable", "Prefer", "Require"].map(str::to_string);
+    let ssl_mode = prompts::select_one("SSL Mode [Prefer]: ", &ssl_choices, Some(1))?;
 
     let timeout = ask_number("Connection timeout [30s]: ", 30)?;
     let max_parallelism = ask_number("Max Parallelism [4]: ", 4)?;
@@ -159,7 +160,10 @@ fn add_interactive(args: &DbServersAddArgs) -> Result<i32, CoreError> {
 
     match action.as_str() {
         "Save and set password" => {
-            let password = prompts::password("Password: ")?;
+            let password = match stdin_password {
+                Some(password) => password.to_string(),
+                None => prompts::password("Password: ")?,
+            };
             db_servers::set_password(&store, &name, &password)?;
             println!("Password saved securely for '{name}'.");
         }

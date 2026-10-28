@@ -12,7 +12,7 @@ RUN apt-get update \
         build-essential pkg-config curl ca-certificates \
         libdbus-1-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
         libgl1-mesa-dev libwayland-dev libxkbcommon-dev libssl-dev \
-        cmake clang libclang-dev \
+        cmake clang libclang-dev openssl \
         xvfb xdotool imagemagick x11-utils gnome-keyring libsecret-tools dbus-x11 \
         libdbus-1-3 libgl1 libglx-mesa0 libgl1-mesa-dri libegl1 libgles2 \
         libxkbcommon-x11-0 fonts-dejavu-core \

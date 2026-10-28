@@ -44,6 +44,19 @@ mkdir -p "$CONFIG"
 export MUSTEL_CONFIG_DIR="$CONFIG"
 unset MUSTEL_PASSWORD
 
+echo "== CA do Postgres"
+CA_FILE=/usr/local/share/ca-certificates/mustel-smoke.crt
+openssl s_client -starttls postgres -connect postgres:5432 -servername postgres -showcerts \
+    </dev/null 2>/tmp/s_client.log \
+    | awk '/BEGIN CERTIFICATE/{n++; buf[n]=""} n{buf[n]=buf[n] $0 "\n"} END{if(n) printf "%s", buf[n]}' \
+    >"$CA_FILE"
+if [ -s "$CA_FILE" ] && update-ca-certificates >/tmp/update-ca.log 2>&1; then
+    pass "CA do Postgres instalada no store"
+else
+    fail "CA do Postgres instalada no store"
+    cat /tmp/s_client.log /tmp/update-ca.log 2>/dev/null
+fi
+
 echo "== cofre efêmero do container"
 rm -rf /root/.local/share/keyrings
 mkdir -p /root/.local/share/keyrings
@@ -146,22 +159,56 @@ for line in "Smoke,mustel_001,'=1+1" "Smoke,mustel_001,'@SUM(A1:A2)" \
 done
 
 echo "== TLS"
-"$BIN" query run -c 'select 1' --ssl-mode Require -o "$OUT/tls-require" \
-    >/tmp/require.log 2>&1
-code=$?
-[ "$code" -ne 0 ] && pass "Require falha explicitamente (D1 pendente)" ||
-    fail "Require falha explicitamente (D1 pendente)"
-err_csv=$(find "$OUT/tls-require" -name '*_erros.csv' | head -1)
-if [ -n "$err_csv" ] && grep -q 'sslMode' "$err_csv"; then
-    pass "erro do Require explica o sslMode"
-else
-    fail "erro do Require explica o sslMode"
-fi
+"$BIN" query run -c 'select 1' --ssl-mode Require -o "$OUT/tls-require" >/tmp/require.log 2>&1
+[ $? -eq 0 ] && pass "Require conecta com o CA confiado" ||
+    fail "Require conecta com o CA confiado"
 "$BIN" query run -c 'select 1' --ssl-mode Disable -o "$OUT/tls-disable" >/dev/null 2>&1
 [ $? -eq 0 ] && pass "ssl-mode Disable conecta" || fail "ssl-mode Disable conecta"
 "$BIN" query run -c 'select 1' --ssl-mode Prefer -o "$OUT/tls-prefer" >/dev/null 2>&1
 [ $? -eq 0 ] && pass "ssl-mode Prefer conecta" || fail "ssl-mode Prefer conecta"
 
+# Sem o CA, Prefer/Require precisam falhar; o Prefer não pode cair para texto puro.
+mv "$CA_FILE" /tmp/mustel-smoke-ca.crt
+update-ca-certificates --fresh >/tmp/update-ca-fresh.log 2>&1
+"$BIN" query run -c 'select 1' --ssl-mode Require -o "$OUT/tls-require-no-ca" \
+    >/tmp/require-no-ca.log 2>&1
+code=$?
+err_csv=$(find "$OUT/tls-require-no-ca" -name '*_erros.csv' | head -1)
+if [ "$code" -ne 0 ] && { [ -z "$err_csv" ] || grep -qi 'certificate\|TLS' "$err_csv"; }; then
+    pass "Require falha sem o CA"
+else
+    fail "Require falha sem o CA: $code"
+fi
+"$BIN" query run -c 'select 1' --ssl-mode Prefer -o "$OUT/tls-prefer-no-ca" \
+    >/tmp/prefer-no-ca.log 2>&1
+code=$?
+if [ "$code" -ne 0 ]; then
+    pass "Prefer falha sem o CA (não cai para texto puro)"
+else
+    fail "Prefer falha sem o CA (não cai para texto puro): $code"
+fi
+mv /tmp/mustel-smoke-ca.crt "$CA_FILE"
+update-ca-certificates >/tmp/update-ca-restore.log 2>&1
+
+# Serviço sem TLS: Prefer cai com aviso; Require falha.
+ad_hoc='Host=postgres-notls;Port=5432;Database=smoke_notls;Username=postgres'
+"$BIN" query run --npgsql-connection-string "$ad_hoc" -W smoke \
+    -c 'select 1' --ssl-mode Prefer -o "$OUT/tls-prefer-notls" >/tmp/prefer-notls.log 2>&1
+code=$?
+if [ "$code" -eq 0 ] && grep -q 'without TLS' /tmp/prefer-notls.log; then
+    pass "Prefer sem TLS cai com aviso"
+else
+    fail "Prefer sem TLS cai com aviso: $code"
+fi
+"$BIN" query run --npgsql-connection-string "$ad_hoc" -W smoke \
+    -c 'select 1' --ssl-mode Require -o "$OUT/tls-require-notls" >/tmp/require-notls.log 2>&1
+code=$?
+err_csv=$(find "$OUT/tls-require-notls" -name '*_erros.csv' | head -1)
+if [ "$code" -ne 0 ] && { [ -z "$err_csv" ] || grep -Eqi 'does not support TLS|TLS handshake' "$err_csv"; }; then
+    pass "Require falha sem TLS"
+else
+    fail "Require falha sem TLS: $code"
+fi
 echo "== sslMode inválido no cadastro"
 config_file="$CONFIG/mustel.jsonc"
 cp "$config_file" /tmp/mustel.jsonc.bak

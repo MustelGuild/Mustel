@@ -15,7 +15,7 @@ use mustel_core::error::CoreError;
 use mustel_core::usecases::db_servers;
 
 use crate::cli::DbServersSetPasswordArgs;
-use crate::ui::prompts;
+use crate::ui::{password_input, prompts};
 
 /// Executa o comando.
 pub fn run(args: DbServersSetPasswordArgs) -> Result<i32, CoreError> {
@@ -35,9 +35,13 @@ pub fn run(args: DbServersSetPasswordArgs) -> Result<i32, CoreError> {
         }
     };
 
-    let provided = args
-        .password
-        .or_else(|| std::env::var("MUSTEL_PASSWORD").ok());
+    let stdin_password = if args.password_stdin {
+        Some(password_input::read_from_stdin()?)
+    } else {
+        None
+    };
+    let environment_password = std::env::var("MUSTEL_PASSWORD").ok();
+    let provided = stdin_password.or(args.password).or(environment_password);
     let password = match provided.as_deref() {
         Some(password) => password.to_string(),
         None => prompts::password("Password: ")?,

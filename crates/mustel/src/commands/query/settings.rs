@@ -13,9 +13,10 @@
 //!   final resolve a senha de novo, então o comando **pede a senha** se ela não vier em `-W` e não
 //!   houver credencial guardada. É um comportamento do legado, medido, e reproduzido aqui de
 //!   propósito;
-//! - a senha segue a precedência `-W` → cofre (pelo **nome do servidor**) → prompt, com o texto
-//!   `Password for '<servidor>': `;
-//! - `--ssl-mode` desconhecido vira `Prefer` (o `ParseSslMode` do legado), e não é erro.
+//! - a senha segue `--password-stdin` → `-W` → `MUSTEL_PASSWORD` → cofre (pelo **nome do
+//!   servidor**) → prompt, com o texto `Password for '<servidor>': `;
+//! - `--ssl-mode` aceita só `Disable`, `Prefer` e `Require`; um valor desconhecido é erro, não
+//!   fallback silencioso para `Prefer`.
 //!
 //! Das opções de **pool** (`--pooling`, `--min-pool-size`, `--max-pool-size`), só o valor fica
 //! guardado na conexão: o Mustel abre uma conexão por banco, então não há pool (ver
@@ -87,14 +88,18 @@ pub fn output_directory(args: &QueryRunArgs, defaults: &UserDefaults) -> String 
 /// A conexão sai sem banco definido (o núcleo troca o banco de cada alvo e o da descoberta); é o que
 /// evita resolver a senha de novo a cada banco — e por isso o prompt de senha aparece no máximo uma
 /// vez por servidor (diferença 17 em `docs/explanation/diferencas-deliberadas.md`).
-pub fn server_run(server: &ServerConfigEntry, args: &QueryRunArgs) -> Result<ServerRun, CoreError> {
+pub fn server_run(
+    server: &ServerConfigEntry,
+    args: &QueryRunArgs,
+    stdin_password: Option<&str>,
+) -> Result<ServerRun, CoreError> {
     Ok(ServerRun {
         name: server.name.clone(),
         max_parallelism: server.max_parallelism as usize,
         databases: server.databases.clone(),
         exclude_patterns: server.exclude_patterns.clone(),
         fetch_all_databases: server.fetch_all_databases,
-        settings: connection_settings(server, args)?,
+        settings: connection_settings(server, args, stdin_password)?,
     })
 }
 
@@ -105,8 +110,9 @@ pub fn server_run(server: &ServerConfigEntry, args: &QueryRunArgs) -> Result<Ser
 fn connection_settings(
     server: &ServerConfigEntry,
     args: &QueryRunArgs,
+    stdin_password: Option<&str>,
 ) -> Result<ConnectionSettings, CoreError> {
-    let password = resolve_password(server, args)?;
+    let password = resolve_password(server, args, stdin_password)?;
     let ssl_mode = resolve_ssl_mode(args, server)?;
 
     Ok(ConnectionSettings {
@@ -138,8 +144,16 @@ fn connection_settings(
     })
 }
 
-/// Senha: `-W` → cofre (pelo nome do servidor) → prompt, como o `ResolvePassword` do legado.
-fn resolve_password(server: &ServerConfigEntry, args: &QueryRunArgs) -> Result<String, CoreError> {
+/// Senha: stdin → `-W` → `MUSTEL_PASSWORD` → cofre → prompt.
+fn resolve_password(
+    server: &ServerConfigEntry,
+    args: &QueryRunArgs,
+    stdin_password: Option<&str>,
+) -> Result<String, CoreError> {
+    if let Some(password) = stdin_password.filter(|value| !value.is_empty()) {
+        return Ok(password.to_string());
+    }
+
     if let Some(password) = args
         .password
         .as_deref()
@@ -166,8 +180,8 @@ fn resolve_password(server: &ServerConfigEntry, args: &QueryRunArgs) -> Result<S
     prompts::password(&format!("{PASSWORD_PROMPT} '{}': ", server.name))
 }
 
-/// `--ssl-mode` vence o cadastro; valor desconhecido na **flag** vira `Prefer`, como no legado. Já
-/// um `sslMode` inválido **no cadastro** é erro: não pode conectar em texto puro em silêncio.
+/// `--ssl-mode` vence o cadastro. Valor inválido na flag é argumento inválido; valor inválido no
+/// cadastro é estado inválido. Nenhum dos dois vira `Prefer`.
 fn resolve_ssl_mode(args: &QueryRunArgs, server: &ServerConfigEntry) -> Result<SslMode, CoreError> {
     let raw = args
         .ssl_mode
@@ -180,7 +194,9 @@ fn resolve_ssl_mode(args: &QueryRunArgs, server: &ServerConfigEntry) -> Result<S
         .as_deref()
         .is_some_and(|value| !value.trim().is_empty())
     {
-        return Ok(raw.parse().unwrap_or_default());
+        return raw
+            .parse::<SslMode>()
+            .map_err(|error| CoreError::InvalidArgument(error.to_string()));
     }
 
     raw.parse::<SslMode>()
@@ -258,7 +274,7 @@ mod tests {
         let mut configured = server();
         configured.ssl_mode = "Requiree".to_string();
 
-        let error = connection_settings(&configured, &args()).expect_err("config inválida");
+        let error = connection_settings(&configured, &args(), None).expect_err("config inválida");
         assert!(error.to_string().contains("invalid ssl mode"), "{error}");
     }
 
@@ -273,6 +289,7 @@ mod tests {
             database: None,
             username: None,
             password: Some("senha".to_string()),
+            password_stdin: false,
             ssl_mode: None,
             timeout: None,
             command_timeout: None,
@@ -337,7 +354,7 @@ mod tests {
         );
 
         // A senha da string **não** entra no cadastro (o `CreateAdHocServer` a descarta).
-        let settings = connection_settings(&ad_hoc, &command).expect("resolve");
+        let settings = connection_settings(&ad_hoc, &command, None).expect("resolve");
         assert_eq!(settings.password.as_deref(), Some("senha"), "vem do `-W`");
     }
 
@@ -368,7 +385,7 @@ mod tests {
         command.ssl_mode = Some("Disable".to_string());
         command.timeout = Some(5);
 
-        let settings = connection_settings(&server(), &command).expect("resolve");
+        let settings = connection_settings(&server(), &command, None).expect("resolve");
 
         assert_eq!(settings.host, "10.0.0.9");
         assert_eq!(settings.port, 6543);
@@ -379,7 +396,7 @@ mod tests {
 
     #[test]
     fn without_overrides_the_server_config_is_used() {
-        let settings = connection_settings(&server(), &args()).expect("resolve");
+        let settings = connection_settings(&server(), &args(), None).expect("resolve");
 
         assert_eq!(settings.host, "localhost");
         assert_eq!(settings.port, 5432);
@@ -389,22 +406,29 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-018
+    fn the_stdin_password_wins_over_the_flag() {
+        let mut command = args();
+        command.password = Some("da-flag".to_string());
+
+        let settings = connection_settings(&server(), &command, Some("do-stdin")).expect("resolve");
+        assert_eq!(settings.password.as_deref(), Some("do-stdin"));
+    }
+
+    #[test]
     /// CONTRACT: IF-022
-    fn an_unknown_ssl_mode_falls_back_to_prefer() {
+    fn an_unknown_ssl_mode_is_an_argument_error() {
         let mut command = args();
         command.ssl_mode = Some("Inventado".to_string());
 
-        assert_eq!(
-            connection_settings(&server(), &command)
-                .expect("resolve")
-                .ssl_mode,
-            SslMode::Prefer
-        );
+        let error = connection_settings(&server(), &command, None).expect_err("flag inválida");
+        assert!(matches!(error, CoreError::InvalidArgument(_)), "{error:?}");
+        assert!(error.to_string().contains("invalid ssl mode"), "{error}");
     }
 
     #[test]
     fn the_template_has_no_database_because_the_core_picks_one_per_target() {
-        let template = connection_settings(&server(), &args()).expect("resolve");
+        let template = connection_settings(&server(), &args(), None).expect("resolve");
 
         assert_eq!(
             template.database, None,
@@ -419,7 +443,7 @@ mod tests {
         command.port = Some("nao-e-porta".to_string());
 
         assert_eq!(
-            connection_settings(&server(), &command)
+            connection_settings(&server(), &command, None)
                 .expect("resolve")
                 .port,
             5432

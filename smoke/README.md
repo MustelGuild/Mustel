@@ -16,8 +16,9 @@ CSV, backup/restore, TLS, nomes hostis e a janela da GUI.
 
 - Porta no host: **55432** (evita o 5432 do dono).
 - Credenciais: `postgres` / `smoke` e `smoke_app` / `smoke_app`.
-- TLS: certificado autoassinado em `/etc/postgresql/server.crt` (o servidor aceita TLS; o cliente
-  ainda não implementa `Require` — o smoke confere que ele falha explicitamente).
+- TLS: CA local assina um certificado de servidor com SAN para `postgres`/`localhost`. O runner
+  extrai a CA do handshake e a instala no store descartável; o host usa `Disable` porque não mexe
+  no store do Windows.
 
 ## Como rodar
 
@@ -58,7 +59,9 @@ dono **não** são tocados. Use `-Keep` para inspecionar depois.
 - `settings db-servers add` / `ls` / `test` no config isolado, com a senha no **cofre efêmero do container**;
 - `query run` em um banco e com `--all` (103 bases), **sem `-W`** (senha vem do cofre do container), conferindo o CSV consolidado;
 - `--csv-escape-formulas`: default intacto e prefixo `'` nos valores `=`, `+`, `-`, `@`;
-- TLS: `Disable` e `Prefer` conectam; `Require` falha com o `sslMode` explicado no `_erros.csv`;
+- TLS no container: `Disable`, `Prefer` e `Require` conectam com a CA instalada; sem a CA,
+  `Prefer`/`Require` falham sem cair para texto puro; `Prefer` cai com aviso no serviço sem TLS e
+  `Require` falha nele;
 - `sslMode` inválido no cadastro é erro, não `Prefer` silencioso;
 - usuário sem superusuário (`smoke_app`) lendo a tabela;
 - `database backup` de um banco, `--all` (com o banco hostil pulado) e `--strict` (exit não-zero);
@@ -72,7 +75,8 @@ pixels, e nada abre no desktop do dono.
 - no **modo host** o `settings db-servers test` não roda, porque ele exigiria gravar no cofre do
 dono; o modo container cobre esse caminho no cofre efêmero do runner, que é destruído no fim;
 - o interior da GUI (autocomplete, seleção, formulários): use a skill `mustel-gui-smoke-test`;
-- o sucesso de `--ssl-mode Require`: depende de D1 (TLS do Postgres), ainda pendente;
+- o sucesso de `Require` no **modo host** (sem instalar a CA no Windows); o container cobre esse
+  caminho com uma CA descartável;
 - `pgpass add/list/remove`: escreveria no `pgpass.conf` real.
 
 ## Reprodução manual
@@ -80,7 +84,7 @@ dono; o modo container cobre esse caminho no cofre efêmero do runner, que é de
 ```powershell
 docker compose -f smoke/docker-compose.yml up -d --build
 # aguarde o healthcheck (docker inspect --format '{{.State.Health.Status}}' mustel-smoke-postgres)
-.\target\debug\mustel.exe query run -H 127.0.0.1 -p 55432 -U postgres -W smoke -a `
+.\target\debug\mustel.exe query run -H 127.0.0.1 -p 55432 -U postgres -W smoke --ssl-mode Disable -a `
     -c "select count(*) as n from items" -o "$env:TEMP\smoke-out"
 docker compose -f smoke/docker-compose.yml down -v
 ```

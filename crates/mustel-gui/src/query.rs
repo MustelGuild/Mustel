@@ -86,6 +86,14 @@ pub fn absolute(path: &str) -> PathBuf {
 
 /// A conexão resolvida de um servidor do cadastro, sem banco (o núcleo troca por alvo).
 pub fn server_run(server: &ServerConfigEntry, password: &str) -> Result<ServerRun, InputError> {
+    let ssl_mode =
+        server
+            .ssl_mode
+            .parse()
+            .map_err(|error: mustel_core::postgres::tls::SslModeError| {
+                InputError::Config(error.to_string())
+            })?;
+
     Ok(ServerRun {
         name: server.name.clone(),
         max_parallelism: server.max_parallelism as usize,
@@ -98,7 +106,7 @@ pub fn server_run(server: &ServerConfigEntry, password: &str) -> Result<ServerRu
             user: server.username.clone(),
             password: Some(password.to_string()),
             database: None,
-            ssl_mode: server.ssl_mode.parse().unwrap_or_default(),
+            ssl_mode,
             connect_timeout: Duration::from_secs(u64::from(server.timeout).max(1)),
             command_timeout: Duration::from_secs(DEFAULT_COMMAND_TIMEOUT_SECONDS),
             ..ConnectionSettings::default()
@@ -370,6 +378,16 @@ mod tests {
             InputError::NoPassword("servidor-que-nao-existe-no-cofre".to_string())
         );
         assert!(error.to_string().contains("set-password"));
+    }
+
+    #[test]
+    fn an_invalid_ssl_mode_is_a_config_error() {
+        let mut invalid = server();
+        invalid.ssl_mode = "VerifyFull".to_string();
+
+        let error = server_run(&invalid, "segredo").expect_err("modo removido");
+        assert!(matches!(error, InputError::Config(_)), "{error:?}");
+        assert!(error.to_string().contains("no longer supported"), "{error}");
     }
 
     /// A base marcada na tela chega ao plano **explícita**, e a barrada por `excludePatterns` não

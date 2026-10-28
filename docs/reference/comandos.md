@@ -41,10 +41,10 @@ A janela tem página própria: a [referência do autocomplete](autocomplete.md) 
 
 ## Senha
 
-`-W/--password` continua existindo por paridade. Sem a flag, `MUSTEL_PASSWORD` é usado antes do
-cofre e do prompt (backup, restore, `query run`, `pgpass add`, `add` e `set-password`). Num
-terminal, usar `-W` imprime um aviso em stderr: o valor fica visível em `ps`/Gerenciador de Tarefas
-e no histórico do shell.
+`--password-stdin` lê uma linha do stdin e é a forma recomendada em scripts. A precedência é
+`--password-stdin` → `-W/--password` → `MUSTEL_PASSWORD` → cofre → prompt. `--password-stdin` e
+`-W` são mutuamente exclusivos. Num terminal, usar `-W` imprime um aviso em stderr: o valor fica
+visível em `ps`/Gerenciador de Tarefas e no histórico do shell.
 
 ## `query run`
 
@@ -57,7 +57,8 @@ Detalhe completo em [query run](query-run.md).
 | `-o, --output <path>` | `./results` | diretório de saída |
 | `--npgsql-connection-string <s>` | — | conexão ad-hoc no formato do Npgsql; dispensa o cadastro |
 | `-H, --host` / `-p, --port` / `-d, --database` / `-U, --username` / `-W, --password` | do cadastro | overrides de conexão |
-| `--ssl-mode <mode>` | `Prefer` | `Disable`, `Allow`, `Prefer`, `Require`, `VerifyCA`, `VerifyFull` |
+| `--password-stdin` | desligado | lê a senha de uma linha do stdin; conflita com `-W` |
+| `--ssl-mode <mode>` | `Prefer` | `Disable`, `Prefer`, `Require` (TLS sempre validado; ver [TLS](../explanation/tls-postgres.md)) |
 | `--timeout <s>` | `30` | timeout de conexão |
 | `--command-timeout <s>` | `300` | timeout da consulta |
 | `--pooling [<bool>]` | `true` | aceito; **sem efeito** (não há pool) |
@@ -73,8 +74,8 @@ Detalhe completo em [query run](query-run.md).
 | Flag | O que faz |
 |---|---|
 | `[database]` (posicional) | banco a salvar; dispensável com `--all` |
-| `-H` / `-p` / `-U` / `-W` | conexão |
-| `--ssl-mode` / `--timeout` / `--command-timeout` | aceitos por compatibilidade; **não** vão para o `pg_dump` |
+| `-H` / `-p` / `-U` / `-W` / `--password-stdin` | conexão e senha |
+| `--ssl-mode` / `--timeout` / `--command-timeout` | aceitos por compatibilidade; o SSL vale na descoberta do `--all`, mas **não** vai para o `pg_dump` |
 | `-a, --all` | todos os bancos do servidor |
 | `--strict` | falha com não-zero se algum banco falhar; sem a flag, aviso e exit 0 |
 | `--exclude <padrão>` | tabelas a excluir inteiras (repetível) |
@@ -88,7 +89,7 @@ Detalhe completo em [query run](query-run.md).
 | Flag | O que faz |
 |---|---|
 | `[database]` `[file]` | banco e dump; o arquivo default é `<database>.dump` |
-| `-H` / `-p` / `-U` / `-W` | conexão |
+| `-H` / `-p` / `-U` / `-W` / `--password-stdin` | conexão e senha |
 | `--ssl-mode` / `--timeout` / `--command-timeout` | conexão e limites |
 | `-a, --all` | todos os dumps do diretório |
 | `-d, --directory <path>` | diretório dos dumps (com `--all`) |
@@ -103,7 +104,7 @@ Detalhe completo em [query run](query-run.md).
 
 | Comando | Argumentos |
 |---|---|
-| `add` | `[database]` **ou** `--database`; `--host`, `--port`, `--username`, `--password`; `*` é curinga |
+| `add` | `[database]` **ou** `--database`; `--host`, `--port`, `--username`, `--password`, `--password-stdin`; `*` é curinga |
 | `list` | nenhum |
 | `remove` | `<database>` obrigatório; `--host`, `--port`, `--username` |
 
@@ -138,7 +139,7 @@ arquivo.
 | Comando | Argumentos |
 |---|---|
 | `ls` | nenhum |
-| `add` | `-n <nome>`, `-i`, `-H`, `-p`, `-U`, `-W`, `-d <bancos>`, `--ssl-mode`, `--timeout`, `--max-parallelism`, `--fetch-all`, `--exclude-patterns` |
+| `add` | `-n <nome>`, `-i`, `-H`, `-p`, `-U`, `-W`/`--password-stdin`, `-d <bancos>`, `--ssl-mode` (`Disable`/`Prefer`/`Require`), `--timeout`, `--max-parallelism`, `--fetch-all`, `--exclude-patterns` |
 | `rm` | `-n <nome>` |
 | `test` | `-n <nome>` |
-| `set-password` | `[nome]`; `-W` para não usar prompt |
+| `set-password` | `[nome]`; `-W` ou `--password-stdin` para não usar prompt |

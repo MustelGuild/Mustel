@@ -19,6 +19,10 @@ thiserror = "2"
 regex = "1"
 url = "2"
 tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
+tokio-postgres-rustls = { version = "0.14", features = ["aws-lc-rs"] }
+rustls = { version = "0.23", features = ["aws_lc_rs"] }
+rustls-native-certs = "0.8"
+sqlparser = "0.63"
 # `Stream`/`FuturesUnordered` para o `query run` (T34): o resultado do driver chega como fluxo de
 # linhas (memória estável em export grande) e o executor junta as consultas paralelas.
 futures-util = "0.3"

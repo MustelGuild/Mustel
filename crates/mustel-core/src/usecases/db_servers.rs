@@ -38,6 +38,8 @@ pub fn list(store: &ConfigStore) -> Result<Vec<ServerConfigEntry>, CoreError> {
 /// servidor sem usuário definido. A **porta** não é checada aqui: quem tem o valor cru da flag (e
 /// portanto pode dizer qual número foi recusado) é o frontend, que já entrega a entrada num `u16`.
 pub fn add(store: &ConfigStore, server: &ServerConfigEntry) -> Result<(), CoreError> {
+    validate_ssl_mode(server)?;
+
     if !is_valid_host(&server.host) {
         return Err(CoreError::InvalidArgument(format!(
             "Invalid host: '{}'.",
@@ -77,6 +79,8 @@ pub fn save(
     original: Option<&str>,
     server: &ServerConfigEntry,
 ) -> Result<(), CoreError> {
+    validate_ssl_mode(server)?;
+
     if !is_valid_host(&server.host) {
         return Err(CoreError::InvalidArgument(format!(
             "Invalid host: '{}'.",
@@ -185,6 +189,15 @@ pub struct TestReport {
 fn parse_ssl_mode(raw: &str) -> Result<SslMode, CoreError> {
     raw.parse::<SslMode>()
         .map_err(|error| CoreError::InvalidState(error.to_string()))
+}
+
+/// Valida o `sslMode` de um cadastro; vazio fica para o `apply_defaults`/default do produto.
+fn validate_ssl_mode(server: &ServerConfigEntry) -> Result<(), CoreError> {
+    if server.ssl_mode.trim().is_empty() {
+        return Ok(());
+    }
+
+    parse_ssl_mode(&server.ssl_mode).map(|_| ())
 }
 
 /// Testa a conexão de um servidor cadastrado, com a senha já resolvida pelo frontend.

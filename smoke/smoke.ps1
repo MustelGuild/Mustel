@@ -80,7 +80,7 @@ try {
     Write-Output '== cadastro e conexão'
     $add = Invoke-Mustel @(
         'settings', 'db-servers', 'add', '-n', 'Smoke', '-H', '127.0.0.1', '-p', "$Port",
-        '-U', 'postgres', '-d', 'mustel_001', '--ssl-mode', 'Prefer'
+        '-U', 'postgres', '-d', 'mustel_001', '--ssl-mode', 'Disable'
     )
     Check 'settings db-servers add' ($add.Code -eq 0) $add.Text
 
@@ -141,15 +141,15 @@ try {
     Write-Output '== TLS'
     $require = Join-Path $out 'tls-require'
     $r = Invoke-Mustel @('query', 'run', '-W', 'smoke', '-c', 'select 1', '--ssl-mode', 'Require', '-o', $require)
-    Check 'Require falha explicitamente (D1 pendente)' ($r.Code -ne 0) $r.Text
+    Check 'Require falha sem a CA no store do host' ($r.Code -ne 0) $r.Text
     $errors = Find-Csv $require '*_erros.csv'
     $errorText = if ($errors) { Get-Content $errors.FullName -Raw } else { '' }
-    Check 'erro do Require explica o sslMode' ($errorText -match 'sslMode') $errorText
+    Check 'erro do Require é de certificado/TLS' ($errorText -match 'certificate|TLS') $errorText
 
     $disable = Invoke-Mustel @('query', 'run', '-W', 'smoke', '-c', 'select 1', '--ssl-mode', 'Disable', '-o', (Join-Path $out 'tls-disable'))
     Check 'ssl-mode Disable conecta' ($disable.Code -eq 0) $disable.Text
     $prefer = Invoke-Mustel @('query', 'run', '-W', 'smoke', '-c', 'select 1', '--ssl-mode', 'Prefer', '-o', (Join-Path $out 'tls-prefer'))
-    Check 'ssl-mode Prefer conecta' ($prefer.Code -eq 0) $prefer.Text
+    Check 'Prefer falha sem a CA (não cai para texto puro)' ($prefer.Code -ne 0) $prefer.Text
 
     Write-Output '== sslMode inválido no cadastro'
     $configFile = Join-Path $config 'mustel.jsonc'
@@ -170,7 +170,7 @@ try {
     Write-Output '== backup e restore'
     $backupRoot = Join-Path $out 'backup'
     New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
-    $common = @('-H', '127.0.0.1', '-p', "$Port", '-U', 'postgres', '-W', 'smoke')
+    $common = @('-H', '127.0.0.1', '-p', "$Port", '-U', 'postgres', '-W', 'smoke', '--ssl-mode', 'Disable')
     $singleDump = Join-Path $backupRoot 'mustel_001.dump'
     $backup = Invoke-Mustel (@('database', 'backup', 'mustel_001', '-o', $singleDump) + $common)
     Check 'backup de um banco' ($backup.Code -eq 0 -and (Test-Path $singleDump)) $backup.Text

@@ -14,8 +14,8 @@
 //! - `--all`: o `pg_dump` é procurado **dentro do laço** (uma vez por banco, como no legado), a falha
 //!   de listagem sobe como [`CoreError::InvalidState`] (exit **40**) e uma falha por banco **não**
 //!   derruba o comando: emite [`CoreEvent::DatabaseStepFailed`] e segue, terminando com **0**;
-//! - `--ssl-mode`, `--timeout` e `--command-timeout` são aceitos e **ignorados**, como no legado: não
-//!   entram nos argumentos do `pg_dump` nem na conexão de `--all`;
+//! - `--ssl-mode` é usado na descoberta do `--all`, mas **não** entra no `pg_dump`;
+//!   `--timeout`/`--command-timeout` continuam aceitos e ignorados;
 //! - listar bancos usa o **driver** (D12) com a mesma query que o legado faz por `psql` — a
 //!   divergência já registrada do `settings db-servers test`;
 //! - **sucesso não imprime nada**: o progresso do legado é `ILogger.LogInformation` e o container
@@ -30,6 +30,7 @@ use crate::events::{CoreEvent, DatabaseStep, EventSink};
 use crate::postgres::client::{connect, list_databases};
 use crate::postgres::locator::{PG_DUMP, PostgresBinaryLocator};
 use crate::postgres::settings::ConnectionSettings;
+use crate::postgres::tls::SslMode;
 use crate::process::{self, ProcessOptions};
 use crate::signal::CancellationToken;
 use crate::usecases::database::{
@@ -48,6 +49,8 @@ pub struct BackupOptions {
     pub port: Option<String>,
     /// Usuário; `None`/branco não é validado, como no legado.
     pub username: Option<String>,
+    /// `--ssl-mode`: aceito por compatibilidade, mas não vai para o `pg_dump`.
+    pub ssl_mode: Option<String>,
     /// `--all`: copia todos os bancos do servidor.
     pub all: bool,
     /// Falha com código não-zero quando qualquer banco falha (default: avisa e sai 0).
@@ -94,6 +97,20 @@ pub fn validate(options: &BackupOptions) -> Result<Connection, CommandFailure> {
         return Err(CommandFailure::new(
             FailureKind::Usage,
             format!("Error: Invalid username: '{username}'"),
+        ));
+    }
+
+    if let Some(ssl_mode) = options
+        .ssl_mode
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        && ssl_mode.parse::<SslMode>().is_err()
+    {
+        return Err(CommandFailure::new(
+            FailureKind::Usage,
+            format!(
+                "Error: Invalid SSL mode: '{ssl_mode}'. Valid values: Disable, Prefer, Require."
+            ),
         ));
     }
 
@@ -206,7 +223,17 @@ async fn backup_all(
     events: &dyn EventSink,
     token: &CancellationToken,
 ) -> Result<(), DatabaseFailure> {
-    let databases = list_all_databases(connection, password).await?;
+    let ssl_mode = options
+        .ssl_mode
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(str::parse::<SslMode>)
+        .transpose()
+        .map_err(|error: crate::postgres::tls::SslModeError| {
+            DatabaseFailure::Fatal(CoreError::InvalidArgument(error.to_string()))
+        })?
+        .unwrap_or_default();
+    let databases = list_all_databases(connection, password, ssl_mode).await?;
 
     if databases.is_empty() {
         // O legado usa `LogWarning`, que **aparece** (o nível mínimo é Warning).
@@ -298,6 +325,7 @@ async fn backup_all(
 async fn list_all_databases(
     connection: &Connection,
     password: &str,
+    ssl_mode: SslMode,
 ) -> Result<Vec<String>, DatabaseFailure> {
     let settings = ConnectionSettings {
         host: connection.host.clone(),
@@ -305,6 +333,7 @@ async fn list_all_databases(
         user: connection.username.clone().unwrap_or_default(),
         password: Some(password.to_string()),
         database: Some("postgres".to_string()),
+        ssl_mode,
         ..ConnectionSettings::default()
     };
 
@@ -533,6 +562,18 @@ mod tests {
         let mut blank = options(Some("mydb"));
         blank.username = Some("   ".to_string());
         assert_eq!(validate(&blank).expect("válido").username, None);
+    }
+
+    #[test]
+    fn an_invalid_ssl_mode_is_refused_with_the_three_supported_values() {
+        let mut invalid = options(Some("mydb"));
+        invalid.ssl_mode = Some("Allow".to_string());
+        let error = validate(&invalid).expect_err("Allow foi removido");
+        assert_eq!(error.kind, FailureKind::Usage);
+        assert_eq!(
+            error.message,
+            "Error: Invalid SSL mode: 'Allow'. Valid values: Disable, Prefer, Require."
+        );
     }
 
     #[test]

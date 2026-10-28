@@ -166,6 +166,10 @@ const UNIT_COVERED: &[(&str, &str)] = &[
         "--strict",
         "crates/mustel-core/src/usecases/database_backup.rs::tests::strict_only_fails_when_a_database_failed",
     ),
+    (
+        "--password-stdin",
+        "crates/mustel/tests/cli_tree.rs::password_stdin_is_accepted_and_conflicts_with_password",
+    ),
 ];
 
 /// Flags longas que aparecem em um texto de ajuda.

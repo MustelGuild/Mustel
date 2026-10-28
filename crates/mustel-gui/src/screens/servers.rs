@@ -441,14 +441,7 @@ impl State {
                     egui::ComboBox::from_id_salt("ssl_mode")
                         .selected_text(&form.draft.ssl_mode)
                         .show_ui(ui, |ui| {
-                            for mode in [
-                                "Disable",
-                                "Allow",
-                                "Prefer",
-                                "Require",
-                                "VerifyCA",
-                                "VerifyFull",
-                            ] {
+                            for mode in ["Disable", "Prefer", "Require"] {
                                 ui.selectable_value(
                                     &mut form.draft.ssl_mode,
                                     mode.to_string(),

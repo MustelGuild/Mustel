@@ -342,7 +342,7 @@ pub struct ServerConfigEntry {
     pub fetch_all_databases: bool,
     /// Padrões excluídos na descoberta automática.
     pub exclude_patterns: Vec<String>,
-    /// Modo SSL (`Disable`, `Allow`, `Prefer`, `Require`, `VerifyCA`, `VerifyFull`).
+    /// Modo SSL (`Disable`, `Prefer`, `Require`).
     pub ssl_mode: String,
     /// Timeout de conexão em segundos (default 30).
     pub timeout: u32,

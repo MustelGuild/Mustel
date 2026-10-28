@@ -58,14 +58,14 @@ pub fn load(path: &std::path::Path) -> AiSession {
 /// Grava a sessão (arquivo temporário + `rename`): um crash no meio não deixa JSON pela metade.
 pub fn save(path: &std::path::Path, session: &AiSession) -> Result<(), CoreError> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        crate::private_fs::create_dir(parent)?;
     }
 
     let json = serde_json::to_string_pretty(session)
         .map_err(|error| CoreError::Other(format!("Could not serialize the session: {error}")))?;
 
     let temp = path.with_extension("tmp");
-    std::fs::write(&temp, json)?;
+    crate::private_fs::write(&temp, json.as_bytes())?;
     std::fs::rename(&temp, path)?;
     Ok(())
 }

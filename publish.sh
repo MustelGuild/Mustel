@@ -6,8 +6,8 @@
 #   ./publish.sh --no-build   # reempacota o binário já construído
 #
 # A **publicação é manual**: o script só produz o artefato e o SHA256. O equivalente no
-# Windows é o `publish.ps1`, com o mesmo layout de saída. No CI, o workflow `release-build`
-# roda este script e publica o resultado na página de release (D27).
+# Windows é o `publish.ps1`, com o mesmo layout de saída. A release do GitHub é criada
+# manualmente a partir de packaging/ (D29).
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -41,6 +41,7 @@ cp "target/release/mustel" "$stage/"
 cp mustel.example.jsonc "$stage/"
 cp LICENSE "$stage/"
 cp crates/mustel-gui/assets/fonts/FiraCode-OFL.txt "$stage/"
+cp THIRD-PARTY-NOTICES.md "$stage/"
 cat > "$stage/README.txt" <<EOF
 Mustel $version ($triple)
 
@@ -50,8 +51,8 @@ Mustel $version ($triple)
    Windows:     %APPDATA%\\Mustel\\mustel.jsonc
 3. 'mustel --help' lista os comandos.
 
-Dependências de sistema: nenhuma biblioteca precisa estar instalada — a libdbus vai
-embutida (link estático) e o binário não a carrega em runtime. O cofre do Linux
+Dependências de sistema: nenhuma biblioteca precisa estar instalada — o cofre fala D-Bus
+por 'zbus' (Rust puro), então o binário não carrega 'libdbus-1.so.3'. O cofre do Linux
 continua exigindo um Secret Service rodando (GNOME Keyring/KWallet).
 Para abrir a janela, o ambiente precisa também de X11 ou Wayland com OpenGL.
 
@@ -78,4 +79,4 @@ fi
 echo
 echo "pacote:    $archive"
 [ -n "$sum" ] && echo "sha256:    $sum"
-echo "publicação: local (D26) — o workflow release-build publica na página de release quando disparado com a tag"
+echo "publicação: manual (D26/D29) — anexe este arquivo à release do GitHub"

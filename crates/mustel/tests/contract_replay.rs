@@ -115,6 +115,15 @@ fn every_baseline_capture_has_a_replay_test() {
 const DIVERGENT: &[&str] = &[
     "error-database-restore-file-missing",
     "error-db-servers-test-offline",
+    "error-database-restore-invalid-ssl-mode",
+    // A superfície de `--ssl-mode` passou de seis para três valores e as seis entradas ganharam
+    // `--password-stdin`; as capturas de ajuda do baseline são congeladas e ficam como N4.
+    "help-query-run",
+    "help-database-backup",
+    "help-database-restore",
+    "help-database-pgpass-add",
+    "help-settings-db-servers-add",
+    "help-settings-db-servers-set-password",
 ];
 
 /// Slugs efetivamente cobertos por `replay_cases!` (mantido em sincronia pelo teste acima + pelo
@@ -134,7 +143,6 @@ const REPLAYED: &[&str] = &[
     "error-database-backup-invalid-username",
     "error-database-backup-missing-database",
     "error-database-restore-file-not-found",
-    "error-database-restore-invalid-ssl-mode",
     "error-database-restore-path-traversal",
     "error-db-servers-rm-unknown",
     "error-missing-required-argument",
@@ -144,20 +152,14 @@ const REPLAYED: &[&str] = &[
     "error-query-input-missing",
     "error-unknown-command",
     "error-unknown-option",
-    "help-database-backup",
-    "help-database-pgpass-add",
     "help-database-pgpass-list",
     "help-database-pgpass-remove",
     "help-database-pgpass",
-    "help-database-restore",
     "help-database",
-    "help-query-run",
     "help-query",
     "help-root",
-    "help-settings-db-servers-add",
     "help-settings-db-servers-ls",
     "help-settings-db-servers-rm",
-    "help-settings-db-servers-set-password",
     "help-settings-db-servers-test",
     "help-settings-db-servers",
     "help-settings",
@@ -273,4 +275,55 @@ fn divergent_test_offline_fails_without_prompting() {
         "não deve reproduzir a quebra do legado: {}",
         output.stdout
     );
+}
+
+/// As seis capturas de ajuda que mudaram com `--password-stdin` e com a redução do `sslMode`.
+///
+/// O baseline é congelado; a mudança é N4 e fica registrada como divergência deliberada. Este teste
+/// prende a superfície nova para ela não voltar aos seis modos por acidente.
+#[test]
+fn divergent_help_captures_show_the_new_surface() {
+    let sandbox = support::Sandbox::new();
+    let commands: &[&[&str]] = &[
+        &["query", "run"],
+        &["database", "backup"],
+        &["database", "restore"],
+        &["database", "pgpass", "add"],
+        &["settings", "db-servers", "add"],
+        &["settings", "db-servers", "set-password"],
+    ];
+
+    for command in commands {
+        let mut argv: Vec<String> = command.iter().map(|part| (*part).to_string()).collect();
+        argv.push("--help".to_string());
+        let output = sandbox.run(&argv);
+        assert_eq!(output.exit_code, Some(0), "help de {command:?}");
+        assert!(
+            output.stdout.contains("--password-stdin"),
+            "{} não mostra --password-stdin: {}",
+            command.join(" "),
+            output.stdout
+        );
+    }
+
+    for command in [
+        &["query", "run"][..],
+        &["settings", "db-servers", "add"][..],
+    ] {
+        let mut argv: Vec<String> = command.iter().map(|part| (*part).to_string()).collect();
+        argv.push("--help".to_string());
+        let output = sandbox.run(&argv);
+        assert!(
+            output.stdout.contains("Disable, Prefer, Require"),
+            "{} não mostra os três modos: {}",
+            command.join(" "),
+            output.stdout
+        );
+        assert!(
+            !output.stdout.contains("VerifyCA") && !output.stdout.contains("Allow"),
+            "{} ainda mostra o modo removido: {}",
+            command.join(" "),
+            output.stdout
+        );
+    }
 }

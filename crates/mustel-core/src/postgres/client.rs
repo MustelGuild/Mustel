@@ -1,9 +1,9 @@
 //! Fronteira fina com o driver `tokio-postgres`.
 //!
-//! Estado (T19, parcial): a conexão **sem TLS** está implementada e é exercitada pelos testes de
-//! integração; os modos que exigem TLS devolvem erro explícito em vez de silenciosamente cair para
-//! texto puro. Ligar TLS (rustls + certificados do sistema) e separar `VerifyCA` de `VerifyFull` é o
-//! que falta — ver `docs/rust-postgres-spike.md`.
+//! `Disable` abre sem TLS. `Prefer` e `Require` usam `tokio-postgres-rustls` com os certificados
+//! nativos do sistema; o verificador padrão do rustls valida cadeia **e** hostname. O driver já
+//! implementa o fallback do `Prefer` somente quando o servidor não suporta TLS; erro de certificado
+//! não vira texto puro.
 
 use std::pin::Pin;
 use std::time::Duration;
@@ -12,32 +12,79 @@ use futures_util::Stream;
 
 use crate::error::CoreError;
 use crate::postgres::settings::ConnectionSettings;
+use crate::postgres::tls::{SslMode, tls_connector};
 
 /// Abre uma conexão e devolve o cliente pronto para consultas.
 ///
 /// Erros de conexão viram [`CoreError::Postgres`] **com** `sqlstate` quando o servidor informou um (o
 /// oráculo usa `10` nesse caso e `11` quando não há SQLSTATE).
 pub async fn connect(settings: &ConnectionSettings) -> Result<tokio_postgres::Client, CoreError> {
-    if settings.ssl_mode.requires_tls() {
-        return Err(CoreError::InvalidState(format!(
-            "sslMode '{}' ainda não é suportado pelo Mustel; use Prefer, Allow ou Disable enquanto a \
-             TLS não é ligada (ver docs/rust-postgres-spike.md)",
-            settings.ssl_mode
-        )));
+    let mut config = settings.to_pg_config();
+    config.ssl_mode(driver_ssl_mode(settings.ssl_mode));
+
+    match settings.ssl_mode {
+        SslMode::Disable => {
+            let (client, connection) = config
+                .connect(tokio_postgres::NoTls)
+                .await
+                .map_err(map_error)?;
+
+            // A conexão precisa de uma task própria; quando ela cai, `client.is_closed()` fica true.
+            tokio::spawn(async move {
+                let _ = connection.await;
+            });
+
+            Ok(client)
+        }
+        SslMode::Prefer | SslMode::Require => {
+            let tls = tls_connector()?;
+            let (client, connection) = config.connect(tls).await.map_err(map_error)?;
+
+            tokio::spawn(async move {
+                let _ = connection.await;
+            });
+
+            if settings.ssl_mode == SslMode::Prefer {
+                warn_if_plaintext(&client).await;
+            }
+
+            Ok(client)
+        }
     }
+}
 
-    let config = settings.to_pg_config();
-    let (client, connection) = config
-        .connect(tokio_postgres::NoTls)
+/// Traduz o enum do produto para o enum do driver.
+fn driver_ssl_mode(mode: SslMode) -> tokio_postgres::config::SslMode {
+    match mode {
+        SslMode::Disable => tokio_postgres::config::SslMode::Disable,
+        SslMode::Prefer => tokio_postgres::config::SslMode::Prefer,
+        SslMode::Require => tokio_postgres::config::SslMode::Require,
+    }
+}
+
+/// Avisa quando `Prefer` terminou em texto puro porque o servidor não suporta TLS.
+///
+/// A consulta é feita depois da conexão; se `pg_stat_ssl` não existir ou falhar, o aviso é omitido
+/// para não transformar uma conexão válida em erro.
+async fn warn_if_plaintext(client: &tokio_postgres::Client) {
+    let Ok(row) = client
+        .query_one(
+            "select ssl from pg_stat_ssl where pid = pg_backend_pid()",
+            &[],
+        )
         .await
-        .map_err(map_error)?;
-
-    // A conexão precisa de uma task própria; quando ela cai, `client.is_closed()` fica true.
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
-
-    Ok(client)
+    else {
+        return;
+    };
+    let Ok(ssl) = row.try_get::<_, bool>(0) else {
+        return;
+    };
+    if !ssl {
+        eprintln!(
+            "Warning: sslMode Prefer connected without TLS; use Require to enforce an encrypted \
+             connection."
+        );
+    }
 }
 
 /// Uma base do servidor, como o catálogo `pg_database` a descreve.
@@ -463,8 +510,8 @@ pub fn map_error(error: tokio_postgres::Error) -> CoreError {
     let message = match (error.as_db_error(), &sqlstate) {
         (Some(db_error), Some(state)) => {
             let position = db_error.position().map(|position| match position {
-                tokio_postgres::error::ErrorPosition::Original(position) => *position,
-                tokio_postgres::error::ErrorPosition::Internal { position, .. } => *position,
+                tokio_postgres::error::ErrorPosition::Original(position)
+                | tokio_postgres::error::ErrorPosition::Internal { position, .. } => *position,
             });
 
             postgres_message(
@@ -515,19 +562,20 @@ mod tests {
     use super::*;
     use crate::postgres::tls::SslMode;
 
-    #[tokio::test]
-    async fn tls_modes_fail_clearly_instead_of_silently_downgrading() {
-        let settings = ConnectionSettings {
-            host: "localhost".to_string(),
-            user: "postgres".to_string(),
-            ssl_mode: SslMode::Require,
-            ..ConnectionSettings::default()
-        };
-
-        let error = connect(&settings).await.expect_err("must fail");
-        let message = error.to_string();
-        assert!(message.contains("sslMode 'Require'"), "{message}");
-        assert!(message.contains("docs/rust-postgres-spike.md"), "{message}");
+    #[test]
+    fn every_ssl_mode_maps_to_the_driver_mode() {
+        assert_eq!(
+            driver_ssl_mode(SslMode::Disable),
+            tokio_postgres::config::SslMode::Disable
+        );
+        assert_eq!(
+            driver_ssl_mode(SslMode::Prefer),
+            tokio_postgres::config::SslMode::Prefer
+        );
+        assert_eq!(
+            driver_ssl_mode(SslMode::Require),
+            tokio_postgres::config::SslMode::Require
+        );
     }
 
     #[test]

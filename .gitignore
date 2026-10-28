@@ -20,3 +20,6 @@ packaging/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Smoke headless: saída, capturas e target do container
+smoke/out/

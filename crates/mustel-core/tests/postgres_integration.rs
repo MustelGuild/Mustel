@@ -275,6 +275,7 @@ async fn run_two_servers(settings: &ConnectionSettings, max_parallelism: usize) 
         timestamp: "ts".to_string(),
         max_parallelism,
         command_timeout: Duration::from_secs(60),
+        escape_formulas: false,
     };
 
     let started = Instant::now();

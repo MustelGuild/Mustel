@@ -112,8 +112,9 @@ impl CoreError {
                 _ => exit_code::IO,
             },
             Self::Config(config_error) => match config_error {
-                ConfigError::EmptyServerName => exit_code::INVALID_ARGUMENT,
-                ConfigError::ServerNotFound(_) => exit_code::INVALID_ARGUMENT,
+                ConfigError::EmptyServerName | ConfigError::ServerNotFound(_) => {
+                    exit_code::INVALID_ARGUMENT
+                }
                 ConfigError::Read { source, .. } | ConfigError::Write { source, .. } => {
                     match source.kind() {
                         std::io::ErrorKind::NotFound => exit_code::FILE_NOT_FOUND,

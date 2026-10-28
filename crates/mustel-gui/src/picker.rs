@@ -29,11 +29,6 @@ impl Picker {
         self.current = Some(start);
     }
 
-    /// O seletor está aberto?
-    pub fn is_open(&self) -> bool {
-        self.current.is_some()
-    }
-
     /// Fecha sem escolher.
     pub fn close(&mut self) {
         self.current = None;
@@ -365,6 +360,9 @@ mod tests {
         assert!(!output.shapes.is_empty(), "o seletor desenhou alguma coisa");
         let mut textures = output.textures_delta;
         textures.clear();
-        assert!(picker.is_open(), "continua aberto enquanto não escolher");
+        assert!(
+            picker.current().is_some(),
+            "continua aberto enquanto não escolher"
+        );
     }
 }

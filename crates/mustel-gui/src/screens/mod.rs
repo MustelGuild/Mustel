@@ -56,14 +56,10 @@ mod tests {
             std::slice::from_ref(&saved_query),
         );
         assert_eq!(composed.interface_font.as_deref(), Some("Segoe UI"));
-        assert_eq!(
-            composed.selections,
-            vec![selection.clone()],
-            "os seletores ficam"
-        );
+        assert_eq!(composed.selections, vec![selection], "os seletores ficam");
         assert_eq!(
             composed.saved_queries,
-            vec![saved_query.clone()],
+            vec![saved_query],
             "as queries salvas ficam"
         );
 

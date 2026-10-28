@@ -35,6 +35,20 @@ const NEWLINE: &str = "\r\n";
 
 /// Escreve um campo como o `CsvHelper` escreve: cita só quando precisa.
 pub fn write_field(out: &mut String, field: &str) {
+    write_field_with(out, field, false);
+}
+
+/// Escreve um campo; com `escape_formulas`, prefixa `'` no que uma planilha avaliaria como fórmula
+/// (`=`, `+`, `-`, `@`, TAB ou CR no primeiro caractere).
+pub fn write_field_with(out: &mut String, field: &str, escape_formulas: bool) {
+    let escaped;
+    let field = if escape_formulas && needs_formula_escape(field) {
+        escaped = format!("'{field}");
+        escaped.as_str()
+    } else {
+        field
+    };
+
     if needs_quoting(field) {
         out.push('"');
         for character in field.chars() {
@@ -54,26 +68,44 @@ fn needs_quoting(field: &str) -> bool {
     field.contains([',', '"', '\r', '\n'])
 }
 
+/// O primeiro caractere faz o campo virar fórmula numa planilha?
+fn needs_formula_escape(field: &str) -> bool {
+    matches!(
+        field.chars().next(),
+        Some('=' | '+' | '-' | '@' | '\t' | '\r')
+    )
+}
+
 /// Escreve uma linha de campos e a quebra do `CsvHelper`.
 pub fn write_record(out: &mut String, fields: &[String]) {
+    write_record_with(out, fields, false);
+}
+
+/// Escreve uma linha; `escape_formulas` vale para todos os campos.
+pub fn write_record_with(out: &mut String, fields: &[String], escape_formulas: bool) {
     let mut first = true;
     for field in fields {
         if !first {
             out.push(',');
         }
         first = false;
-        write_field(out, field);
+        write_field_with(out, field, escape_formulas);
     }
     out.push_str(NEWLINE);
 }
 
 /// Conteúdo completo de um CSV com o cabeçalho e as linhas dadas (BOM incluído).
 pub fn render_csv(header: &[String], rows: &[Vec<String>]) -> String {
+    render_csv_with(header, rows, false)
+}
+
+/// Como [`render_csv`], com o escape de fórmulas ligável.
+pub fn render_csv_with(header: &[String], rows: &[Vec<String>], escape_formulas: bool) -> String {
     // O BOM vem antes de tudo — inclusive do cabeçalho.
     let mut out = String::from(UTF8_BOM);
-    write_record(&mut out, header);
+    write_record_with(&mut out, header, escape_formulas);
     for row in rows {
-        write_record(&mut out, row);
+        write_record_with(&mut out, row, escape_formulas);
     }
 
     out
@@ -175,12 +207,23 @@ pub fn header_for(columns: &[String]) -> Vec<String> {
 pub struct Appender {
     path: PathBuf,
     header: Vec<String>,
+    escape_formulas: bool,
 }
 
 impl Appender {
     /// Prepara o arquivo `path`, que passará a ter o cabeçalho dado.
     pub fn new(path: PathBuf, header: Vec<String>) -> Self {
-        Self { path, header }
+        Self {
+            path,
+            header,
+            escape_formulas: false,
+        }
+    }
+
+    /// Liga o escape de fórmulas no cabeçalho e nas linhas.
+    pub fn escaping_formulas(mut self, escape_formulas: bool) -> Self {
+        self.escape_formulas = escape_formulas;
+        self
     }
 
     /// Caminho do arquivo.
@@ -204,11 +247,11 @@ impl Appender {
         // Arquivo novo (ou vazio) sai inteiro, como o `StreamWriter` do legado; existente só ganha
         // as linhas novas.
         let content = if empty {
-            render_csv(&self.header, rows)
+            render_csv_with(&self.header, rows, self.escape_formulas)
         } else {
             let mut content = String::new();
             for row in rows {
-                write_record(&mut content, row);
+                write_record_with(&mut content, row, self.escape_formulas);
             }
             content
         };
@@ -536,6 +579,32 @@ mod tests {
 
     fn columns_of(columns: &[&str]) -> Vec<String> {
         columns.iter().map(|column| (*column).to_string()).collect()
+    }
+
+    #[test]
+    /// CONTRACT: IF-064
+    fn formula_escape_prefixes_dangerous_fields_only_when_enabled() {
+        let header = vec!["valor".to_string()];
+        let rows = vec![
+            vec!["=1+1".to_string()],
+            vec!["+x".to_string()],
+            vec!["-1".to_string()],
+            vec!["@x".to_string()],
+            vec!["\tx".to_string()],
+            vec!["\rx".to_string()],
+            vec!["ok".to_string()],
+        ];
+
+        let plain = render_csv(&header, &rows);
+        assert!(plain.contains("=1+1"), "{plain}");
+        assert!(!plain.contains("'=1+1"), "{plain}");
+
+        let escaped = render_csv_with(&header, &rows, true);
+        for dangerous in ["'=1+1", "'+x", "'-1", "'@x", "'\tx", "'\rx"] {
+            assert!(escaped.contains(dangerous), "{dangerous} em {escaped}");
+        }
+        assert!(escaped.contains("ok"), "{escaped}");
+        assert!(!escaped.contains("'ok"), "{escaped}");
     }
 
     #[test]

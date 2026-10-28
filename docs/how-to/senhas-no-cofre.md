@@ -17,10 +17,22 @@ Em automação, sem prompt:
 mustel settings db-servers set-password dev -W "$SENHA"
 ```
 
+Para não deixar a senha em `argv`:
+
+```bash
+printf '%s\n' "$SENHA" | mustel settings db-servers set-password dev --password-stdin
+```
+
 ## Guardar junto com o cadastro
 
 ```bash
 mustel settings db-servers add -n dev -H localhost -U postgres -W "$SENHA"
+```
+
+Ou, sem a senha no histórico:
+
+```bash
+printf '%s\n' "$SENHA" | mustel settings db-servers add -n dev -H localhost -U postgres --password-stdin
 ```
 
 O `-W` do `add` grava no cofre, não no `mustel.jsonc`. Abra o arquivo e confira: não há campo de senha.

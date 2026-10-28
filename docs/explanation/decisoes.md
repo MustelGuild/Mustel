@@ -32,10 +32,11 @@ porquê das `S` está em [Por que as queries salvas são assim](saved-queries.md
 | `D11` | Migração **ou** Seleção | crates principais × `gui.selections` (`IF-229`/`IF-234`, `config/model.rs`) |
 | `D12` | Migração | `tokio-postgres`, em `crates/mustel-core/src/postgres/**` |
 | `D15` | Migração **ou** Seleção | versão inicial `1.0.0` × bases explícitas (`IF-228`, `gui/query.rs`) |
-| `D24` | Migração | `.github/workflows/release-build.yml` (CI empacota e publica a release) |
+| `D24` | Migração | `.github/workflows/ci.yml` (gate de qualidade; o release não é automatizado) |
 | `D25` | Migração | manifesto `IF-071`/`IF-072` (`--create-if-not-exists`) |
 | `D26` | Migração | `publish.ps1` / `publish.sh` (release manual) |
-| `B1` | Build | `crates/mustel-core/Cargo.toml`, `README.md`/`README.pt-BR.md`, `.github/workflows/release-build.yml` (libdbus vendorizada) |
+| `D29` | Release | `docs/how-to/publicar-release.md` (release manual, sem workflow) |
+| `B1` | Build | `crates/mustel-core/Cargo.toml`, `README.md`/`README.pt-BR.md` (nenhuma libdbus: o store do `keyring` 4 fala D-Bus por `zbus`) |
 
 Os casos com duas numerações (`D10`, `D11`, `D15`) são os que exigem atenção: o texto entre
 parênteses ao lado do ID indica o tema, e o tema diz a tabela.
@@ -50,7 +51,7 @@ código implementa e que o número representa:
   nunca é silenciosa: a base entra na lista desabilitada, com o motivo visível.
 - **`R10`** — o `Run query` leva **só** o servidor que tem base marcada.
 
-## Migração para Rust (`D1`–`D27`)
+## Migração para Rust (`D1`–`D27`) e release (`D29`)
 
 | ID | Tema | Decisão | Por quê |
 |---|---|---|---|
@@ -70,17 +71,18 @@ código implementa e que o número representa:
 | `D14` | Mutações de Git | Exigem autorização explícita do dono | Guard rails do `AGENTS.md` |
 | `D15` | Versão inicial | `1.0.0`; tags `v1.x.y` dirigem o release. O incremento é do **`cargo-release`** (`A6`), não manual | Mustel é software novo |
 | `D16` | Oráculo | Binário .NET em `legacy/` é a fonte de verdade; baseline versionado em `fixtures/baseline/` | Onde docs e código divergem, vale o **código observado** |
-| `D17` | Canais de distribuição | **GitHub Releases** (executável por plataforma, publicado pelo workflow) + **crates.io** (`cargo install mustel`); **sem winget** | Usuário (2026-10-24): "não iremos publicar no winget, no futuro apenas no cargo e no executável na página de release". O `mustel-core`/`mustel-gui` continuam publicados porque são **dependências** do `mustel` — o comando que o usuário roda é só `cargo install mustel` |
+| `D17` | Canais de distribuição | **GitHub Releases** (executável por plataforma, publicado manualmente) + **crates.io** (`cargo install mustel`); **sem winget** | Usuário (2026-10-24): "não iremos publicar no winget, no futuro apenas no cargo e no executável na página de release". O `mustel-core`/`mustel-gui` continuam publicados porque são **dependências** do `mustel` — o comando que o usuário roda é só `cargo install mustel` |
 | `D18` | Repositório GitHub | Permanecer em `liphvf/FurLab` durante a migração, renomear depois | Renomear no meio misturaria duas mudanças; **consumado em 2026-10-24** (`MustelGuild/Mustel`) |
 | `D19` | Escopo da migração | Grupos `query`, `database` e `settings` **completos**; demais no backlog | Decisão do usuário |
 | `D20` | Licença | `AGPL-3.0-only` | O que está no `LICENSE`; README/docs/scripts alinhados em 2026-10-24 |
 | `D21` | Backlog | Grupos fora do escopo voltam numa **segunda onda**, depois do 1.0 | Não é descarte |
 | `D22` | Pacote winget antigo | `FurLab.CLI` permanece como está; o Mustel **não** publica no winget | Não mexer no antigo, e o canal saiu de escopo (`D17`) |
 | `D23` | Notarização macOS | Fora do escopo; documentar `xattr -d com.apple.quarantine` | macOS está fora do release |
-| `D24` | Automação de CI | **Removida pelo dono** (commit `3c81ff1`): workflows e scaffolding de agentes não existem mais; gate roda à mão | O CI vermelho a cada push atrapalhava o desenvolvimento |
+| `D24` | Automação de CI | O gate automático foi removido no commit `3c81ff1` e reintroduzido como `.github/workflows/ci.yml` no endurecimento de 2026-10-26 (`fmt`, `clippy`, `test`); **o release não é automatizado** | O CI vermelho a cada push atrapalhava o desenvolvimento; o gate atual é separado do release |
 | `D25` | Criar banco no `restore` | **Falhar por padrão** (paridade) + `--create-if-not-exists`, criando pelo driver | O `CreateDatabaseIfNeeded` do legado, via `psql`, nunca criava nada — divergência 11 |
 | `D26` | Release sem CI | Dois scripts locais (`publish.ps1`, `publish.sh`) geram o pacote + SHA256; **publicação manual** | O dono publica de `packaging/` onde quiser |
-| `D27` | Workflow empacota **e publica a release** | Um workflow (`release-build.yml`), apenas `workflow_dispatch`, com a **tag como entrada**: builda Windows e Linux, confere que o nome do artefato casa com a tag e **cria a release** com os arquivos e o `.sha256`. **Nenhuma porta de qualidade** | Compatível com `D24`: o ruído era o gate vermelho, não o empacotamento. O `cargo publish` segue manual (é irreversível e exige token) |
+| `D27` | Workflow empacota **e publica a release** | **Substituído em 2026-10-28**: `release-build.yml` foi removido; empacotamento e publicação são manuais (`D29`) | O dono quer o release sob controle manual; não há `workflow_dispatch` nem criação automática de release |
+| `D29` | Release manual | Sem workflow de release: `publish.ps1`/`publish.sh` geram `packaging/`; a release no GitHub, o upload dos artefatos e o `cargo publish` são passos manuais do dono | Decisão do dono em 2026-10-28; o `ci.yml` continua apenas como gate de qualidade |
 
 ## Autocomplete do editor (`D1`–`D20`)
 
@@ -167,17 +169,15 @@ mudam o que o binário exige da máquina.
 
 | ID | Tema | Decisão | Por quê |
 |---|---|---|---|
-| `B1` | libdbus no Linux | Dependência direta em `dbus` com a feature `vendored`: o libdbus 1.14.4 é compilado das fontes embutidas no crate (via `cc`) e **linkado estaticamente** | Sem isso o `libdbus-sys` exige o `dbus-1.pc` do sistema (`dbus-devel`/`libdbus-1-dev`) e o build falha em distro que não traz o `-devel` — inclusive nas imutáveis (Fedora atomic/Bazzite), onde instalar o pacote exige sobrescrever camada e reiniciar. Efeito colateral: o binário deixa de carregar `libdbus-1.so.3` em runtime |
+| `B1` | libdbus no Linux | **Nenhuma** dependência de `libdbus`: o store do `keyring` 4 (`v1`) no Linux é o `zbus-secret-service`, que implementa D-Bus em Rust puro | Sem isso o `libdbus-sys` exige o `dbus-1.pc` do sistema (`dbus-devel`/`libdbus-1-dev`) e o build falha em distro que não traz o `-devel` — inclusive nas imutáveis (Fedora atomic/Bazzite), onde instalar o pacote exige sobrescrever camada e reiniciar. Dispensa também carregar `libdbus-1.so.3` em runtime |
 
-A feature `vendored` do próprio `keyring` não é usada: ela liga `dbus/vendored` **e**
-`openssl/vendored`, e as credenciais usam `crypto-rust`. Declarar o `dbus` direto habilita só o
-libdbus vendorizado — a **unificação de features** do Cargo aplica isso ao `dbus` que o
-`dbus-secret-service` usa, e nenhum código precisa importá-lo.
+A redação anterior desta decisão (2026-10-27, ainda com o `keyring` 3) vendorizava o `dbus`
+(`dbus = { version = "0.9", features = ["vendored"] }`), compilando a libdbus 1.14.4 das fontes
+embutidas. Com o `keyring` 4 a dependência saiu do grafo e o problema deixou de existir na origem:
+não reintroduza `dbus`/`libdbus-sys` "por garantia" — eles não são usados por ninguém.
 
 O que a decisão **não** muda: o cofre do Linux continua falando com o **Secret Service** por D-Bus,
-então uma sessão com GNOME Keyring/KWallet segue sendo necessária ([Credenciais](credenciais.md)). O
-workflow de release deixou de instalar `libdbus-1-dev`, o que faz o build lá exercitar o caminho
-vendorizado.
+então uma sessão com GNOME Keyring/KWallet segue sendo necessária ([Credenciais](credenciais.md)).
 
 ## O que não veio para cá
 

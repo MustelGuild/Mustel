@@ -27,19 +27,16 @@ pub struct ProcessOptions {
     pub program: PathBuf,
     /// Argumentos, **cada um como um item** — nada é passado por shell.
     pub args: Vec<String>,
-    /// Diretório de trabalho; `None` herda o do CLI.
-    pub working_dir: Option<PathBuf>,
     /// Variáveis de ambiente acrescentadas às herdadas (ex.: `PGPASSWORD`).
     pub env: Vec<(String, String)>,
 }
 
 impl ProcessOptions {
-    /// Opções para um programa, sem argumentos, ambiente nem diretório próprios.
+    /// Opções para um programa, sem argumentos nem ambiente próprios.
     pub fn new(program: impl Into<PathBuf>) -> Self {
         Self {
             program: program.into(),
             args: Vec::new(),
-            working_dir: None,
             env: Vec::new(),
         }
     }
@@ -57,12 +54,6 @@ impl ProcessOptions {
     /// Acrescenta uma variável de ambiente.
     pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.env.push((key.into(), value.into()));
-        self
-    }
-
-    /// Define o diretório de trabalho.
-    pub fn with_working_dir(mut self, dir: impl Into<PathBuf>) -> Self {
-        self.working_dir = Some(dir.into());
         self
     }
 }
@@ -127,9 +118,6 @@ pub async fn run(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    if let Some(dir) = &options.working_dir {
-        command.current_dir(dir);
-    }
     for (key, value) in &options.env {
         command.env(key, value);
     }
@@ -325,26 +313,6 @@ mod tests {
 
         let outcome = run(&options, &cancellation_token()).await.expect("executa");
         assert_eq!(outcome.stdout.trim_end(), "valor");
-    }
-
-    #[tokio::test]
-    async fn uses_the_working_directory() {
-        let dir = tempfile::TempDir::new().expect("tempdir");
-        // `canonicalize` no Windows devolve o prefixo de caminho estendido (`\\\\?\\`), que nenhum
-        // programa imprime: comparamos sem ele.
-        let expected = dir
-            .path()
-            .canonicalize()
-            .expect("caminho real")
-            .to_string_lossy()
-            .trim_start_matches(r"\\?\")
-            .replace('\\', "/");
-
-        let options = script("pwd", "[Console]::Out.WriteLine((Get-Location).Path)")
-            .with_working_dir(dir.path());
-
-        let outcome = run(&options, &cancellation_token()).await.expect("executa");
-        assert_eq!(outcome.stdout.trim_end().replace('\\', "/"), expected);
     }
 
     #[tokio::test]

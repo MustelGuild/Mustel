@@ -82,14 +82,12 @@ impl SystemKeyring {
 
     fn map_error(&self, server: &str, error: keyring::Error) -> CredentialError {
         match error {
-            keyring::Error::NoStorageAccess(inner) => CredentialError::Unavailable {
-                service: self.service.clone(),
-                reason: inner.to_string(),
-            },
-            keyring::Error::PlatformFailure(inner) => CredentialError::Unavailable {
-                service: self.service.clone(),
-                reason: inner.to_string(),
-            },
+            keyring::Error::NoStorageAccess(inner) | keyring::Error::PlatformFailure(inner) => {
+                CredentialError::Unavailable {
+                    service: self.service.clone(),
+                    reason: inner.to_string(),
+                }
+            }
             other => CredentialError::Store {
                 service: self.service.clone(),
                 server: server.to_string(),

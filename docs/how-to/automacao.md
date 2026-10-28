@@ -11,7 +11,7 @@ exit code; quem chama decide o que fazer. Se um comando travar num script, é bu
 
 | Prompt que apareceria | Como evitar |
 |---|---|
-| Senha do servidor | `-W "$SENHA"`, ou a senha no cofre via `set-password`, ou `MUSTEL_PGPASS_FILE` |
+| Senha do servidor | `--password-stdin`, ou `-W "$SENHA"`, ou a senha no cofre via `set-password`, ou `MUSTEL_PGPASS_FILE` |
 | Seleção de servidores | `--npgsql-connection-string`, ou deixar **um** servidor no cadastro (com um só, não pergunta), ou `--all` |
 | Confirmação de consulta destrutiva | `--no-confirm` |
 | Nome do banco no `database backup` | passar o posicional, ou `--all` |
@@ -21,7 +21,7 @@ exit code; quem chama decide o que fazer. Se um comando travar num script, é bu
 ```bash
 set -euo pipefail
 
-mustel query run -i consulta.sql --all --no-confirm -W "$PGPASSWORD" -o ./saida
+printf '%s\n' "$PGPASSWORD" | mustel query run -i consulta.sql --all --no-confirm --password-stdin -o ./saida
 
 # o consolidado é o único arquivo que interessa para o passo seguinte
 csv=$(find ./saida -name 'consolidated_*.csv' | sort | tail -1)

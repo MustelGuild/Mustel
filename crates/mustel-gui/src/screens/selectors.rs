@@ -854,7 +854,7 @@ mod tests {
         assert!(state.commit_form(&form_for(&original)));
 
         // Editar sem mudar o nome: uma entrada, conteúdo novo.
-        let mut edited = original.clone();
+        let mut edited = original;
         edited.sql = "select * from tenants where ambiente = 'prod'".to_string();
         assert!(state.commit_form(&form_for(&edited)));
         assert_eq!(state.selections.len(), 1, "não duplicou ao editar");

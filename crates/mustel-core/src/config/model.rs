@@ -45,6 +45,7 @@ pub const DEFAULT_FONT_SCALE: f32 = 1.0;
 /// 1.25 ainda cabe na janela mínima de 640 px com folga. Acima disso o rótulo de estado mais longo
 /// passa a disputar espaço com os combos.
 pub const MIN_FONT_SCALE: f32 = 0.8;
+/// Escala máxima aceita; acima disso o rótulo de status mais longo disputa espaço com os combos.
 pub const MAX_FONT_SCALE: f32 = 1.25;
 
 /// Tema da janela.
@@ -341,7 +342,7 @@ pub struct ServerConfigEntry {
     pub fetch_all_databases: bool,
     /// Padrões excluídos na descoberta automática.
     pub exclude_patterns: Vec<String>,
-    /// Modo SSL (`Disable`, `Allow`, `Prefer`, `Require`, `VerifyCA`, `VerifyFull`).
+    /// Modo SSL (`Disable`, `Prefer`, `Require`).
     pub ssl_mode: String,
     /// Timeout de conexão em segundos (default 30).
     pub timeout: u32,

@@ -108,7 +108,7 @@ impl ConfigStore {
     /// Grava a configuração de forma atômica (arquivo temporário + rename).
     pub fn save(&self, config: &UserConfig) -> Result<()> {
         if let Some(dir) = self.path.parent() {
-            fs::create_dir_all(dir).map_err(|source| ConfigError::Write {
+            crate::private_fs::create_dir(dir).map_err(|source| ConfigError::Write {
                 path: self.path.clone(),
                 source,
             })?;
@@ -119,10 +119,12 @@ impl ConfigStore {
         })?;
 
         let temp_path = temporary_path(&self.path);
-        fs::write(&temp_path, native_newlines(json)).map_err(|source| ConfigError::Write {
-            path: temp_path.clone(),
-            source,
-        })?;
+        crate::private_fs::write(&temp_path, native_newlines(json).as_bytes()).map_err(
+            |source| ConfigError::Write {
+                path: temp_path.clone(),
+                source,
+            },
+        )?;
         fs::rename(&temp_path, &self.path).map_err(|source| ConfigError::Write {
             path: self.path.clone(),
             source,

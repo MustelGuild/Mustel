@@ -80,6 +80,7 @@ fn min_window_size(scale: f32, ai_open: bool) -> egui::Vec2 {
 /// encosta nela e a tela parece "colada".
 const CONTENT_GAP: i8 = 12;
 
+/// A janela: estado das telas, cadastro, cache de esquema e o runtime dos jobs.
 pub struct App {
     runtime: Runtime,
     /// O contexto do `egui`, guardado para pedir repaint de fora do desenho (ao encadear jobs).
@@ -403,7 +404,7 @@ impl App {
                 key,
             } => {
                 self.ai_profiles = profiles.clone();
-                self.settings.set_ai(profiles.clone(), active.clone());
+                self.settings.set_ai(profiles, active.clone());
                 self.ai.selected_profile = active;
                 let prefs = self.gui_prefs();
                 let results = self.results.clone();

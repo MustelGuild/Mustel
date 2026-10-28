@@ -1,0 +1,32 @@
+# Política do `cargo-deny`: advisories, licenças e fontes.
+#
+# O projeto é AGPL-3.0-only; as dependências abaixo são as famílias que o `sbom.cdx.json` mostra.
+# `option-ext` (MPL-2.0) e as fontes embutidas exigem aviso, coberto por `THIRD-PARTY-NOTICES.md`.
+
+[advisories]
+yanked = "deny"
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "Unlicense",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    "Unicode-3.0",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+    "MPL-2.0",
+    "AGPL-3.0-only",
+]
+confidence-threshold = 0.8
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

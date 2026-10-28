@@ -34,11 +34,12 @@ como contrato em `fixtures/baseline/` e em `docs/contrato-de-interface.md`.
 - CLI: `clap` (derive) · prompts `inquire` · tabelas `tabled` · progresso `indicatif` · estilo `console` + `owo-colors`
 - Async: `tokio` (+ `tokio-util` para `CancellationToken`) — **somente para I/O**
 - Postgres: `tokio-postgres`, com `with-serde_json-1` · dados exportados com `csv`
-- Config: `serde` + `jsonc-parser`, caminho resolvido por `dirs` · credenciais: `keyring` — **com os
-  backends nativos habilitados por plataforma** (`windows-native`, `apple-native`,
-  `sync-secret-service`); sem essas features o crate usa um store mock que aceita `set` e não persiste.
-  No Linux o `dbus` é declarado direto com `vendored` (libdbus estática, decisão `B1` em
-  `docs/explanation/decisoes.md`): não remova essa dependência achando que é código morto
+- Config: `serde` + `jsonc-parser`, caminho resolvido por `dirs` · credenciais: `keyring` **4**, cuja
+  feature default `v1` escolhe o backend nativo por plataforma (Credential Manager, Keychain, Secret
+  Service); sem store, `Entry::new` falha em vez de aceitar `set` e perder o segredo no `get`. No
+  Linux o store é o `zbus-secret-service`, D-Bus em Rust puro: não há `dbus`/`libdbus-sys` no grafo
+  (decisão `B1` em `docs/explanation/decisoes.md`) — não reintroduza essa dependência achando que é
+  código morto
 - Erros: `thiserror` no core, `anyhow` apenas no binário · logs: `tracing`
 - GUI: `eframe`/`egui` (+ `egui_extras`), atrás da feature `gui`
 - Testes: `insta` (snapshots), `expectrl` (PTY), `tempfile`, `tokio-postgres` (integração Postgres)
@@ -77,6 +78,7 @@ cargo run -p mustel-testkit --bin oracle-compare -- --report --scope query,datab
 # Release (ver docs/how-to/publicar-release.md)
 cargo release patch             # ensaio: mostra o bump e o commit/tag que faria (não altera nada)
 cargo release patch --execute   # bump + commit + tag v<versao>
+# release manual: ./publish.ps1 / ./publish.sh, depois release no GitHub; sem workflow
 ```
 
 ## Verificar a GUI na janela
@@ -89,7 +91,7 @@ entrada sintética, captura em `scratch://` e o que **não** dá para provar ass
 ## Convenções de código
 
 - **Formatação**: `cargo fmt` (default do rustfmt, 100 colunas). O CI reprova qualquer diff.
-- **Lint**: `clippy -D warnings`; `unsafe_code = "forbid"` no workspace.
+- **Lint**: `clippy -D warnings` com o `[workspace.lints]` (rustc `unused = deny`, `unreachable_pub`/`missing_docs`; clippy de duplicação e placeholder) e `clippy.toml` para thresholds; `#[allow]` exige `reason`. Decisão e medições em `MustelPlans/lints-fase-1.md`.
 - **Sem UI no core**: `mustel-core` não depende de `clap`, `inquire`, `indicatif` nem `egui`
   (`cargo tree -p mustel-core` deve ficar limpo).
 - **Comandos finos**: o comando parseia argumentos, resolve entradas (flags + prompts) e chama o caso de

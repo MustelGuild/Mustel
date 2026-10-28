@@ -101,7 +101,11 @@ pub struct QueryRunArgs {
     #[arg(short = 'W', long = "password", value_name = "password")]
     pub password: Option<String>,
 
-    /// SSL mode (Disable, Allow, Prefer, Require, VerifyCA, VerifyFull). Default: Prefer.
+    /// Read the password from a line on stdin.
+    #[arg(long = "password-stdin", conflicts_with = "password")]
+    pub password_stdin: bool,
+
+    /// SSL mode (Disable, Prefer, Require). Default: Prefer.
     #[arg(long = "ssl-mode", value_name = "mode")]
     pub ssl_mode: Option<String>,
 
@@ -149,6 +153,10 @@ pub struct QueryRunArgs {
     /// Skip confirmation prompt for destructive queries.
     #[arg(long = "no-confirm")]
     pub no_confirm: bool,
+
+    /// Escape spreadsheet formulas in the CSV (`=`, `+`, `-`, `@`, TAB, CR).
+    #[arg(long = "csv-escape-formulas")]
+    pub csv_escape_formulas: bool,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -197,6 +205,10 @@ pub struct DatabaseBackupArgs {
     #[arg(short = 'W', long = "password", value_name = "password")]
     pub password: Option<String>,
 
+    /// Read the password from a line on stdin.
+    #[arg(long = "password-stdin", conflicts_with = "password")]
+    pub password_stdin: bool,
+
     /// SSL mode for the database connection.
     ///
     /// Aceito por compatibilidade: o legado **não** usa este valor no `pg_dump`.
@@ -218,6 +230,10 @@ pub struct DatabaseBackupArgs {
     /// Back up all databases on the server.
     #[arg(short = 'a', long = "all")]
     pub all: bool,
+
+    /// Fail with a non-zero exit code when any database fails (default: warn and exit 0).
+    #[arg(long = "strict")]
+    pub strict: bool,
 
     /// Table patterns to exclude entirely from the backup (repeat the flag for multiple values).
     #[arg(long = "exclude", value_name = "pattern")]
@@ -266,6 +282,10 @@ pub struct DatabaseRestoreArgs {
     /// Database password. Resolved from the keyring or prompted when omitted.
     #[arg(short = 'W', long = "password", value_name = "password")]
     pub password: Option<String>,
+
+    /// Read the password from a line on stdin.
+    #[arg(long = "password-stdin", conflicts_with = "password")]
+    pub password_stdin: bool,
 
     /// SSL mode for the database connection.
     #[arg(long = "ssl-mode", value_name = "mode")]
@@ -370,6 +390,10 @@ pub struct PgpassAddArgs {
     /// Password to store for this entry.
     #[arg(long = "password", value_name = "password")]
     pub password: Option<String>,
+
+    /// Read the password from a line on stdin.
+    #[arg(long = "password-stdin", conflicts_with = "password")]
+    pub password_stdin: bool,
 }
 
 /// Argumentos de `mustel database pgpass remove`.
@@ -466,11 +490,15 @@ pub struct DbServersAddArgs {
     #[arg(short = 'W', long = "password", value_name = "password")]
     pub password: Option<String>,
 
+    /// Read the password from a line on stdin.
+    #[arg(long = "password-stdin", conflicts_with = "password")]
+    pub password_stdin: bool,
+
     /// Comma-separated list of databases.
     #[arg(short = 'd', long = "databases", value_name = "databases")]
     pub databases: Option<String>,
 
-    /// SSL mode (Disable, Allow, Prefer, Require, VerifyCA, VerifyFull).
+    /// SSL mode (Disable, Prefer, Require).
     #[arg(long = "ssl-mode", value_name = "mode")]
     pub ssl_mode: Option<String>,
 
@@ -517,4 +545,8 @@ pub struct DbServersSetPasswordArgs {
     /// Password to store, instead of prompting (Mustel addition, like `add -W`).
     #[arg(short = 'W', long = "password", value_name = "password")]
     pub password: Option<String>,
+
+    /// Read the password from a line on stdin.
+    #[arg(long = "password-stdin", conflicts_with = "password")]
+    pub password_stdin: bool,
 }

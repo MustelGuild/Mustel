@@ -41,10 +41,9 @@ cargo install mustel
 **Alvos suportados**: `x86_64-pc-windows-msvc` e `x86_64-unknown-linux-gnu`.
 macOS **não** é suportado por enquanto.
 
-**Build e runtime (Linux)**: nenhum pacote `-devel` é necessário — a libdbus é compilada das fontes
-embutidas no crate e linkada estaticamente (`vendored`), então o binário nunca carrega
-`libdbus-1.so.3`. O cofre continua exigindo um Secret Service rodando (GNOME Keyring/KWallet). Abrir a
-janela exige também X11 ou Wayland com OpenGL.
+**Build e runtime (Linux)**: nenhum pacote `-devel` é necessário, e o binário nunca carrega
+`libdbus-1.so.3` — o cofre fala D-Bus por `zbus`, em Rust puro. O cofre continua exigindo um Secret
+Service rodando (GNOME Keyring/KWallet). Abrir a janela exige também X11 ou Wayland com OpenGL.
 
 ## Comandos
 
@@ -131,6 +130,11 @@ Contribuições são bem-vindas:
 
 O guia do repositório para quem contribui e para agentes é o [`AGENTS.md`](AGENTS.md). Antes de abrir
 um PR, rode `cargo fmt`, `cargo clippy -- -D warnings` e `cargo test --workspace`.
+
+## Segurança
+
+Para reportar uma vulnerabilidade, siga o [`SECURITY.md`](SECURITY.md). Não abra issue pública com
+detalhes de exploração.
 
 ## Licença
 

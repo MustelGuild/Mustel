@@ -172,11 +172,21 @@ impl State {
         self.selectors.apply(result);
 
         match result {
-            // Resultados do painel da IA não são desta tela.
+            // Resultados de outras telas não são desta:
+            // - painel da IA (`Ddl`, `SqlGenerated`, perfis e teste);
+            // - esquema/carga da aba Query (`Schema`, `Databases`, seleção e `QueryDone`);
+            // - ensaio da query de seleção (`SelectionTested`), que é da aba Settings.
             JobResult::Ddl { .. }
             | JobResult::SqlGenerated { .. }
             | JobResult::AiProfilesSaved
-            | JobResult::AiTested { .. } => {}
+            | JobResult::AiTested { .. }
+            | JobResult::Schema { .. }
+            | JobResult::Databases { .. }
+            | JobResult::SelectionTested { .. }
+            | JobResult::Selection { .. }
+            | JobResult::SelectionFailed { .. }
+            | JobResult::QueryDone { .. }
+            | JobResult::QueryWithoutDatabases => {}
             JobResult::Servers(servers) => {
                 self.servers = servers.clone();
                 self.error = None;
@@ -204,16 +214,9 @@ impl State {
                 });
                 self.error = None;
             }
-            // O esquema é da tela de consulta; a de servidores não tem o que fazer com ele.
-            JobResult::Schema { .. } | JobResult::Databases { .. } => {}
-            // O ensaio de query de seleção é da aba Settings.
-            JobResult::SelectionTested { .. } => {}
-            // A carga da seleção é da aba Query.
-            JobResult::Selection { .. } | JobResult::SelectionFailed { .. } => {}
             JobResult::Failed(error) => {
                 self.error = Some(error.clone());
             }
-            JobResult::QueryDone { .. } | JobResult::QueryWithoutDatabases => {}
         }
     }
 
@@ -438,14 +441,7 @@ impl State {
                     egui::ComboBox::from_id_salt("ssl_mode")
                         .selected_text(&form.draft.ssl_mode)
                         .show_ui(ui, |ui| {
-                            for mode in [
-                                "Disable",
-                                "Allow",
-                                "Prefer",
-                                "Require",
-                                "VerifyCA",
-                                "VerifyFull",
-                            ] {
+                            for mode in ["Disable", "Prefer", "Require"] {
                                 ui.selectable_value(
                                     &mut form.draft.ssl_mode,
                                     mode.to_string(),

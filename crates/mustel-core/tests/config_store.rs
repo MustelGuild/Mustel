@@ -102,7 +102,7 @@ fn adds_updates_and_removes_servers_case_insensitively() {
 
     let updated = ServerConfigEntry {
         host: "db.internal".to_string(),
-        ..dev.clone()
+        ..dev
     };
     store.add_or_update_server(&updated).expect("update");
     let servers = store.get_servers().expect("list");

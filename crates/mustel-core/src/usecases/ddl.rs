@@ -329,10 +329,10 @@ fn escaped(text: &str) -> String {
 /// Escreve via arquivo temporário + `rename`.
 fn write_atomically(path: &std::path::Path, bytes: &[u8]) -> Result<(), CoreError> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        crate::private_fs::create_dir(parent)?;
     }
     let temp = path.with_extension("tmp");
-    std::fs::write(&temp, bytes)?;
+    crate::private_fs::write(&temp, bytes)?;
     std::fs::rename(&temp, path)?;
     Ok(())
 }

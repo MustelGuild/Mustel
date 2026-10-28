@@ -7,8 +7,8 @@
     configuração de exemplo, LICENSE e o aviso da Fira Code (SIL OFL 1.1), gera o .zip
     e o SHA256 em packaging/.
     A **publicação é manual**: o script só produz o artefato. O equivalente no Unix é
-    o publish.sh, com o mesmo layout de saída. No CI, o workflow `release-build` roda este
-    script e publica o resultado na página de release (D27).
+    o publish.sh, com o mesmo layout de saída. A release do GitHub é criada manualmente
+    a partir de packaging/ (D29).
 
 .PARAMETER NoBuild
     Reempacota o binário já construído, sem rodar o cargo build.
@@ -54,6 +54,7 @@ try {
     Copy-Item (Join-Path $root 'mustel.example.jsonc') $stage
     Copy-Item (Join-Path $root 'LICENSE') $stage
     Copy-Item (Join-Path $root 'crates\mustel-gui\assets\fonts\FiraCode-OFL.txt') $stage
+    Copy-Item (Join-Path $root 'THIRD-PARTY-NOTICES.md') $stage
 
     $readme = @"
 Mustel $version ($triple)
@@ -79,7 +80,7 @@ Fonte embutida: Fira Code, sob SIL OFL 1.1 (ver FiraCode-OFL.txt).
     Write-Host ''
     Write-Host "pacote:  $archive"
     Write-Host "sha256:  $hash"
-    Write-Host 'publicação: local (D26) — o workflow release-build publica na página de release quando disparado com a tag'
+    Write-Host 'publicação: manual (D26/D29) — anexe este arquivo à release do GitHub'
 }
 finally {
     Pop-Location

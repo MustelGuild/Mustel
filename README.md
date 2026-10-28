@@ -41,10 +41,10 @@ cargo install mustel
 **Supported targets**: `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu`.
 macOS is **not** supported for now.
 
-**Linux build and runtime**: no `-devel` package is needed — libdbus is compiled from the sources
-shipped with the crate and linked statically (`vendored`), so the binary never loads
-`libdbus-1.so.3`. The credentials still need a running Secret Service (GNOME Keyring/KWallet).
-Opening the window additionally needs X11 or Wayland with OpenGL.
+**Linux build and runtime**: no `-devel` package is needed, and the binary never loads
+`libdbus-1.so.3` — the keyring store speaks D-Bus through `zbus`, in pure Rust. The credentials
+still need a running Secret Service (GNOME Keyring/KWallet). Opening the window additionally needs
+X11 or Wayland with OpenGL.
 
 ## Commands
 
@@ -131,6 +131,11 @@ Contributions are welcome:
 
 The repository guide for contributors and agents is [`AGENTS.md`](AGENTS.md). Please run
 `cargo fmt`, `cargo clippy -- -D warnings` and `cargo test --workspace` before opening a PR.
+
+## Security
+
+To report a vulnerability, follow [`SECURITY.md`](SECURITY.md). Please do not open a public issue with
+exploit details.
 
 ## License
 

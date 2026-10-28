@@ -50,6 +50,7 @@ fn a_real_core_job_reaches_the_window_and_asks_for_a_repaint() {
         command_timeout: std::time::Duration::from_secs(30),
         all: false,
         exclude: std::collections::HashSet::new(),
+        escape_formulas: false,
     };
 
     // O aviso de repaint passa pelo contexto **real** do `egui`: é a chamada que a janela faz.
@@ -101,6 +102,7 @@ fn a_cancelled_job_runs_no_database() {
         command_timeout: std::time::Duration::from_secs(30),
         all: false,
         exclude: std::collections::HashSet::new(),
+        escape_formulas: false,
     };
 
     let (sink, events) = ChannelSink::with_repaint(Box::new(|| {}));

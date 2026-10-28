@@ -31,11 +31,6 @@ impl SmoothScroll {
         self.active = (to - from).abs() > SNAP_PX;
     }
 
-    /// Há animação em andamento?
-    pub fn is_active(&self) -> bool {
-        self.active
-    }
-
     /// Avança um quadro e devolve o offset a aplicar, ou `None` quando não há animação.
     pub fn step(&mut self, dt: f32) -> Option<f32> {
         if !self.active {
@@ -77,7 +72,6 @@ mod tests {
     #[test]
     fn a_new_animation_is_inactive() {
         let mut scroll = SmoothScroll::default();
-        assert!(!scroll.is_active());
         assert!(
             scroll.step(1.0 / 60.0).is_none(),
             "sem animação não devolve offset"
@@ -91,7 +85,7 @@ mod tests {
     fn it_reaches_the_target_and_stops() {
         let mut scroll = SmoothScroll::default();
         scroll.start(0.0, 500.0);
-        assert!(scroll.is_active());
+        assert!(scroll.step(0.0).is_some(), "a animação começa");
 
         let mut last = 0.0;
         for _ in 0..240 {
@@ -105,7 +99,7 @@ mod tests {
             }
         }
 
-        assert!(!scroll.is_active(), "a animação termina");
+        assert!(scroll.step(0.0).is_none(), "a animação termina");
         assert_eq!(last, 500.0, "encaixa exatamente no destino");
     }
 
@@ -147,6 +141,6 @@ mod tests {
     fn starting_at_the_target_does_nothing() {
         let mut scroll = SmoothScroll::default();
         scroll.start(300.0, 300.0);
-        assert!(!scroll.is_active());
+        assert!(scroll.step(0.0).is_none(), "nada a animar");
     }
 }

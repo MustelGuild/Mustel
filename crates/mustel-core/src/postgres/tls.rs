@@ -1,21 +1,30 @@
-//! Modos de SSL aceitos pelo legado (Npgsql) e sua tradução para o driver.
+//! Modos de SSL e a configuração TLS do driver.
 //!
-//! O `sslMode` do FurLab é o de Npgsql: `Disable`, `Allow`, `Prefer`, `Require`, `VerifyCA`,
-//! `VerifyFull`. O `tokio-postgres` não tem esses nomes: quem decide sobre TLS é o tipo do
-//! conector (`NoTls` ou um `MakeTlsConnect`).
+//! O `sslMode` do produto tem os três valores do `tokio-postgres`: `Disable`, `Prefer` e
+//! `Require`. Não há `Allow`, `VerifyCA` nem `VerifyFull`: TLS, quando usado, sempre valida a
+//! cadeia e o hostname com o verificador padrão do rustls. A confiança vem do store do sistema
+//! (`rustls-native-certs`); certificado self-signed exige a CA instalada no SO.
 //!
-//! Estado atual (T19, parcial): a tradução **está definida e testada**, mas a conexão real com TLS
-//! ainda não foi ligada — os modos que exigem TLS devolvem erro claro em vez de degradar para
-//! texto puro silenciosamente. Falta ligar `tokio-postgres-rustls` com os certificados do sistema e
-//! implementar a diferença entre `VerifyCA` (valida a cadeia, **não** o hostname, como o Npgsql) e
-//! `VerifyFull` (valida os dois, que é o padrão do rustls). Ver `docs/rust-postgres-spike.md`.
+//! `Prefer` é oportunista: tenta TLS e só cai para texto puro quando o servidor responde que não
+//! suporta TLS. Erro de certificado/handshake **não** vira texto puro; `Require` nunca cai.
 
 use std::fmt;
 use std::str::FromStr;
+use std::sync::Arc;
+
+use rustls::ClientConfig;
+use rustls::RootCertStore;
+use tokio_postgres_rustls::MakeRustlsConnect;
+
+use crate::error::CoreError;
 
 /// Modo de SSL inválido.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("invalid ssl mode: '{0}'. Use Disable, Allow, Prefer, Require, VerifyCA or VerifyFull.")]
+#[error(
+    "invalid ssl mode: '{0}'. Use Disable, Prefer or Require. Allow, VerifyCA and VerifyFull are \
+     no longer supported: use Prefer (TLS first) or Disable instead of Allow, and Require instead \
+     of VerifyCA/VerifyFull."
+)]
 pub struct SslModeError(pub String);
 
 /// Modo de SSL pedido pelo usuário.
@@ -23,44 +32,30 @@ pub struct SslModeError(pub String);
 pub enum SslMode {
     /// Sem TLS.
     Disable,
-    /// Tenta TLS; se o servidor não suportar, segue sem.
-    Allow,
-    /// Tenta TLS; se o servidor não suportar, segue sem (padrão do legado).
+    /// Tenta TLS; se o servidor não suportar, segue sem (padrão).
     #[default]
     Prefer,
-    /// Exige TLS.
+    /// Exige TLS com validação de cadeia e hostname.
     Require,
-    /// Exige TLS e valida a cadeia (sem checar o hostname, como o Npgsql).
-    VerifyCa,
-    /// Exige TLS e valida cadeia **e** hostname.
-    VerifyFull,
 }
 
 impl SslMode {
     /// Exige TLS?
     pub fn requires_tls(self) -> bool {
-        matches!(self, Self::Require | Self::VerifyCa | Self::VerifyFull)
+        matches!(self, Self::Require)
     }
 
-    /// Tenta TLS, aceitando seguir sem quando o servidor não oferece?
-    pub fn tries_tls(self) -> bool {
-        !matches!(self, Self::Disable)
+    /// Pode usar TLS (mesmo que não o exija)?
+    pub fn uses_tls(self) -> bool {
+        matches!(self, Self::Prefer | Self::Require)
     }
 
-    /// Valida o hostname do certificado? (`VerifyCA` do Npgsql **não** valida.)
-    pub fn verifies_hostname(self) -> bool {
-        matches!(self, Self::VerifyFull)
-    }
-
-    /// Nome como o legado escreve.
+    /// Nome como o produto escreve.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Disable => "Disable",
-            Self::Allow => "Allow",
             Self::Prefer => "Prefer",
             Self::Require => "Require",
-            Self::VerifyCa => "VerifyCA",
-            Self::VerifyFull => "VerifyFull",
         }
     }
 }
@@ -77,34 +72,53 @@ impl FromStr for SslMode {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value.trim().to_ascii_lowercase().as_str() {
             "disable" => Ok(Self::Disable),
-            "allow" => Ok(Self::Allow),
             "prefer" => Ok(Self::Prefer),
             "require" => Ok(Self::Require),
-            "verifyca" | "verify-ca" => Ok(Self::VerifyCa),
-            "verifyfull" | "verify-full" => Ok(Self::VerifyFull),
             other => Err(SslModeError(other.to_string())),
         }
     }
+}
+
+/// Cria o conector rustls usado por `Prefer`/`Require`.
+///
+/// O `RootCertStore` vem do store nativo do sistema. Store vazio é erro: não faz sentido tentar TLS
+/// sem nenhuma âncora de confiança, e cair para texto puro seria um downgrade silencioso.
+pub fn tls_connector() -> Result<MakeRustlsConnect, CoreError> {
+    let native = rustls_native_certs::load_native_certs();
+    let mut roots = RootCertStore::empty();
+    let (added, _) = roots.add_parsable_certificates(native.certs);
+
+    if added == 0 {
+        return Err(CoreError::InvalidState(format!(
+            "no trusted CA certificates were loaded from the system store: {:?}",
+            native.errors
+        )));
+    }
+
+    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let config = ClientConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .map_err(|error| {
+            CoreError::InvalidState(format!(
+                "could not configure TLS protocol versions: {error}"
+            ))
+        })?
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+
+    Ok(MakeRustlsConnect::new(config))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
     /// CONTRACT: IF-021
-    fn parses_every_legacy_name_ignoring_case() {
+    #[test]
+    fn parses_the_three_supported_names_ignoring_case() {
         assert_eq!("Disable".parse::<SslMode>().expect("ok"), SslMode::Disable);
         assert_eq!("prefer".parse::<SslMode>().expect("ok"), SslMode::Prefer);
         assert_eq!("REQUIRE".parse::<SslMode>().expect("ok"), SslMode::Require);
-        assert_eq!(
-            "verifyca".parse::<SslMode>().expect("ok"),
-            SslMode::VerifyCa
-        );
-        assert_eq!(
-            "VerifyFull".parse::<SslMode>().expect("ok"),
-            SslMode::VerifyFull
-        );
         assert_eq!(
             "Prefer".parse::<SslMode>().expect("ok").to_string(),
             "Prefer"
@@ -112,25 +126,23 @@ mod tests {
     }
 
     #[test]
-    fn unknown_mode_is_rejected() {
-        assert!("maybe".parse::<SslMode>().is_err());
+    /// CONTRACT: IF-256
+    fn removed_and_unknown_modes_are_rejected_with_migration() {
+        for mode in ["Allow", "VerifyCA", "VerifyFull", "verify-ca", "maybe"] {
+            let error = mode.parse::<SslMode>().expect_err("deve recusar");
+            assert!(error.to_string().contains("no longer supported"), "{error}");
+            assert!(error.to_string().contains("Prefer"), "{error}");
+        }
     }
 
     #[test]
-    fn tls_requirements_match_npgsql_semantics() {
+    fn tls_requirements_follow_the_three_modes() {
         assert!(!SslMode::Disable.requires_tls());
-        assert!(!SslMode::Allow.requires_tls());
         assert!(!SslMode::Prefer.requires_tls());
         assert!(SslMode::Require.requires_tls());
-        assert!(SslMode::VerifyCa.requires_tls());
-        assert!(SslMode::VerifyFull.requires_tls());
 
-        assert!(!SslMode::Disable.tries_tls());
-        assert!(SslMode::Allow.tries_tls());
-        assert!(SslMode::Prefer.tries_tls());
-
-        // Diferença sutil que precisa ser respeitada: VerifyCA valida a cadeia sem checar hostname.
-        assert!(!SslMode::VerifyCa.verifies_hostname());
-        assert!(SslMode::VerifyFull.verifies_hostname());
+        assert!(!SslMode::Disable.uses_tls());
+        assert!(SslMode::Prefer.uses_tls());
+        assert!(SslMode::Require.uses_tls());
     }
 }

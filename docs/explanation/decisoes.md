@@ -32,9 +32,10 @@ Depois da consolidação entraram mais duas famílias, com letra própria para n
 | `D11` | Migração **ou** Seleção | crates principais × `gui.selections` (`IF-229`/`IF-234`, `config/model.rs`) |
 | `D12` | Migração | `tokio-postgres`, em `crates/mustel-core/src/postgres/**` |
 | `D15` | Migração **ou** Seleção | versão inicial `1.0.0` × bases explícitas (`IF-228`, `gui/query.rs`) |
-| `D24` | Migração | `.github/workflows/release-build.yml` (CI empacota e publica a release) |
+| `D24` | Migração | `.github/workflows/ci.yml` (gate de qualidade; o release não é automatizado) |
 | `D25` | Migração | manifesto `IF-071`/`IF-072` (`--create-if-not-exists`) |
 | `D26` | Migração | `publish.ps1` / `publish.sh` (release manual) |
+| `D29` | Release | `docs/how-to/publicar-release.md` (release manual, sem workflow) |
 
 Os casos com duas numerações (`D10`, `D11`, `D15`) são os que exigem atenção: o texto entre
 parênteses ao lado do ID indica o tema, e o tema diz a tabela.
@@ -49,7 +50,7 @@ código implementa e que o número representa:
   nunca é silenciosa: a base entra na lista desabilitada, com o motivo visível.
 - **`R10`** — o `Run query` leva **só** o servidor que tem base marcada.
 
-## Migração para Rust (`D1`–`D27`)
+## Migração para Rust (`D1`–`D27`) e release (`D29`)
 
 | ID | Tema | Decisão | Por quê |
 |---|---|---|---|
@@ -69,17 +70,18 @@ código implementa e que o número representa:
 | `D14` | Mutações de Git | Exigem autorização explícita do dono | Guard rails do `AGENTS.md` |
 | `D15` | Versão inicial | `1.0.0`; tags `v1.x.y` dirigem o release. O incremento é do **`cargo-release`** (`A6`), não manual | Mustel é software novo |
 | `D16` | Oráculo | Binário .NET em `legacy/` é a fonte de verdade; baseline versionado em `fixtures/baseline/` | Onde docs e código divergem, vale o **código observado** |
-| `D17` | Canais de distribuição | **GitHub Releases** (executável por plataforma, publicado pelo workflow) + **crates.io** (`cargo install mustel`); **sem winget** | Usuário (2026-10-24): "não iremos publicar no winget, no futuro apenas no cargo e no executável na página de release". O `mustel-core`/`mustel-gui` continuam publicados porque são **dependências** do `mustel` — o comando que o usuário roda é só `cargo install mustel` |
+| `D17` | Canais de distribuição | **GitHub Releases** (executável por plataforma, publicado manualmente) + **crates.io** (`cargo install mustel`); **sem winget** | Usuário (2026-10-24): "não iremos publicar no winget, no futuro apenas no cargo e no executável na página de release". O `mustel-core`/`mustel-gui` continuam publicados porque são **dependências** do `mustel` — o comando que o usuário roda é só `cargo install mustel` |
 | `D18` | Repositório GitHub | Permanecer em `liphvf/FurLab` durante a migração, renomear depois | Renomear no meio misturaria duas mudanças; **consumado em 2026-10-24** (`MustelGuild/Mustel`) |
 | `D19` | Escopo da migração | Grupos `query`, `database` e `settings` **completos**; demais no backlog | Decisão do usuário |
 | `D20` | Licença | `AGPL-3.0-only` | O que está no `LICENSE`; README/docs/scripts alinhados em 2026-10-24 |
 | `D21` | Backlog | Grupos fora do escopo voltam numa **segunda onda**, depois do 1.0 | Não é descarte |
 | `D22` | Pacote winget antigo | `FurLab.CLI` permanece como está; o Mustel **não** publica no winget | Não mexer no antigo, e o canal saiu de escopo (`D17`) |
 | `D23` | Notarização macOS | Fora do escopo; documentar `xattr -d com.apple.quarantine` | macOS está fora do release |
-| `D24` | Automação de CI | **Removida pelo dono** (commit `3c81ff1`): workflows e scaffolding de agentes não existem mais; gate roda à mão | O CI vermelho a cada push atrapalhava o desenvolvimento |
+| `D24` | Automação de CI | O gate automático foi removido no commit `3c81ff1` e reintroduzido como `.github/workflows/ci.yml` no endurecimento de 2026-10-26 (`fmt`, `clippy`, `test`); **o release não é automatizado** | O CI vermelho a cada push atrapalhava o desenvolvimento; o gate atual é separado do release |
 | `D25` | Criar banco no `restore` | **Falhar por padrão** (paridade) + `--create-if-not-exists`, criando pelo driver | O `CreateDatabaseIfNeeded` do legado, via `psql`, nunca criava nada — divergência 11 |
 | `D26` | Release sem CI | Dois scripts locais (`publish.ps1`, `publish.sh`) geram o pacote + SHA256; **publicação manual** | O dono publica de `packaging/` onde quiser |
-| `D27` | Workflow empacota **e publica a release** | Um workflow (`release-build.yml`), apenas `workflow_dispatch`, com a **tag como entrada**: builda Windows e Linux, confere que o nome do artefato casa com a tag e **cria a release** com os arquivos e o `.sha256`. **Nenhuma porta de qualidade** | Compatível com `D24`: o ruído era o gate vermelho, não o empacotamento. O `cargo publish` segue manual (é irreversível e exige token) |
+| `D27` | Workflow empacota **e publica a release** | **Substituído em 2026-10-28**: `release-build.yml` foi removido; empacotamento e publicação são manuais (`D29`) | O dono quer o release sob controle manual; não há `workflow_dispatch` nem criação automática de release |
+| `D29` | Release manual | Sem workflow de release: `publish.ps1`/`publish.sh` geram `packaging/`; a release no GitHub, o upload dos artefatos e o `cargo publish` são passos manuais do dono | Decisão do dono em 2026-10-28; o `ci.yml` continua apenas como gate de qualidade |
 
 ## Autocomplete do editor (`D1`–`D20`)
 

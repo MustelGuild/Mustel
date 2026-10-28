@@ -75,6 +75,7 @@ cargo run -p mustel-testkit --bin oracle-compare -- --report --scope query,datab
 # Release (ver docs/how-to/publicar-release.md)
 cargo release patch             # ensaio: mostra o bump e o commit/tag que faria (não altera nada)
 cargo release patch --execute   # bump + commit + tag v<versao>
+# release manual: ./publish.ps1 / ./publish.sh, depois release no GitHub; sem workflow
 ```
 
 ## Verificar a GUI na janela

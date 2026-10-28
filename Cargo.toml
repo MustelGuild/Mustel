@@ -33,16 +33,16 @@ dbg_macro = "warn"
 todo = "warn"
 unimplemented = "warn"
 
-# Versão e tag de release pelo `cargo-release` (D28).
+# Versão e tag de release pelo `cargo-release` (D29).
 #
 # O fluxo é: `cargo release patch --execute` → incrementa `workspace.package.version`, atualiza o
-# `Cargo.lock` e as dependências internas, commita e cria a tag local `v<versao>`. O push da tag e
-# o disparo do workflow são atos do dono; a publicação no crates.io é passo separado porque é
-# irreversível.
+# `Cargo.lock` e as dependências internas, commita e cria a tag local `v<versao>`. O push da tag, o
+# empacotamento e a criação da release no GitHub são atos manuais do dono; a publicação no crates.io
+# é passo separado porque é irreversível.
 [workspace.metadata.release]
 # Uma versão para o workspace inteiro: os crates declaram `version.workspace = true`.
 shared-version = true
-# A tag precisa casar com o nome do artefato — é o que o workflow confere antes de publicar.
+# A tag precisa casar com o nome do artefato; a conferência é manual, no release.
 tag-name = "v{{version}}"
 tag-message = "Mustel {{version}}"
 pre-release-commit-message = "Bump Mustel to {{version}}"

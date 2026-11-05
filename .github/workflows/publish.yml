@@ -4,9 +4,9 @@
 # **tag** no campo. Push de tag, push de branch e pull request não disparam nada — a publicação é
 # ato do dono.
 #
-# A tag informada é o que define a release: o QA Gate verifica o commit dela, o preflight confere a
-# tag contra `[workspace.package] version` e os binários saem desse commit — nunca do branch que
-# estava selecionado no clique.
+# A tag informada é o que define a release: o QA Gate verifica o commit dela, o preflight confere
+# formato, existência e a igualdade com `[workspace.package] version`, e os binários saem desse
+# commit — nunca do branch que estava selecionado no clique.
 #
 # O gate é o mesmo do `.github/workflows/qa-gate.yml`, chamado por `workflow_call`. O empacotamento
 # em si continua sendo o dos scripts locais (`publish.ps1`/`publish.sh`) — uma única implementação,
@@ -45,11 +45,26 @@ jobs:
 
   preflight:
     name: conferir tag x versão
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      # Antes do checkout: se a tag estiver no formato errado ou não existir, o erro precisa dizer
+      # isso — e não um `git fetch` que falhou.
+      - name: conferir a tag (formato e existência)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::informe a tag no formato v<versao> (ex.: v1.0.0); recebido: $RELEASE_TAG"
+            exit 1
+          fi
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::a tag $RELEASE_TAG não existe no remoto; crie-a com 'cargo release' e empurre com 'git push --follow-tags'"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag }}
       - name: instalar Rust
@@ -57,10 +72,6 @@ jobs:
       - name: a tag tem de casar com a versão do Cargo.toml
         run: |
           set -eu
-          if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::informe uma tag v<versao> (ex.: v1.0.0); recebido: $RELEASE_TAG"
-            exit 1
-          fi
           version=$(cargo pkgid -p mustel | sed 's/.*#//')
           if [ "v$version" != "$RELEASE_TAG" ]; then
             echo "::error::a tag $RELEASE_TAG não casa com a versão $version do Cargo.toml"
@@ -77,19 +88,19 @@ jobs:
         include:
           - os: windows-latest
             artifact: windows
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             artifact: linux
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag }}
       - name: instalar Rust
         uses: dtolnay/rust-toolchain@18f0487477426dce244608110aa2660c2893deb7 # 1.98.1
       - name: cache do cargo
-        uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       # Versões pinadas: são as validadas em docs/how-to/publicar-release.md, para o pacote sair
       # igual ao gerado à mão.
       - name: instalar ferramentas de empacotamento
@@ -107,7 +118,7 @@ jobs:
         run: ./publish.sh
         shell: bash
       - name: guardar os artefatos da execução
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: package-${{ matrix.artifact }}
           path: |
@@ -119,14 +130,14 @@ jobs:
   release:
     name: release no GitHub
     needs: package
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
           merge-multiple: true

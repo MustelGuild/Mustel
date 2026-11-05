@@ -66,10 +66,11 @@ existir no remoto, porque o `preflight` e o `gh release create --verify-tag` con
 
 ## 4. Disparar o `publish` (manual)
 
-**Actions → publish → Run workflow**, informando a **tag** no campo (ex.: `v1.0.0`). A tag precisa
-existir no remoto: o `preflight` faz checkout dela e o `gh release create --verify-tag` confere.
-Tag fora do padrão `v<versao>` — ou que não case com `[workspace.package] version` — é recusada com
-`::error::`, dizendo o que recebeu.
+**Actions → publish → Run workflow**, informando a **tag** no campo (ex.: `v1.0.0`). O `preflight`
+confere, **antes de baixar o código**, o formato `v<versao>` e se a tag existe no remoto; depois
+faz checkout dela e exige que case com `[workspace.package] version`. Cada recusa sai como
+`::error::` dizendo o que recebeu — em particular, tag que ainda não foi empurrada não chega nem a
+virar checkout.
 
 `.github/workflows/publish.yml` roda nesta ordem:
 

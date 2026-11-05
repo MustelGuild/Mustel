@@ -4,8 +4,9 @@
 > validado**. Eles só aceitam `--ssl-mode Disable`; `Prefer` e `Require` são recusados com exit 2.
 > `query run`, a GUI e `settings db-*` continuam usando o driver e validando cadeia/hostname. Para
 > backup/restore com TLS, use `pg_dump`/`pg_restore` diretamente com `sslmode=verify-full` e
-> `sslrootcert`. A correção definitiva está em
-> [`MustelPlans/correcao-tls-binarios-externos.md`](../../MustelPlans/correcao-tls-binarios-externos.md).
+> `sslrootcert`. A correção definitiva — fazer backup/restore deixarem de depender dos binários
+> externos, ou validar TLS neles — ainda não foi executada; a trava está registrada em
+> [Diferenças deliberadas](diferencas-deliberadas.md) (item 24).
 
 O Mustel usa o `tokio-postgres` com o conector `tokio-postgres-rustls`. Quando a conexão usa TLS,
 o certificado do servidor é validado com o verificador padrão do `rustls`: **cadeia de confiança e

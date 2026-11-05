@@ -26,6 +26,7 @@ só é a origem da maior parte da documentação ruim.
 | | [Backup e restore](how-to/backup-e-restore.md) | [Autocomplete do editor](reference/autocomplete.md) | [Progresso ao vivo](explanation/progresso-ao-vivo.md) |
 | | [Senhas no cofre](how-to/senhas-no-cofre.md) | [Aba Settings](reference/settings-aba.md) | |
 | | [Sugestões ao escrever SQL](how-to/autocomplete-no-editor.md) | | [Por que `tokio-postgres`](explanation/por-que-tokio-postgres.md) |
+| | [Ícone no Wayland](how-to/icone-no-wayland.md) | | |
 | | | | [TLS do PostgreSQL](explanation/tls-postgres.md) |
 | | | | [Classificador de query](explanation/classificador-de-query.md) |
 | | [Publicar uma release](how-to/publicar-release.md) | | |

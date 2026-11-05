@@ -42,6 +42,28 @@ cp mustel.example.jsonc "$stage/"
 cp LICENSE "$stage/"
 cp crates/mustel-gui/assets/fonts/FiraCode-OFL.txt "$stage/"
 cp THIRD-PARTY-NOTICES.md "$stage/"
+cp crates/mustel-gui/assets/mustel.desktop "$stage/"
+cp crates/mustel-gui/assets/icon.png "$stage/mustel.png"
+
+# SBOM do pacote: CycloneDX 1.5 com hash SHA-256 e grafo de dependências, gerado a partir
+# do Cargo.lock para o alvo compilado. A raiz guarda o inventário de todos os alvos; este é
+# o que descreve o binário deste pacote.
+command -v cargo-cyclonedx >/dev/null 2>&1 || {
+    echo "cargo-cyclonedx não encontrado: rode 'cargo install cargo-cyclonedx --locked'" >&2
+    exit 1
+}
+cargo cyclonedx -f json --spec-version 1.5 --override-filename sbom.cdx >/dev/null
+cp crates/mustel/sbom.cdx.json "$stage/sbom.cdx.json"
+rm -f crates/*/sbom.cdx.json
+
+# Licenças de terceiros: textos completos das licenças dos componentes compilados. A lista de
+# licenças aceitas é a do about.toml (a mesma do deny.toml); crate fora dela quebra o release.
+command -v cargo-about >/dev/null 2>&1 || {
+    echo "cargo-about não encontrado: rode 'cargo install cargo-about --locked --features cli'" >&2
+    exit 1
+}
+cargo about -L warn generate -m crates/mustel/Cargo.toml --target "$triple" about.hbs \
+    -o "$stage/THIRD-PARTY-LICENSES.md"
 cat > "$stage/README.txt" <<EOF
 Mustel $version ($triple)
 
@@ -50,11 +72,24 @@ Mustel $version ($triple)
    Linux/macOS: \$XDG_CONFIG_HOME/Mustel/mustel.jsonc (ou ~/.config/Mustel/mustel.jsonc)
    Windows:     %APPDATA%\\Mustel\\mustel.jsonc
 3. 'mustel --help' lista os comandos.
+4. Para a janela usar o ícone do Mustel em vez do ícone genérico do Wayland, instale a
+   entrada de desktop e o ícone no seu HOME:
+     install -Dm644 mustel.desktop ~/.local/share/applications/mustel.desktop
+     install -Dm644 mustel.png ~/.local/share/icons/hicolor/256x256/apps/mustel.png
+     update-desktop-database ~/.local/share/applications 2>/dev/null || true
+   No Wayland não existe ícone por janela: o compositor procura o .desktop pelo 'app_id'
+   'mustel', e sem esses arquivos não tem como achar a arte. No X11 e no Windows o ícone
+   vai embutido no binário e nada disso é necessário. Rodando dentro de um container, o
+   que conta é o HOME de quem roda o compositor: instale lá (ou monte ~/.local/share).
 
 Dependências de sistema: nenhuma biblioteca precisa estar instalada — o cofre fala D-Bus
 por 'zbus' (Rust puro), então o binário não carrega 'libdbus-1.so.3'. O cofre do Linux
 continua exigindo um Secret Service rodando (GNOME Keyring/KWallet).
 Para abrir a janela, o ambiente precisa também de X11 ou Wayland com OpenGL.
+
+Inventário de componentes: 'sbom.cdx.json' (CycloneDX 1.5, com hash SHA-256 e grafo de
+dependências).
+Licenças de terceiros: 'THIRD-PARTY-LICENSES.md' (textos completos dos componentes compilados).
 
 Licença: AGPL-3.0-only (ver LICENSE).
 Fonte embutida: Fira Code, sob SIL OFL 1.1 (ver FiraCode-OFL.txt).

@@ -22,23 +22,34 @@ CSV, backup/restore, TLS, nomes hostis e a janela da GUI.
 
 ## Como rodar
 
-**Tudo dentro do Docker, sem abrir janela no seu desktop:**
+**Tudo dentro de containers, sem abrir janela no seu desktop.** Uma entrada só descobre o ambiente e
+escolhe o runtime:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File smoke/docker-smoke.ps1
-powershell -ExecutionPolicy Bypass -File smoke/docker-smoke.ps1 -Keep  # preserva volume e imagens
-```
+| Ambiente | Comando | Runtime |
+|---|---|---|
+| Bazzite / Fedora atomic | `./smoke/container-smoke.sh` | podman nativo, **sem** `podman-compose` |
+| Linux com Docker | `./smoke/container-smoke.sh` | `docker compose` |
+| Windows | `powershell -ExecutionPolicy Bypass -File smoke/docker-smoke.ps1` | Docker |
 
-O `docker-smoke.ps1` sobe o Postgres 18.6 e um runner Linux com Rust, Xvfb, xdotool e ImageMagick,
-roda o CLI e a GUI **dentro do container** e destrói tudo. A GUI é desenhada num display virtual
-(Xvfb); nenhuma janela aparece no Windows. As capturas ficam em `smoke/out/gui`
+As duas entradas se conhecem: o `.sh` rodando num shell do Windows delega para o `.ps1`, e o
+`.ps1` rodando em Linux/macOS com `pwsh` delega para o `.sh`. `--keep` (ou `-Keep`) preserva os
+containers, a rede e o volume para inspeção; sem ele, tudo é destruído no fim.
+
+No podman o caminho é nativo (`podman build` / `podman run`), sem compose: o script cria a rede
+`mustel-smoke` com os alias `postgres` e `postgres-wrong`, o volume `mustel-smoke-target`, espera
+os dois Postgres ficarem `healthy` e roda o runner na frente. Em SELinux enforcing ele usa
+`--security-opt label=disable` em vez de relabelar o repositório com `:Z`.
+
+Independente do runtime, o runner sobe o Postgres 18.6 e um runner Linux com Rust, Xvfb, xdotool
+e ImageMagick, roda o CLI e a GUI **dentro do container** e destrói tudo. A GUI é desenhada num
+display virtual (Xvfb); nenhuma janela aparece no desktop. As capturas ficam em `smoke/out/gui`
 (`01-query.png`, `02-connections.png`, `03-settings.png`) e o smoke compara os pixels para provar
 que os cliques nas abas mudaram a tela.
 
 O fonte é montado em `/src` somente na execução e o `target` do Cargo fica num volume nomeado
-(`mustel-smoke_target`), então o `target/` do Windows não é tocado. O primeiro run compila o
-workspace no Linux (alguns minutos); os seguintes reutilizam o volume (use `-Keep` para não
-apagá-lo).
+(`mustel-smoke-target`), então o `target/` do host não é tocado. O primeiro run compila o
+workspace no Linux (alguns minutos); os seguintes reutilizam o volume (use `--keep`/`-Keep` para
+não apagá-lo).
 
 **Modo rápido no host** (usa o binário do Windows e só o Postgres no Docker):
 
@@ -59,24 +70,36 @@ dono **não** são tocados. Use `-Keep` para inspecionar depois.
 - `settings db-servers add` / `ls` / `test` no config isolado, com a senha no **cofre efêmero do container**;
 - `query run` em um banco e com `--all` (103 bases), **sem `-W`** (senha vem do cofre do container), conferindo o CSV consolidado;
 - `--csv-escape-formulas`: default intacto e prefixo `'` nos valores `=`, `+`, `-`, `@`;
-- TLS no container: `Disable`, `Prefer` e `Require` conectam com a CA instalada; sem a CA,
+- TLS no driver (`query run`/GUI): `Disable`, `Prefer` e `Require` conectam com a CA instalada; sem a CA,
   `Prefer`/`Require` falham sem cair para texto puro; `Prefer` cai **em silêncio** no serviço sem
   TLS e `Require` falha nele;
+- `database backup`/`restore` rodam com `--ssl-mode Disable` e **recusam** `Prefer`/`Require`
+  (exit 2), como a trava de release do S1;
 - `sslMode` inválido no cadastro é erro, não `Prefer` silencioso;
 - usuário sem superusuário (`smoke_app`) lendo a tabela;
 - `database backup` de um banco, `--all` (com o banco hostil pulado) e `--strict` (exit não-zero);
 - `database restore --create-if-not-exists --no-clean` e consulta no banco restaurado;
-- no modo container: a GUI abre sob Xvfb já com a descoberta feita pelo cofre (`Smoke has 107
-database(s)` nas capturas), os cliques em Connections e Settings são validados por diferença de
-pixels, e nada abre no desktop do dono.
+- no modo container, a GUI é dirigida **pela tela** (OCR das capturas + `xdotool`): a janela abre, o
+status mostra a descoberta (`'Smoke' has N database(s).`), uma base é marcada na sidebar e o
+contador muda, a consulta digitada no editor roda pelo `Run query` e o resultado aparece, as abas
+Connections e Settings mostram o conteúdo esperado, e voltar para Query preserva o resultado.
+Nada abre no desktop do dono.
 
 ## O que não é verificado aqui
 
 - no **modo host** o `settings db-servers test` não roda, porque ele exigiria gravar no cofre do
 dono; o modo container cobre esse caminho no cofre efêmero do runner, que é destruído no fim;
-- o interior da GUI (autocomplete, seleção, formulários): use a skill `mustel-gui-smoke-test`;
+- o autocomplete com a lista de **tabelas** na janela (exige carregar o schema de referência): a
+  lógica é coberta por `popup_probe.rs`, mas o popup desenhado não é exercitado aqui;
+- o interior dos formulários e a seleção por seletor: cobertos por testes headless
+  (`screens/*`, `selection.rs`), não pela janela;
+- teclado e foco do sistema operacional, compositor (Wayland/X11) e HiDPI: use a skill
+  `mustel-gui-smoke-test`, na janela real do Windows;
+- regressões visuais finas (cor, espaçamento, HiDPI): o OCR valida **texto**, não pixels.
 - o sucesso de `Require` no **modo host** (sem instalar a CA no Windows); o container cobre esse
   caminho com uma CA descartável;
+- TLS em `database backup`/`restore`: bloqueado nesta release; o smoke só valida a recusa e o
+  caminho `Disable`;
 - `pgpass add/list/remove`: escreveria no `pgpass.conf` real.
 
 ## Reprodução manual

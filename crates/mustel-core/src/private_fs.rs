@@ -42,24 +42,28 @@ pub fn open_append(path: &Path) -> std::io::Result<std::fs::File> {
 }
 
 #[cfg(unix)]
-fn restrict_file(path: &Path) -> std::io::Result<()> {
+/// Restringe um arquivo existente para `0600` no Unix.
+pub fn restrict_file(path: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
 }
 
 #[cfg(not(unix))]
-fn restrict_file(_path: &Path) -> std::io::Result<()> {
+/// No Windows não há modo POSIX; a ACL do diretório é a garantia.
+pub fn restrict_file(_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
 #[cfg(unix)]
-fn restrict_dir(path: &Path) -> std::io::Result<()> {
+/// Restringe um diretório existente para `0700` no Unix.
+pub fn restrict_dir(path: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
 }
 
 #[cfg(not(unix))]
-fn restrict_dir(_path: &Path) -> std::io::Result<()> {
+/// No Windows não há modo POSIX; a ACL do diretório é a garantia.
+pub fn restrict_dir(_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 

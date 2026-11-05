@@ -8,6 +8,8 @@
 //! **corpo** do comando (não da tabela do `Program.cs`), e eles mudam entre os dois comandos — no
 //! `backup` binário ausente sai **3**; no `restore`, **1**.
 
+use std::io::IsTerminal;
+
 use mustel_core::config::ConfigStore;
 use mustel_core::credentials::SystemKeyring;
 use mustel_core::error::CoreError;
@@ -41,6 +43,18 @@ pub async fn run(args: DatabaseBackupArgs, token: &CancellationToken) -> Result<
             return Ok(exit_code(failure.kind));
         }
     };
+
+    if args
+        .ssl_mode
+        .as_deref()
+        .is_none_or(|mode| mode.eq_ignore_ascii_case("Disable"))
+        && std::io::stderr().is_terminal()
+    {
+        eprintln!(
+            "Warning: TLS is disabled for database backup in this release; the password and dump \
+             travel in plain text."
+        );
+    }
 
     let stdin_password = if args.password_stdin {
         Some(password_input::read_from_stdin()?)
@@ -142,6 +156,18 @@ mod tests {
                 .await
                 .expect("roda");
             assert_eq!(exit, 2, "banco {database:?}");
+        }
+    }
+
+    #[tokio::test]
+    /// CONTRACT: IF-107
+    async fn tls_modes_are_refused_with_2() {
+        for mode in ["Prefer", "Require"] {
+            let mut command = args(Some("mydb"));
+            command.ssl_mode = Some(mode.to_string());
+
+            let exit = run(command, &CancellationToken::new()).await.expect("roda");
+            assert_eq!(exit, 2, "{mode} deve ser recusado antes de pedir senha");
         }
     }
 

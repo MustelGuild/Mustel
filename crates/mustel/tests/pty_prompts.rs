@@ -12,19 +12,19 @@
 
 use std::process::Command;
 
-use expectrl::{Expect, spawn};
+use expectrl::{Expect, Session};
 
 const CHILD_ENV: &str = "MUSTEL_PTY_CHILD";
 
 /// Linha de comando que reexecuta este mesmo teste sob um PTY.
-fn child_command(test_name: &str, body: &str) -> String {
+fn child_command(test_name: &str, body: &str) -> Command {
     let exe = std::env::current_exe().expect("current test binary");
-    Command::new(exe)
+    let mut command = Command::new(exe);
+    command
         .args(["--exact", test_name, "--nocapture"])
         .env(CHILD_ENV, body)
-        .env("TERM", "xterm-256color")
-        .to_string_lossy()
-        .to_string()
+        .env("TERM", "xterm-256color");
+    command
 }
 
 /// IF-140: a confirmação destrutiva aceita o default (sim) ao apertar Enter.
@@ -38,7 +38,7 @@ fn confirm_accepts_default_on_enter() {
         return;
     }
 
-    let mut session = spawn(child_command("confirm_accepts_default_on_enter", "confirm"))
+    let mut session = Session::spawn(child_command("confirm_accepts_default_on_enter", "confirm"))
         .expect("spawn under a pty");
     session.send_line("").expect("send enter");
     session
@@ -55,8 +55,8 @@ fn confirm_denies_with_n() {
         return;
     }
 
-    let mut session =
-        spawn(child_command("confirm_denies_with_n", "confirm")).expect("spawn under a pty");
+    let mut session = Session::spawn(child_command("confirm_denies_with_n", "confirm"))
+        .expect("spawn under a pty");
     session.send_line("n").expect("send n");
     session
         .expect("ANSWER=false")
@@ -72,7 +72,7 @@ fn password_is_masked_and_returned_intact() {
         return;
     }
 
-    let mut session = spawn(child_command(
+    let mut session = Session::spawn(child_command(
         "password_is_masked_and_returned_intact",
         "password",
     ))
@@ -93,7 +93,7 @@ fn select_one_moves_with_arrow_keys() {
         return;
     }
 
-    let mut session = spawn(child_command("select_one_moves_with_arrow_keys", "select"))
+    let mut session = Session::spawn(child_command("select_one_moves_with_arrow_keys", "select"))
         .expect("spawn under a pty");
     session.send("\u{1b}[B").expect("arrow down");
     session.send_line("").expect("enter");

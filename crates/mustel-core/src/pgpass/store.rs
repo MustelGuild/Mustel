@@ -21,7 +21,7 @@ use std::fs;
 use std::io::{self, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
-use super::entry::{PgPassEntry, parse_line};
+use super::entry::{PgPassEntry, PgPassEntryError, parse_line};
 use super::paths::pgpass_file_path;
 
 /// Falhas que o usuário vê como mensagem, não como erro de I/O cru.
@@ -49,6 +49,9 @@ pub enum PgPassError {
     /// Senha vazia: o legado recusa gravar a entrada.
     #[error("password cannot be empty.")]
     EmptyPassword,
+    /// A entrada não pode ser representada em uma linha do arquivo (CR/LF/NUL).
+    #[error("{0}")]
+    InvalidEntry(#[from] PgPassEntryError),
 }
 
 /// O que aconteceu com a operação.
@@ -116,6 +119,8 @@ impl PgPassStore {
         if entry.password.is_empty() {
             return Err(PgPassError::EmptyPassword);
         }
+
+        entry.validate()?;
 
         if read_entries(&self.path)
             .map_err(|error| self.translate(&error))?
@@ -407,6 +412,54 @@ mod tests {
         assert!(matches!(error, PgPassError::EmptyPassword));
         assert_eq!(error.to_string(), "password cannot be empty.");
         assert!(!path.exists(), "nem o diretório deve ser criado");
+    }
+
+    #[test]
+    /// CONTRACT: IF-106
+    fn add_refuses_line_break_in_database_and_does_not_create_the_file() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("pgpass.conf");
+        let store = PgPassStore::new(&path);
+
+        let error = store
+            .add(&entry(
+                "localhost",
+                "5432",
+                "mydb\n*:*:*:*:injetado",
+                "postgres",
+                "senha",
+            ))
+            .expect_err("quebra de linha no banco deve falhar");
+
+        assert!(matches!(
+            error,
+            PgPassError::InvalidEntry(PgPassEntryError::InvalidLine { field: "database" })
+        ));
+        assert!(!path.exists(), "o arquivo não pode ser criado");
+    }
+
+    #[test]
+    /// CONTRACT: IF-106
+    fn add_refuses_line_break_in_password_and_does_not_create_the_file() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("pgpass.conf");
+        let store = PgPassStore::new(&path);
+
+        let error = store
+            .add(&entry(
+                "localhost",
+                "5432",
+                "mydb",
+                "postgres",
+                "senha\n*:*:*:*:injetado",
+            ))
+            .expect_err("quebra de linha na senha deve falhar");
+
+        assert!(matches!(
+            error,
+            PgPassError::InvalidEntry(PgPassEntryError::InvalidLine { field: "password" })
+        ));
+        assert!(!path.exists(), "o arquivo não pode ser criado");
     }
 
     #[test]

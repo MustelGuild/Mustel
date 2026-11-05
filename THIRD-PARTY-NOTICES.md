@@ -20,5 +20,10 @@ distribui o componente sem modificações; o texto da Mozilla Public License 2.0
 
 ## Demais componentes
 
-MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0 e equivalentes estão listados no `sbom.cdx.json`, que
-acompanha a release. Nenhum deles exige aviso além do próprio texto da licença.
+Os textos completos das licenças de todos os componentes compilados estão em
+`THIRD-PARTY-LICENSES.md`, que vai dentro de cada pacote. O arquivo é gerado por `cargo-about` a
+partir do `Cargo.lock` (configuração em `about.toml`), e a lista de licenças aceitas é a mesma do
+`deny.toml`: um componente com licença fora dela quebra a geração do release.
+
+O inventário de componentes, com versão, hash e grafo de dependências, está em `sbom.cdx.json`,
+que acompanha a release e também vai dentro do pacote.

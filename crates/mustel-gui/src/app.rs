@@ -38,6 +38,50 @@ enum Screen {
     Settings,
 }
 
+/// As três abas do topo; devolve a escolhida neste quadro.
+///
+/// Desenha dentro do `ui.horizontal` de quem chama (é o que a deixa na mesma linha do título e do
+/// status) e não mexe no estado: quem troca a tela é o `App`. Separada para poder ser exercitada
+/// sem a janela — ver `the_top_tabs_map_clicks_to_their_screens`.
+fn screen_tabs(ui: &mut egui::Ui, current: Screen) -> Option<Screen> {
+    let mut chosen = None;
+
+    // Abas com ícone da **fonte embutida**: o emoji vinha de fonte do sistema e ficava fora da
+    // linha do texto (ver `tabs`).
+    if crate::tabs::tab(
+        ui,
+        current == Screen::Query,
+        crate::icons::Icon::Magnifier,
+        "Query",
+    )
+    .clicked()
+    {
+        chosen = Some(Screen::Query);
+    }
+    if crate::tabs::tab(
+        ui,
+        current == Screen::Servers,
+        crate::icons::Icon::Server,
+        "Connections",
+    )
+    .clicked()
+    {
+        chosen = Some(Screen::Servers);
+    }
+    if crate::tabs::tab(
+        ui,
+        current == Screen::Settings,
+        crate::icons::Icon::Settings,
+        "Settings",
+    )
+    .clicked()
+    {
+        chosen = Some(Screen::Settings);
+    }
+
+    chosen
+}
+
 /// O job em andamento.
 struct Running {
     /// Rótulo para a barra de estado.
@@ -1094,40 +1138,13 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 ui.heading("Mustel");
                 ui.separator();
-                // Abas com ícone da **fonte embutida**: o emoji vinha de fonte do sistema e ficava
-                // fora da linha do texto (ver `tabs`).
-                if crate::tabs::tab(
-                    ui,
-                    self.screen == Screen::Query,
-                    crate::icons::Icon::Magnifier,
-                    "Query",
-                )
-                .clicked()
-                {
-                    self.screen = Screen::Query;
-                }
-                if crate::tabs::tab(
-                    ui,
-                    self.screen == Screen::Servers,
-                    crate::icons::Icon::Server,
-                    "Connections",
-                )
-                .clicked()
-                {
-                    self.screen = Screen::Servers;
-                    // Sempre começa no cadastro de servidores; o rascunho de um formulário de
-                    // seletor sobrevive à troca de aba.
-                    self.servers.reset_context();
-                }
-                if crate::tabs::tab(
-                    ui,
-                    self.screen == Screen::Settings,
-                    crate::icons::Icon::Settings,
-                    "Settings",
-                )
-                .clicked()
-                {
-                    self.screen = Screen::Settings;
+                if let Some(screen) = screen_tabs(ui, self.screen) {
+                    if screen == Screen::Servers {
+                        // Sempre começa no cadastro de servidores; o rascunho de um formulário de
+                        // seletor sobrevive à troca de aba.
+                        self.servers.reset_context();
+                    }
+                    self.screen = screen;
                 }
                 ui.separator();
                 ui.label(&self.status);
@@ -1560,6 +1577,77 @@ mod tests {
             painted.height,
             painted.row
         );
+    }
+
+    /// As três abas do topo trocam a tela — **sem janela**.
+    ///
+    /// O smoke de container clica em coordenadas fixas e só compara pixels; aqui se prova
+    /// **qual** tela cada aba escolhe, incluindo a que já está à frente.
+    #[test]
+    fn the_top_tabs_map_clicks_to_their_screens() {
+        let ctx = egui::Context::default();
+        let mut definitions = egui::FontDefinitions::default();
+        crate::icons::install(&mut definitions);
+        ctx.set_fonts(definitions);
+
+        let draw = |input: egui::RawInput| -> (Option<Screen>, Vec<(String, egui::Pos2)>) {
+            let mut chosen = None;
+            let mut output = ctx.run_ui(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.heading("Mustel");
+                        ui.separator();
+                        chosen = screen_tabs(ui, Screen::Query);
+                    });
+                });
+            });
+            let mut painted = Vec::new();
+            collect_text(&output.shapes, &mut painted);
+            output.textures_delta.clear();
+            (chosen, painted)
+        };
+
+        // Duas passadas: a primeira monta o atlas dos ícones e só a segunda tem a métrica certa.
+        let mut painted = Vec::new();
+        for _ in 0..2 {
+            painted = draw(egui::RawInput::default()).1;
+        }
+
+        let center = |label: &str| {
+            painted
+                .iter()
+                .find(|(text, _)| text == label)
+                .map(|(_, pos)| *pos)
+                .unwrap_or_else(|| panic!("{label} não foi desenhado: {painted:?}"))
+        };
+
+        for (label, expected) in [
+            ("Query", Screen::Query),
+            ("Connections", Screen::Servers),
+            ("Settings", Screen::Settings),
+        ] {
+            let pos = center(label);
+            let input = egui::RawInput {
+                events: vec![
+                    egui::Event::PointerMoved(pos),
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                ..Default::default()
+            };
+            let (chosen, _) = draw(input);
+            assert_eq!(chosen, Some(expected), "clique em {label}");
+        }
     }
 
     /// Junta `(texto, posição)` de todo `Shape::Text`, descendo nos grupos.

@@ -71,18 +71,18 @@ código implementa e que o número representa:
 | `D14` | Mutações de Git | Exigem autorização explícita do dono | Guard rails do `AGENTS.md` |
 | `D15` | Versão inicial | `1.0.0`; tags `v1.x.y` dirigem o release. O incremento é do **`cargo-release`** (`A6`), não manual | Mustel é software novo |
 | `D16` | Oráculo | Binário .NET em `legacy/` é a fonte de verdade; baseline versionado em `fixtures/baseline/` | Onde docs e código divergem, vale o **código observado** |
-| `D17` | Canais de distribuição | **GitHub Releases** (executável por plataforma, publicado manualmente) + **crates.io** (`cargo install mustel`); **sem winget** | Usuário (2026-10-24): "não iremos publicar no winget, no futuro apenas no cargo e no executável na página de release". O `mustel-core`/`mustel-gui` continuam publicados porque são **dependências** do `mustel` — o comando que o usuário roda é só `cargo install mustel` |
+| `D17` | Canais de distribuição | **GitHub Releases** (executável por plataforma, publicado manualmente) + **crates.io** (`cargo install --locked mustel`); **sem winget** | Usuário (2026-10-24): "não iremos publicar no winget, no futuro apenas no cargo e no executável na página de release". O `mustel-core`/`mustel-gui` continuam publicados porque são **dependências** do `mustel` — o comando que o usuário roda é só `cargo install --locked mustel` |
 | `D18` | Repositório GitHub | Permanecer em `liphvf/FurLab` durante a migração, renomear depois | Renomear no meio misturaria duas mudanças; **consumado em 2026-10-24** (`MustelGuild/Mustel`) |
 | `D19` | Escopo da migração | Grupos `query`, `database` e `settings` **completos**; demais no backlog | Decisão do usuário |
 | `D20` | Licença | `AGPL-3.0-only` | O que está no `LICENSE`; README/docs/scripts alinhados em 2026-10-24 |
 | `D21` | Backlog | Grupos fora do escopo voltam numa **segunda onda**, depois do 1.0 | Não é descarte |
 | `D22` | Pacote winget antigo | `FurLab.CLI` permanece como está; o Mustel **não** publica no winget | Não mexer no antigo, e o canal saiu de escopo (`D17`) |
 | `D23` | Notarização macOS | Fora do escopo; documentar `xattr -d com.apple.quarantine` | macOS está fora do release |
-| `D24` | Automação de CI | O gate automático foi removido no commit `3c81ff1` e reintroduzido como `.github/workflows/ci.yml` no endurecimento de 2026-10-26 (`fmt`, `clippy`, `test`); **o release não é automatizado** | O CI vermelho a cada push atrapalhava o desenvolvimento; o gate atual é separado do release |
+| `D24` | Automação de CI | O gate automático foi removido no commit `3c81ff1` e reintroduzido como `.github/workflows/ci.yml` no endurecimento de 2026-10-26 (`fmt`, `clippy`, `test`); desde 2026-10-28 ele dispara **só** por `workflow_dispatch` — push e PR não rodam nada; **o release não é automatizado** | O CI vermelho a cada push atrapalhava o desenvolvimento; o gate atual é manual, separado do release |
 | `D25` | Criar banco no `restore` | **Falhar por padrão** (paridade) + `--create-if-not-exists`, criando pelo driver | O `CreateDatabaseIfNeeded` do legado, via `psql`, nunca criava nada — divergência 11 |
 | `D26` | Release sem CI | Dois scripts locais (`publish.ps1`, `publish.sh`) geram o pacote + SHA256; **publicação manual** | O dono publica de `packaging/` onde quiser |
 | `D27` | Workflow empacota **e publica a release** | **Substituído em 2026-10-28**: `release-build.yml` foi removido; empacotamento e publicação são manuais (`D29`) | O dono quer o release sob controle manual; não há `workflow_dispatch` nem criação automática de release |
-| `D29` | Release manual | Sem workflow de release: `publish.ps1`/`publish.sh` geram `packaging/`; a release no GitHub, o upload dos artefatos e o `cargo publish` são passos manuais do dono | Decisão do dono em 2026-10-28; o `ci.yml` continua apenas como gate de qualidade |
+| `D29` | Release manual | Sem workflow de release: `publish.ps1`/`publish.sh` geram `packaging/`; a release no GitHub, o upload dos artefatos e o `cargo publish` são passos manuais do dono | Decisão do dono em 2026-10-28; o `ci.yml` continua apenas como gate de qualidade, rodado à mão (`D24`) |
 
 ## Autocomplete do editor (`D1`–`D20`)
 
@@ -129,7 +129,7 @@ código implementa e que o número representa:
 | `D14` | Falha/lixo na query | **Mantém a seleção anterior**; status com erro e linhas ignoradas | Menos destrutivo que limpar a tela |
 | `D15` | Execução | `ServerRun` com `databases` explícitas, `fetch_all_databases: false`, `all: false`, `exclude_patterns` do cadastro; servidor sem base marcada **não entra** | Reaproveita o plano do núcleo; evita execução vazia |
 
-## Aparência da janela (`A1`–`A5`)
+## Aparência da janela (`A1`–`A7`)
 
 Numeração própria desta feature (`A`, de aparência), aberta em 2026-10-24 com o tema da janela. Não
 reutiliza a numeração dos planos antigos — é uma quarta família, nascida depois da consolidação.
@@ -142,6 +142,7 @@ reutiliza a numeração dos planos antigos — é uma quarta família, nascida d
 | `A4` | Cores de estado | `danger`/`warning` delegam a `visuals.error_fg_color`/`warn_fg_color`; `alert` tem par claro/escuro com contraste ≥ 4.5:1 | Erro e aviso eram `Color32::RED`/`YELLOW` fixos, escolhidos para fundo claro — no escuro perdiam contraste. **Efeito visível no tema claro:** o âmbar do alerta escureceu de `(214,158,46)` (~2,4:1) para `(146,105,10)` (~4,65:1), que é o mínimo de leitura; o tom antigo já falhava antes desta feature |
 | `A5` | Escopo e atalho | Tema só da janela; **sem** atalho de teclado | CLI e tabelas ANSI são contrato de paridade; o controle da aba basta |
 | `A6` | Incremento de versão | **`cargo-release`** (`shared-version`, tag `v<versao>`, sem publish/push automáticos) | A versão mora em um lugar só (`workspace.package.version`); a ferramenta evita bump esquecido e mantém a tag casada com o artefato que o workflow confere |
+| `A7` | Ícone no Wayland | `app_id` `mustel` na janela, e o pacote entrega `mustel.desktop` + o ícone instalado como `mustel` | No Wayland o `xdg-shell` não tem ícone por janela: o `with_icon` (que resolve no X11 e no Windows) é ignorado, e o compositor descobre a arte pelo `.desktop` cujo nome casa com o `app_id`. Sem essa entrada a janela fica com o ícone genérico do Wayland — falha que só aparece na janela, não em teste de unidade |
 
 A referência da aba está em [`reference/settings-aba.md`](../reference/settings-aba.md); a linha de
 contrato é `IF-243`.

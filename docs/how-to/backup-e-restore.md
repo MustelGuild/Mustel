@@ -1,5 +1,10 @@
 # Fazer backup e restore de um banco
 
+> **TLS nesta release:** `database backup` e `database restore` não usam TLS validado. Eles só
+> aceitam `--ssl-mode Disable`; `Prefer` e `Require` são recusados com exit 2. Use `Disable` apenas
+> em rede confiável, ou `pg_dump`/`pg_restore` diretamente com `sslmode=verify-full` e `sslrootcert`.
+> `query run` e a GUI continuam com TLS validado.
+
 **Situação:** você precisa salvar um banco em arquivo e depois colocá-lo de volta.
 
 ## Antes de tudo: a versão do cliente
@@ -19,13 +24,13 @@ versões instaladas, a do `PATH` ganha.
 
 ```bash
 # um banco, no diretório atual
-mustel database backup meu_banco -W "$SENHA"
+mustel database backup meu_banco -W "$SENHA" --ssl-mode Disable
 
 # escolhendo o arquivo de saída
-mustel database backup meu_banco -o ./backups -W "$SENHA"
+mustel database backup meu_banco -o ./backups -W "$SENHA" --ssl-mode Disable
 
 # todos os bancos do servidor
-mustel database backup --all -o ./backups -W "$SENHA"
+mustel database backup --all -o ./backups -W "$SENHA" --ssl-mode Disable
 ```
 
 O nome do arquivo e a extensão seguem o padrão do produto anterior (`<banco>_<timestamp>.dump`). Com
@@ -35,10 +40,10 @@ O nome do arquivo e a extensão seguem o padrão do produto anterior (`<banco>_<
 
 ```bash
 # banco existente, arquivo explícito
-mustel database restore meu_banco ./backups/meu_banco_2026-10-22.dump -W "$SENHA"
+mustel database restore meu_banco ./backups/meu_banco_2026-10-22.dump -W "$SENHA" --ssl-mode Disable
 
 # todos os dumps de um diretório
-mustel database restore --all -d ./backups -W "$SENHA"
+mustel database restore --all -d ./backups -W "$SENHA" --ssl-mode Disable
 ```
 
 O `restore` usa `--clean` por padrão (derruba os objetos antes de recriar). Flags úteis:
@@ -55,7 +60,7 @@ O `restore` usa `--clean` por padrão (derruba os objetos antes de recriar). Fla
 Restaurar num banco inexistente **falha** — é o comportamento herdado. Para criar na hora:
 
 ```bash
-mustel database restore banco_novo ./backups/banco_novo.dump --create-if-not-exists -W "$SENHA"
+mustel database restore banco_novo ./backups/banco_novo.dump --create-if-not-exists --ssl-mode Disable -W "$SENHA"
 ```
 
 > `--create-if-not-exists` é adição do Mustel. O binário anterior tentava criar o banco por `psql`

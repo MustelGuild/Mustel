@@ -25,8 +25,10 @@ fn server_from_url() -> Option<(ServerConfigEntry, ServerRun, String)> {
     let url = std::env::var("MUSTEL_PG_TEST_URL").ok()?;
     let parsed = tokio_postgres::Config::from_str(&url).ok()?;
 
-    let tokio_postgres::config::Host::Tcp(host) = parsed.get_hosts().first()?;
-    let host = host.clone();
+    let host = match parsed.get_hosts().first()? {
+        tokio_postgres::config::Host::Tcp(host) => host.clone(),
+        tokio_postgres::config::Host::Unix(_) => return None,
+    };
     let port = parsed.get_ports().first().copied().unwrap_or(5432);
     let user = parsed.get_user().unwrap_or("postgres").to_string();
     let password = parsed

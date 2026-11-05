@@ -74,6 +74,11 @@ pub fn run(args: PgpassAddArgs) -> Result<i32, CoreError> {
         password,
     };
 
+    if let Err(error) = entry.validate() {
+        println!("Error: {error}");
+        return Ok(2);
+    }
+
     let outcome = store.add(&entry).map_err(map_error)?;
 
     // `Added` e `Duplicate` saem com 0: a duplicata já é o estado desejado.

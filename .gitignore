@@ -2,6 +2,25 @@
 /target/
 **/*.rs.bk
 
+# Segredos e credenciais locais (S7): nunca versionar
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.pfx
+*.p12
+*.p8
+*.jks
+*.keystore
+*.kdbx
+id_rsa
+id_ed25519
+*.ppk
+.cargo/credentials
+.cargo/credentials.toml
+
 # Contrato congelado: o baseline (`fixtures/baseline/`) é **versionado**; estes não são.
 fixtures/bin/
 fixtures/workdir/
@@ -12,6 +31,10 @@ results/
 
 # Pacotes gerados por `publish.ps1` / `publish.sh`
 packaging/
+
+# SBOM por crate que o `cargo cyclonedx` escreve ao lado de cada Cargo.toml; a raiz guarda o
+# inventário publicado (`sbom.cdx.json`), versionado.
+crates/*/sbom.cdx.json
 
 # Editor / SO
 .idea/

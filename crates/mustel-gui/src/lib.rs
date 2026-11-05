@@ -67,6 +67,14 @@ pub enum GuiError {
 /// transparente, e salve sobre `crates/mustel-gui/assets/icon.png`.
 const WINDOW_ICON: &[u8] = include_bytes!("../assets/icon.png");
 
+/// Identificador da aplicação no Wayland, e nome do `.desktop` que a acompanha.
+///
+/// No Wayland não existe ícone por janela (o `xdg-shell` não tem esse pedido), então o
+/// `with_icon` abaixo é ignorado e o compositor procura `mustel.desktop` pelo `app_id` para
+/// descobrir a arte — sem esse casamento ele cai no ícone genérico do Wayland. O arquivo vive em
+/// `assets/mustel.desktop`, dentro da crate, para entrar no `cargo publish` junto com o ícone.
+const APP_ID: &str = "mustel";
+
 /// Como a janela nasce: título, tamanho mínimo, ícone e **maximizada**.
 ///
 /// Maximizada (e não `fullscreen`): a janela ocupa a tela mas continua com barra de título, dá para
@@ -80,6 +88,7 @@ fn viewport() -> egui::ViewportBuilder {
             [min.x, min.y]
         })
         .with_title("Mustel")
+        .with_app_id(APP_ID)
         .with_maximized(true);
 
     match eframe::icon_data::from_png_bytes(WINDOW_ICON) {
@@ -138,6 +147,41 @@ mod tests {
             icon.rgba.len(),
             (icon.width as usize) * (icon.height as usize) * 4,
             "RGBA consistente com as dimensões"
+        );
+    }
+
+    /// O `app_id` casa com o `.desktop`, e é isso que dá ícone no Wayland.
+    ///
+    /// No Wayland o `with_icon` é ignorado: o compositor resolve a arte pelo `app_id`, procurando um
+    /// `.desktop` com o mesmo nome. Sem esse casamento a janela fica com o ícone genérico do Wayland,
+    /// e é um problema que só aparece na janela — nenhum teste de unidade do resto do app veria.
+    /// CONTRACT: IF-257
+    #[test]
+    fn the_window_app_id_matches_the_desktop_entry() {
+        let viewport = viewport();
+
+        assert_eq!(
+            viewport.app_id.as_deref(),
+            Some(APP_ID),
+            "o compositor procura o .desktop pelo app_id"
+        );
+
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("assets")
+            .join(format!("{APP_ID}.desktop"));
+        assert!(
+            path.exists(),
+            "o compositor procura `{APP_ID}.desktop`; o arquivo precisa ter esse nome"
+        );
+
+        let desktop = include_str!("../assets/mustel.desktop");
+        assert!(
+            desktop.contains("Icon=mustel"),
+            "o .desktop precisa apontar para o ícone instalado como `mustel`"
+        );
+        assert!(
+            desktop.contains("Exec=mustel gui"),
+            "o .desktop precisa abrir o subcomando `gui`"
         );
     }
 }

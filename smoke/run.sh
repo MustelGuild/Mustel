@@ -243,11 +243,23 @@ echo "== usuário sem superusuário"
 [ $? -eq 0 ] && pass "smoke_app lê items" || fail "smoke_app lê items"
 
 echo "== backup e restore"
-common=(-H postgres -p 5432 -U postgres)
+common=(-H postgres -p 5432 -U postgres --ssl-mode Disable)
+blocked_common=(-H postgres -p 5432 -U postgres)
 mkdir -p "$OUT/backup"
+
+"$BIN" database backup mustel_001 -o "$OUT/backup/tls-blocked" --ssl-mode Require \
+    "${blocked_common[@]}" >/tmp/tls-blocked.log 2>&1
+code=$?
+if [ "$code" -eq 2 ] && grep -q 'TLS is not supported' /tmp/tls-blocked.log; then
+    pass "backup recusa Require nesta release"
+else
+    fail "backup recusa Require nesta release: exit=$code"
+fi
 one="$OUT/backup/mustel_001.dump"
 "$BIN" database backup mustel_001 -o "$one" "${common[@]}" >/tmp/backup.log 2>&1
 if [ $? -eq 0 ] && [ -s "$one" ]; then pass "backup de um banco"; else fail "backup de um banco"; fi
+mode=$(stat -c '%a' "$one" 2>/dev/null)
+[ "$mode" = "600" ] && pass "dump 0600" || fail "dump mode $mode"
 
 "$BIN" database backup -a -o "$OUT/backup/all" "${common[@]}" >/tmp/backup-all.log 2>&1
 code=$?
@@ -257,6 +269,8 @@ if [ "$code" -eq 0 ] && [ "$dumps" -ge 100 ]; then
 else
     fail "backup --all: exit=$code dumps=$dumps"
 fi
+mode=$(stat -c '%a' "$OUT/backup/all" 2>/dev/null)
+[ "$mode" = "700" ] && pass "diretório do backup --all 0700" || fail "diretório do backup --all mode $mode"
 if find "$OUT" -name 'hostile.dump' | grep -q .; then
     fail "nome hostil não escapou do diretório"
 else
@@ -289,7 +303,7 @@ fi
 cp /tmp/mustel.jsonc.before-restore "$config_file"
 
 echo "== GUI headless (Xvfb)"
-mkdir -p /tmp/xdg
+mkdir -p /tmp/xdg "$OUT/gui"
 chmod 700 /tmp/xdg
 export XDG_RUNTIME_DIR=/tmp/xdg
 export DISPLAY=:99
@@ -299,6 +313,51 @@ XVFB_PID=$!
 sleep 2
 "$BIN" gui >/tmp/gui.log 2>&1 &
 GUI_PID=$!
+
+# --- OCR: a captura é a única prova do que a janela desenhou ----------------------------------
+# O tema pode ser escuro (texto claro); o `tesseract` espera texto escuro em fundo claro, então a
+# imagem é normalizada e, quando o fundo é escuro, negada.
+shot() { import -display :99 -window root "$1" 2>/dev/null; }
+# O texto da janela é pequeno; dobrar a imagem antes do OCR é o que faz o `tesseract` enxergar
+# rótulos de botão e de linha. As coordenadas devolvidas por `word_at` voltam na escala original.
+OCR_SCALE=2
+ocr_image() {
+    local img="$1" out="${1%.*}.ocr.png" mean
+    mean=$(convert "$img" -colorspace Gray -format '%[fx:mean*100]' info: 2>/dev/null)
+    if [ "${mean%%.*}" -lt 50 ] 2>/dev/null; then
+        convert "$img" -colorspace Gray -negate -auto-level -resize 200% "$out" 2>/dev/null
+    else
+        convert "$img" -colorspace Gray -auto-level -resize 200% "$out" 2>/dev/null
+    fi
+    printf '%s\n' "$out"
+}
+ocr_text() { tesseract "$(ocr_image "$1")" stdout --psm 3 2>/dev/null; }
+# `word_at <png> <regex>` devolve "x y" do centro da primeira palavra que casa, na escala da tela.
+word_at() {
+    tesseract "$(ocr_image "$1")" stdout --psm 3 -c tessedit_create_tsv=1 2>/dev/null |
+        awk -F'\t' -v pat="$2" -v scale="$OCR_SCALE" 'NR > 1 && $12 != "" && tolower($12) ~ tolower(pat) {
+            printf "%d %d\n", ($7 + $9 / 2) / scale, ($8 + $10 / 2) / scale; exit
+        }'
+}
+click_at() { xdotool mousemove --sync "$1" "$2" click 1 2>/dev/null; }
+click_word() {
+    local png="$1" pattern="$2" dx="${3:-0}" dy="${4:-0}" pos
+    pos=$(word_at "$png" "$pattern")
+    [ -n "$pos" ] || return 1
+    click_at $((${pos% *} + dx)) $((${pos#* } + dy))
+}
+# Espera um texto aparecer na tela (a GUI é assíncrona: descoberta, consulta, job).
+wait_for_text() {
+    local pattern="$1" limit="${2:-30}" i
+    for i in $(seq 1 "$limit"); do
+        shot /tmp/gui.png
+        if ocr_text /tmp/gui.png | grep -qi -- "$pattern"; then return 0; fi
+        sleep 1
+    done
+    ocr_text /tmp/gui.png >/tmp/gui-ocr.txt 2>/dev/null
+    return 1
+}
+
 wid=""
 for _ in $(seq 1 40); do
     wid=$(xdotool search --name '^Mustel$' 2>/dev/null | head -1)
@@ -309,47 +368,112 @@ if [ -n "$wid" ]; then
     pass "janela da GUI abriu"
     xdotool windowsize "$wid" 1440 900 2>/dev/null
     xdotool windowmove "$wid" 0 0 2>/dev/null
-    sleep 1
-    if import -display :99 -window root "$OUT/gui/01-query.png" 2>/tmp/import.log &&
-        [ -s "$OUT/gui/01-query.png" ]; then
-        pass "captura da tela inicial"
-    else
-        fail "captura da tela inicial"
-    fi
-    # As abas ficam no topo, na linha y≈17 da janela (1440x900). Depois de cada clique, a captura
-    # seguinte precisa diferir da anterior: `compare -metric AE` conta os pixels diferentes.
-    xdotool mousemove --sync 200 17 click 1 2>/dev/null
-    sleep 1
-    import -display :99 -window root "$OUT/gui/02-connections.png" 2>/dev/null
-    xdotool mousemove --sync 290 17 click 1 2>/dev/null
-    sleep 1
-    import -display :99 -window root "$OUT/gui/03-settings.png" 2>/dev/null
+    # Sem window manager no Xvfb, o foco de teclado não vai sozinho para a janela.
+    xdotool windowfocus "$wid" 2>/dev/null
+    sleep 2
 
-    changed() {
-        local before="$1" after="$2"
-        local pixels
-        pixels=$(compare -metric AE "$before" "$after" null: 2>&1 | awk '{print $1}')
-        [ "${pixels:-0}" -gt 1000 ] 2>/dev/null
-    }
-    if [ -s "$OUT/gui/02-connections.png" ] && changed "$OUT/gui/01-query.png" "$OUT/gui/02-connections.png"; then
-        pass "clique em Connections mudou a tela"
+    # 1. A descoberta terminou e o status diz quantas bases o servidor tem.
+    if wait_for_text 'database(s)' 90; then
+        text=$(ocr_text /tmp/gui.png)
+        if grep -qi 'Smoke' <<<"$text"; then
+            pass "GUI mostra a descoberta de bases"
+        else
+            fail "GUI mostra a descoberta de bases (sem 'Smoke' no status)"
+        fi
     else
-        fail "clique em Connections mudou a tela"
+        fail "GUI mostra a descoberta de bases"
+        cp /tmp/gui.png "$OUT/gui/00-sem-descoberta.png"
     fi
-    if [ -s "$OUT/gui/03-settings.png" ] && changed "$OUT/gui/02-connections.png" "$OUT/gui/03-settings.png"; then
-        pass "clique em Settings mudou a tela"
+    shot "$OUT/gui/01-query.png"
+
+    # 2. Marca `mustel_001` na sidebar (a lista já abre nas primeiras bases) e confere o contador,
+    # que é o que habilita o `Run query`. O clique vai no quadrado do checkbox, à esquerda do nome.
+    if click_word "$OUT/gui/01-query.png" 'mustel.001' -18 0; then
+        sleep 1
+        shot /tmp/gui.png
+        if ocr_text /tmp/gui.png | grep -qi 'marked'; then
+            pass "marca mustel_001 na sidebar"
+        else
+            fail "marca mustel_001 na sidebar"
+            cp /tmp/gui.png "$OUT/gui/02-marcacao.png"
+            ocr_text /tmp/gui.png | head -6 | sed 's/^/      /'
+        fi
     else
-        fail "clique em Settings mudou a tela"
+        fail "marca mustel_001 na sidebar (a linha não estava visível)"
+    fi
+
+    # 3. Digita a consulta no editor e clica em `Run query`.
+    shot /tmp/gui.png
+    click_word /tmp/gui.png '^SQL$' 60 30 || fail "acha o editor SQL"
+    sleep 1
+    xdotool key --clearmodifiers ctrl+a 2>/dev/null
+    xdotool type --delay 20 "select 'smoke-ok' as marker from items limit 1" 2>/dev/null
+    sleep 1
+    shot /tmp/gui.png
+    if click_word /tmp/gui.png '^Run$'; then
+        if wait_for_text 'smoke-ok' 120; then
+            pass "consulta roda pela janela e mostra o resultado"
+        else
+            fail "consulta roda pela janela e mostra o resultado"
+            cp /tmp/gui.png "$OUT/gui/03-sem-resultado.png"
+        fi
+    else
+        fail "acha o botão 'Run query'"
+    fi
+
+    # 4. As abas trocam a tela e o conteúdo de cada uma é o esperado.
+    shot /tmp/gui.png
+    if click_word /tmp/gui.png 'Connections'; then
+        sleep 2
+        shot "$OUT/gui/02-connections.png"
+        if ocr_text "$OUT/gui/02-connections.png" | grep -qi 'Add server'; then
+            pass "aba Connections mostra o cadastro de servidores"
+        else
+            fail "aba Connections mostra o cadastro de servidores"
+        fi
+    else
+        fail "acha a aba Connections"
+    fi
+
+    shot /tmp/gui.png
+    if click_word /tmp/gui.png '^Settings$'; then
+        sleep 2
+        shot "$OUT/gui/03-settings.png"
+        if ocr_text "$OUT/gui/03-settings.png" | grep -qi 'Appearance'; then
+            pass "aba Settings mostra a aparência"
+        else
+            fail "aba Settings mostra a aparência"
+        fi
+    else
+        fail "acha a aba Settings"
+    fi
+
+    # 5. Voltar para Query preserva a consulta e o resultado.
+    shot /tmp/gui.png
+    if click_word /tmp/gui.png '^Query'; then
+        sleep 2
+        shot "$OUT/gui/04-de-volta.png"
+        if ocr_text "$OUT/gui/04-de-volta.png" | grep -qi 'smoke-ok'; then
+            pass "voltar para Query preserva o resultado"
+        else
+            fail "voltar para Query preserva o resultado"
+        fi
+    else
+        fail "acha a aba Query"
     fi
 else
     fail "janela da GUI abriu"
     cp /tmp/gui.log "$OUT/gui/gui.log" 2>/dev/null
     tail -30 /tmp/gui.log
 fi
+
 kill "$GUI_PID" 2>/dev/null
 wait "$GUI_PID" 2>/dev/null
 kill "$XVFB_PID" 2>/dev/null
 wait "$XVFB_PID" 2>/dev/null
+
+# Diagnóstico: o texto que o OCR leu da última captura da GUI.
+[ -f /tmp/gui-ocr.txt ] && cp /tmp/gui-ocr.txt "$OUT/gui/ultima-tela.txt" 2>/dev/null
 
 echo ""
 echo "PASSED=$PASSED FAILED=$FAILED"

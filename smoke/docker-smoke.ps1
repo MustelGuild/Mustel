@@ -6,6 +6,19 @@
 #   powershell -ExecutionPolicy Bypass -File smoke/docker-smoke.ps1 -Keep
 param([switch]$Keep)
 
+# Fora do Windows, o caminho com podman é o dono da execução (ver container-smoke.sh).
+if ($IsLinux -or $IsMacOS) {
+    $sh = Join-Path $PSScriptRoot 'container-smoke.sh'
+    if (-not (Get-Command bash -ErrorAction SilentlyContinue)) {
+        Write-Error 'Sem bash no PATH: rode smoke/container-smoke.sh diretamente.'
+        exit 1
+    }
+    $shArgs = @()
+    if ($Keep) { $shArgs += '--keep' }
+    & bash $sh @shArgs
+    exit $LASTEXITCODE
+}
+
 $ErrorActionPreference = 'Continue'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $OutputEncoding = [Text.Encoding]::UTF8

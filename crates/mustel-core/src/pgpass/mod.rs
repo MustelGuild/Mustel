@@ -11,6 +11,6 @@ pub mod entry;
 pub mod paths;
 pub mod store;
 
-pub use entry::{PgPassEntry, parse_line};
+pub use entry::{PgPassEntry, PgPassEntryError, parse_line};
 pub use paths::{PGPASS_FILE_ENV, PGPASS_FILE_NAME, pgpass_file_path};
 pub use store::{PgPassError, PgPassOutcome, PgPassStore};

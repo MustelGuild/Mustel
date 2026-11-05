@@ -75,7 +75,7 @@ Detalhe completo em [query run](query-run.md).
 |---|---|
 | `[database]` (posicional) | banco a salvar; dispensável com `--all` |
 | `-H` / `-p` / `-U` / `-W` / `--password-stdin` | conexão e senha |
-| `--ssl-mode` / `--timeout` / `--command-timeout` | aceitos por compatibilidade; o SSL vale na descoberta do `--all`, mas **não** vai para o `pg_dump` |
+| `--ssl-mode` / `--timeout` / `--command-timeout` | **só `Disable`** nesta release; `Prefer`/`Require` são recusados. Os timeouts são aceitos e ignorados |
 | `-a, --all` | todos os bancos do servidor |
 | `--strict` | falha com não-zero se algum banco falhar; sem a flag, aviso e exit 0 |
 | `--exclude <padrão>` | tabelas a excluir inteiras (repetível) |
@@ -90,7 +90,7 @@ Detalhe completo em [query run](query-run.md).
 |---|---|
 | `[database]` `[file]` | banco e dump; o arquivo default é `<database>.dump` |
 | `-H` / `-p` / `-U` / `-W` / `--password-stdin` | conexão e senha |
-| `--ssl-mode` / `--timeout` / `--command-timeout` | conexão e limites |
+| `--ssl-mode` / `--timeout` / `--command-timeout` | **só `Disable`** nesta release; `Prefer`/`Require` são recusados. Os timeouts valem para o `pg_restore` |
 | `-a, --all` | todos os dumps do diretório |
 | `-d, --directory <path>` | diretório dos dumps (com `--all`) |
 | `--no-clean` | não derruba objetos antes (o default derruba) |

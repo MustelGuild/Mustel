@@ -1,10 +1,11 @@
-# Gate de qualidade em push/PR. As actions são pinadas por SHA (o comentário diz a versão) para
-# que uma tag re-apontada não execute código com o token do repositório.
+# Gate de qualidade **somente manual** (`workflow_dispatch`): nenhum push ou PR dispara estas
+# ações — quem roda é o dono, pelo botão "Run workflow" na aba Actions. As actions são pinadas por
+# SHA (o comentário diz a versão) para que uma tag re-apontada não execute código com o token do
+# repositório.
 name: ci
 
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 permissions: {}
 

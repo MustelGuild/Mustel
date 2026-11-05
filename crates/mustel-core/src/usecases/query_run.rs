@@ -75,7 +75,7 @@ pub async fn run(
 ) -> Result<QueryRunOutcome, CoreError> {
     let timestamp = csv_writer::timestamp_for(SystemTime::now());
     let directory = request.output_directory.join(&timestamp);
-    std::fs::create_dir_all(&directory).map_err(CoreError::Io)?;
+    crate::private_fs::create_dir(&directory).map_err(CoreError::Io)?;
 
     let plans = plan::plan(&request.servers, request.all, &request.exclude, events).await;
 
@@ -198,6 +198,22 @@ mod tests {
             1,
             "o diretório do timestamp é criado antes, como no legado"
         );
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            assert_eq!(
+                std::fs::metadata(directory[0].path())
+                    .expect("metadata")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o700,
+                "o diretório da execução precisa ser 0700"
+            );
+        }
+
         assert!(
             directory[0]
                 .path()

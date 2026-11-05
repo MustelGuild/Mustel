@@ -37,7 +37,7 @@ use crate::process::{self, ProcessOptions};
 use crate::signal::CancellationToken;
 use crate::usecases::database::{
     CommandFailure, Connection, DatabaseFailure, FailureKind, absolute_path, binary_not_found,
-    dump_file_name, dump_files,
+    dump_file_name, dump_files, ensure_tls_disabled,
 };
 use crate::validation;
 
@@ -57,7 +57,7 @@ pub struct RestoreOptions {
     pub port: Option<String>,
     /// Usuário; `None`/branco não é validado, como no legado.
     pub username: Option<String>,
-    /// `--ssl-mode`: vai para `PGSSLMODE` do `pg_restore`.
+    /// `--ssl-mode`: só `Disable` é aceito nesta release; `Prefer`/`Require` são recusados.
     pub ssl_mode: Option<String>,
     /// `--timeout`: vai para `PGCONNECT_TIMEOUT`.
     pub timeout: Option<i32>,
@@ -140,6 +140,8 @@ pub fn validate(options: &RestoreOptions) -> Result<Connection, CommandFailure> 
         ));
     }
 
+    ensure_tls_disabled(options.ssl_mode.as_deref())?;
+
     if options.timeout.is_some_and(|value| value <= 0) {
         return Err(CommandFailure::new(
             FailureKind::Usage,
@@ -170,6 +172,8 @@ pub async fn restore(
     events: &dyn EventSink,
     token: &CancellationToken,
 ) -> Result<(), DatabaseFailure> {
+    ensure_tls_disabled(options.ssl_mode.as_deref())?;
+
     if options.all {
         restore_all(options, connection, password, locator, events, token).await
     } else {
@@ -413,13 +417,9 @@ fn with_connection_environment(
     mut options: ProcessOptions,
     restore: &RestoreOptions,
 ) -> ProcessOptions {
-    if let Some(ssl_mode) = restore
-        .ssl_mode
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-    {
-        options = options.with_env("PGSSLMODE", ssl_mode);
-    }
+    // Nesta release só `Disable` é aceito; o ambiente do filho precisa dizer isso de forma
+    // explícita para não herdar um `PGSSLMODE` mais forte do processo pai.
+    options = options.with_env("PGSSLMODE", "disable");
     if let Some(timeout) = restore.timeout {
         options = options.with_env("PGCONNECT_TIMEOUT", timeout.to_string());
     }
@@ -506,7 +506,7 @@ async fn create_database_through_driver(
         Some(raw) => raw.parse::<SslMode>().map_err(|error| {
             DatabaseFailure::Fatal(CoreError::InvalidArgument(error.to_string()))
         })?,
-        None => SslMode::default(),
+        None => SslMode::Disable,
     };
 
     let settings = ConnectionSettings {
@@ -552,6 +552,7 @@ fn psql_command(
             query,
         ])
         .with_env("PGPASSWORD", password)
+        .with_env("PGSSLMODE", "disable")
 }
 
 /// Cópia das opções (o `--all` reaproveita quase tudo, trocando só o banco).
@@ -634,6 +635,63 @@ mod tests {
         assert_eq!(
             validate(&zero_command_timeout).expect_err("recusa").message,
             "Error: Command timeout must be a positive integer."
+        );
+    }
+
+    #[test]
+    /// CONTRACT: IF-107
+    fn tls_modes_other_than_disable_are_refused() {
+        for mode in ["Prefer", "Require", "prefer", "require"] {
+            let mut command = options(Some("mydb"));
+            command.ssl_mode = Some(mode.to_string());
+
+            let error = validate(&command).expect_err("TLS deve ser recusado nesta release");
+            assert_eq!(error.kind, FailureKind::Usage);
+            assert!(
+                error.message.contains("TLS is not supported"),
+                "{mode}: {}",
+                error.message
+            );
+        }
+
+        let mut disabled = options(Some("mydb"));
+        disabled.ssl_mode = Some("Disable".to_string());
+        assert!(validate(&disabled).is_ok());
+        assert!(
+            validate(&options(Some("mydb"))).is_ok(),
+            "sem flag, o default desta release é Disable"
+        );
+    }
+
+    #[test]
+    fn the_pg_restore_child_always_disables_tls() {
+        let process =
+            with_connection_environment(ProcessOptions::new("pg_restore"), &options(Some("mydb")));
+
+        assert!(
+            process
+                .env
+                .contains(&("PGSSLMODE".to_string(), "disable".to_string())),
+            "o filho não pode herdar TLS do ambiente: {:?}",
+            process.env
+        );
+    }
+
+    #[test]
+    fn the_psql_child_always_disables_tls() {
+        let command = psql_command(
+            std::path::Path::new("psql"),
+            &connection("mydb"),
+            "senha",
+            "select 1",
+        );
+
+        assert!(
+            command
+                .env
+                .contains(&("PGSSLMODE".to_string(), "disable".to_string())),
+            "o psql também não pode usar TLS: {:?}",
+            command.env
         );
     }
 

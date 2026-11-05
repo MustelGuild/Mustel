@@ -33,10 +33,16 @@ O classificador usa `sqlparser` com o dialeto PostgreSQL. Ele percorre a AST int
 - `EXPLAIN ANALYZE` de uma operação destrutiva;
 - `SET ROLE`;
 - as dez palavras do legado: `INSERT`, `UPDATE`, `DELETE`, `ALTER`, `DROP`, `CREATE`, `TRUNCATE`,
-  `MERGE`, `GRANT`, `REVOKE`.
+  `MERGE`, `GRANT`, `REVOKE`;
+- as operações que o legado deixava passar: `COPY ... FROM`, `COPY ... PROGRAM` (nos dois sentidos),
+  `CALL`, `SELECT ... INTO`, `VACUUM`, `REINDEX`, `CLUSTER`, `REFRESH MATERIALIZED VIEW` e `DO`.
 
-`SELECT ... FOR UPDATE` continua **seguro** (o legado não o tratava como escrita), assim como
-`EXPLAIN` **sem** `ANALYZE`.
+`COPY ... TO STDOUT`/arquivo continua **seguro**: ele lê o banco. `SELECT ... FOR UPDATE` também
+segue **seguro** (o legado não o tratava como escrita), assim como `EXPLAIN` **sem** `ANALYZE`.
+
+> O `DO` e os comandos de manutenção sem variante própria na AST (`REINDEX`, `CLUSTER`,
+> `REFRESH`) são reconhecidos pelo tokenizador quando o parse falha. A lista de palavras do
+> fallback inclui `COPY`, `CALL`, `DO`, `VACUUM`, `REINDEX`, `CLUSTER`, `REFRESH` e `INTO`.
 
 ## Quando o parse falha
 
@@ -55,4 +61,5 @@ a descrição mostra a operação real: um `DELETE` escondido em CTE ou `EXPLAIN
 
 `crates/mustel-core/src/query/analyzer.rs` cobre os 21 casos do legado, os três bypasses
 (CTE com DML, `EXPLAIN ANALYZE` e `SET ROLE`), falsos positivos (`SELECT 'delete'` e identificadores
-citados), CTE múltiplo e falha de parse com palavra destrutiva.
+citados), CTE múltiplo, falha de parse com palavra destrutiva e as operações novas (`COPY`, `CALL`,
+`SELECT INTO`, `VACUUM`, `REINDEX`, `CLUSTER`, `REFRESH` e `DO`).

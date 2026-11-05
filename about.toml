@@ -1,0 +1,25 @@
+# Configuração do `cargo-about`: gera o THIRD-PARTY-LICENSES.md do pacote.
+#
+# A lista `accepted` é a mesma do `deny.toml` (a política de licenças do projeto). Um crate
+# novo com licença fora dela faz a geração falhar — é o comportamento desejado.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "Unlicense",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    "Unicode-3.0",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+    "MPL-2.0",
+    "AGPL-3.0-only",
+]
+
+# Dependência de teste não entra no binário: não faz sentido avisá-la no pacote.
+ignore-dev-dependencies = true

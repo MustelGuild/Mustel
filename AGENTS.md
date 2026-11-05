@@ -79,6 +79,8 @@ cargo run -p mustel-testkit --bin oracle-compare -- --report --scope query,datab
 cargo release patch             # ensaio: mostra o bump e o commit/tag que faria (não altera nada)
 cargo release patch --execute   # bump + commit + tag v<versao>
 # release manual: ./publish.ps1 / ./publish.sh, depois release no GitHub; sem workflow
+# CI: .github/workflows/ci.yml roda SÓ por workflow_dispatch (botão na aba Actions); push e PR não
+# disparam nada — nunca conte com o CI depois de um push, rode o gate aqui
 ```
 
 ## Verificar a GUI na janela
@@ -150,7 +152,7 @@ sai em **stdout** com **1**.
 - As skills `furlab-command-manager` valiam apenas para o legado e foram removidas com ele.
 - Os pacotes antigos (`FurLab` no NuGet, `FurLab.CLI` no winget) não são tocados. O Mustel **não**
   publica no winget: os canais são o **GitHub Releases** (executável) e o **crates.io**
-  (`cargo install mustel`). `mustel-core` e `mustel-gui` vão ao crates.io como dependências do
+  (`cargo install --locked mustel`). `mustel-core` e `mustel-gui` vão ao crates.io como dependências do
   `mustel`, não como instrução de instalação.
 
 ## Guard Rails (Agent Safety Protocol)

@@ -1,0 +1,30 @@
+# Licenças de terceiros
+
+<!-- Gerado por `cargo about generate about.hbs`. Não edite à mão. -->
+
+Este arquivo acompanha o pacote do Mustel e reproduz os textos das licenças dos componentes
+embutidos no binário. O Mustel em si é distribuído sob AGPL-3.0-only (ver `LICENSE`), e o
+inventário de componentes — com versão e hash — está em `sbom.cdx.json`.
+
+## Visão geral
+
+{{#each overview}}
+- **{{{name}}}** — {{count}} componente(s)
+{{/each}}
+
+## Textos
+
+{{#each licenses}}
+### {{{name}}}
+
+Usado por:
+
+{{#each used_by}}
+- {{{crate.name}}} {{{crate.version}}}
+{{/each}}
+
+```text
+{{{text}}}
+```
+
+{{/each}}

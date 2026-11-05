@@ -56,6 +56,27 @@ try {
     Copy-Item (Join-Path $root 'crates\mustel-gui\assets\fonts\FiraCode-OFL.txt') $stage
     Copy-Item (Join-Path $root 'THIRD-PARTY-NOTICES.md') $stage
 
+    # SBOM do pacote: CycloneDX 1.5 com hash SHA-256 e grafo de dependências, gerado a partir
+    # do Cargo.lock para o alvo compilado. A raiz guarda o inventário de todos os alvos; este
+    # é o que descreve o binário deste pacote.
+    if (-not (Get-Command cargo-cyclonedx -ErrorAction SilentlyContinue)) {
+        throw "cargo-cyclonedx não encontrado: rode 'cargo install cargo-cyclonedx --locked'"
+    }
+    cargo cyclonedx -f json --spec-version 1.5 --override-filename sbom.cdx | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "cargo cyclonedx falhou (exit $LASTEXITCODE)" }
+    Copy-Item (Join-Path $root 'crates\mustel\sbom.cdx.json') $stage
+    Get-ChildItem -Path (Join-Path $root 'crates') -Filter 'sbom.cdx.json' -Recurse -Depth 1 -File |
+        Remove-Item -Force
+
+    # Licenças de terceiros: textos completos das licenças dos componentes compilados. A lista
+    # de licenças aceitas é a do about.toml (a mesma do deny.toml); crate fora dela quebra o
+    # release.
+    if (-not (Get-Command cargo-about -ErrorAction SilentlyContinue)) {
+        throw "cargo-about não encontrado: rode 'cargo install cargo-about --locked --features cli'"
+    }
+    cargo about -L warn generate -m crates/mustel/Cargo.toml --target $triple about.hbs -o (Join-Path $stage 'THIRD-PARTY-LICENSES.md')
+    if ($LASTEXITCODE -ne 0) { throw "cargo about falhou (exit $LASTEXITCODE)" }
+
     $readme = @"
 Mustel $version ($triple)
 
@@ -64,6 +85,10 @@ Mustel $version ($triple)
    Windows:     %APPDATA%\Mustel\mustel.jsonc
    Linux/macOS: `$XDG_CONFIG_HOME/Mustel/mustel.jsonc (ou ~/.config/Mustel/mustel.jsonc)
 3. 'mustel --help' lista os comandos.
+
+Inventário de componentes: 'sbom.cdx.json' (CycloneDX 1.5, com hash SHA-256 e grafo de
+dependências).
+Licenças de terceiros: 'THIRD-PARTY-LICENSES.md' (textos completos dos componentes compilados).
 
 Licença: AGPL-3.0-only (ver LICENSE).
 Fonte embutida: Fira Code, sob SIL OFL 1.1 (ver FiraCode-OFL.txt).

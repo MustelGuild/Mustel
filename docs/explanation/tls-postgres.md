@@ -1,5 +1,12 @@
 # TLS do PostgreSQL
 
+> **Limitação desta release (2026-11-03):** `database backup` e `database restore` **não usam TLS
+> validado**. Eles só aceitam `--ssl-mode Disable`; `Prefer` e `Require` são recusados com exit 2.
+> `query run`, a GUI e `settings db-*` continuam usando o driver e validando cadeia/hostname. Para
+> backup/restore com TLS, use `pg_dump`/`pg_restore` diretamente com `sslmode=verify-full` e
+> `sslrootcert`. A correção definitiva está em
+> [`MustelPlans/correcao-tls-binarios-externos.md`](../../MustelPlans/correcao-tls-binarios-externos.md).
+
 O Mustel usa o `tokio-postgres` com o conector `tokio-postgres-rustls`. Quando a conexão usa TLS,
 o certificado do servidor é validado com o verificador padrão do `rustls`: **cadeia de confiança e
 hostname**. Não existe modo que aceite qualquer certificado.
@@ -14,10 +21,13 @@ O `sslMode` acompanha os três valores do driver:
 | `Prefer` | se o servidor oferecer | sim | sim, **somente** quando o servidor diz que não oferece TLS |
 | `Require` | obrigatório | sim | nunca |
 
-`Prefer` é o default. Se o servidor oferece TLS mas o certificado é inválido (CA desconhecida,
+`Prefer` é o default do driver. Se o servidor oferece TLS mas o certificado é inválido (CA desconhecida,
 hostname errado, certificado expirado), a conexão **falha**; ela não cai para texto puro. O driver
 só faz o fallback quando recebe a resposta "sem TLS" do servidor. O fallback é o que o `Prefer`
 pede, então ele acontece **sem aviso**: quem precisa de TLS garantido escolhe `Require`.
+
+Essa semântica vale para o **driver**. Os binários externos (`pg_dump`/`pg_restore`/`psql`) usam
+libpq, e nesta release ficam restritos a `Disable` (ver a limitação no topo).
 
 `Require` falha se o servidor não oferecer TLS, se o certificado não for confiável ou se o hostname
 não casar.

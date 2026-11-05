@@ -32,8 +32,12 @@ with the `.sha256` next to it. Extract and copy the binary to a directory on you
 Or install from crates.io (CLI **and** GUI in one binary):
 
 ```bash
-cargo install mustel
+cargo install --locked mustel
 ```
+
+`--locked` installs the exact dependency graph recorded in the package's `Cargo.lock` — the same one
+the release was built and tested with. Without it, Cargo resolves the newest semver-compatible
+versions; drop the flag only if you deliberately want newer dependencies.
 
 > **Not published yet.** Until the first release and the `cargo publish` land, build the package
 > locally: `./publish.ps1` (Windows) or `./publish.sh` (Linux), which writes to `packaging/`.
@@ -55,6 +59,11 @@ X11 or Wayland with OpenGL.
 | `settings` | `settings db-servers ls/add/rm/test/set-password` |
 | `gui` | `mustel gui` — SQL editor with autocomplete and syntax highlighting, servers registry and `query run` in a window; light, dark or system theme |
 
+> **TLS in backup/restore (this release):** `database backup` and `database restore` only accept
+> `--ssl-mode Disable`; `Prefer` and `Require` are refused until certificate validation for the
+> external PostgreSQL binaries is implemented. `query run` and the GUI keep validated TLS. For TLS
+> backups, use `pg_dump`/`pg_restore` directly with `sslmode=verify-full` and `sslrootcert`.
+
 ### Examples
 
 ```bash
@@ -70,8 +79,8 @@ mustel settings db-servers set-password dev
 mustel settings db-servers ls
 
 # Backup and restore
-mustel database backup mydb -o ./backups
-mustel database restore mydb ./backups/mydb.dump
+mustel database backup mydb -o ./backups --ssl-mode Disable
+mustel database restore mydb ./backups/mydb.dump --ssl-mode Disable
 
 # pgpass.conf
 mustel database pgpass add mydb --host localhost --username postgres

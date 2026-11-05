@@ -118,6 +118,31 @@ impl From<crate::process::ProcessError> for DatabaseFailure {
     }
 }
 
+/// Mensagem da trava de release: TLS dos binários externos ainda não valida certificado.
+pub const TLS_DISABLED_MESSAGE: &str = "TLS is not supported for database backup/restore in this \
+release. Use --ssl-mode Disable only on a trusted network, or run pg_dump/pg_restore directly with \
+sslmode=verify-full and sslrootcert.";
+
+/// Garante que o comando não vai usar TLS em um binário externo nesta release.
+///
+/// `None` e `Disable` são aceitos (o default desta release é texto puro explícito); `Prefer` e
+/// `Require` são recusados enquanto o S1 não for corrigido. A checagem roda no núcleo para valer em
+/// qualquer frontend, não só no CLI.
+pub(crate) fn ensure_tls_disabled(ssl_mode: Option<&str>) -> Result<(), CommandFailure> {
+    let Some(mode) = ssl_mode.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+
+    if mode.eq_ignore_ascii_case("Disable") {
+        return Ok(());
+    }
+
+    Err(CommandFailure::new(
+        FailureKind::Usage,
+        format!("Error: {TLS_DISABLED_MESSAGE}"),
+    ))
+}
+
 /// Mensagem do legado quando o binário não é encontrado.
 pub fn binary_not_found(binary: &str) -> String {
     format!(
@@ -156,6 +181,20 @@ pub fn dump_files(directory: &Path) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    /// CONTRACT: IF-107
+    fn tls_is_blocked_for_external_binaries_until_s1_is_fixed() {
+        assert!(ensure_tls_disabled(None).is_ok(), "default é texto puro");
+        assert!(ensure_tls_disabled(Some("Disable")).is_ok());
+        assert!(ensure_tls_disabled(Some(" disable ")).is_ok());
+
+        for mode in ["Prefer", "Require", "prefer", "require"] {
+            let error = ensure_tls_disabled(Some(mode)).expect_err("TLS deve ser recusado");
+            assert_eq!(error.kind, FailureKind::Usage);
+            assert!(error.message.contains("TLS is not supported"), "{mode}");
+        }
+    }
 
     #[test]
     fn bare_message_drops_the_legacy_prefix() {

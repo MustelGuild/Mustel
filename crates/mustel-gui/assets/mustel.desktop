@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Mustel
+GenericName=PostgreSQL Query Tool
+Comment=Run SQL across several PostgreSQL servers, export CSV and manage backups
+Exec=mustel gui
+Icon=mustel
+Terminal=false
+Categories=Development;Database;
+Keywords=postgres;postgresql;sql;query;csv;pgpass;
+StartupNotify=true
+StartupWMClass=mustel

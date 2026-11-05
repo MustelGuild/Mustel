@@ -24,6 +24,17 @@ pub const DEFAULT_DATABASE: &str = "*";
 /// Usuário usado quando o chamador não informa um (`PgPassEntry.Username`).
 pub const DEFAULT_USERNAME: &str = "postgres";
 
+/// Motivo pelo qual uma entrada não pode ser gravada no `pgpass.conf`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum PgPassEntryError {
+    /// O campo tem CR, LF ou NUL; o formato de uma linha não tem escape para esses caracteres.
+    #[error("the {field} field cannot contain line breaks or NUL bytes")]
+    InvalidLine {
+        /// Campo recusado.
+        field: &'static str,
+    },
+}
+
 /// Uma entrada do `pgpass.conf`.
 ///
 /// Os campos `hostname`, `port`, `database` e `username` aceitam `*` como curinga. A senha é
@@ -89,7 +100,29 @@ impl PgPassEntry {
         self.identity_key() == other.identity_key()
     }
 
+    /// Valida os campos contra caracteres que quebrariam a linha do arquivo.
+    ///
+    /// O `pgpass.conf` é lido linha a linha e não tem escape para CR/LF; um valor com quebra de
+    /// linha criaria uma entrada extra. NUL também não tem representação útil no arquivo.
+    pub fn validate(&self) -> Result<(), PgPassEntryError> {
+        for (field, value) in [
+            ("hostname", self.hostname.as_str()),
+            ("port", self.port.as_str()),
+            ("database", self.database.as_str()),
+            ("username", self.username.as_str()),
+            ("password", self.password.as_str()),
+        ] {
+            if value.contains('\n') || value.contains('\r') || value.contains('\0') {
+                return Err(PgPassEntryError::InvalidLine { field });
+            }
+        }
+
+        Ok(())
+    }
+
     /// Serializa para uma linha do arquivo, escapando a senha.
+    ///
+    /// Chame [`Self::validate`] antes: CR/LF/NUL não têm representação no formato.
     pub fn serialize(&self) -> String {
         format!(
             "{}:{}:{}:{}:{}",
@@ -216,6 +249,54 @@ mod tests {
             username: username.to_string(),
             password: password.to_string(),
         }
+    }
+
+    fn entry_with(field: &str, value: &str) -> PgPassEntry {
+        let mut entry = entry("localhost", "5432", "mydb", "postgres", "senha");
+        match field {
+            "hostname" => entry.hostname = value.to_string(),
+            "port" => entry.port = value.to_string(),
+            "database" => entry.database = value.to_string(),
+            "username" => entry.username = value.to_string(),
+            "password" => entry.password = value.to_string(),
+            other => panic!("campo desconhecido: {other}"),
+        }
+        entry
+    }
+
+    /// CONTRACT: IF-106
+    #[test]
+    fn line_breaks_and_nul_are_refused_in_every_field() {
+        for field in ["hostname", "port", "database", "username", "password"] {
+            for invalid in ["\n", "\r", "\0"] {
+                let entry = entry_with(field, invalid);
+                assert!(
+                    matches!(
+                        entry.validate(),
+                        Err(PgPassEntryError::InvalidLine { field: reported }) if reported == field
+                    ),
+                    "campo {field} aceitou {invalid:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_normal_entry_is_valid() {
+        assert!(
+            entry("localhost", "5432", "mydb", "postgres", "senha")
+                .validate()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn colons_and_backslashes_are_still_allowed_in_the_password() {
+        assert!(
+            entry("localhost", "5432", "mydb", "postgres", "senha:com\\barra")
+                .validate()
+                .is_ok()
+        );
     }
 
     #[test]

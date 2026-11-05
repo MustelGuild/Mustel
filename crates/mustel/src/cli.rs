@@ -209,9 +209,10 @@ pub struct DatabaseBackupArgs {
     #[arg(long = "password-stdin", conflicts_with = "password")]
     pub password_stdin: bool,
 
-    /// SSL mode for the database connection.
+    /// TLS mode for the database connection. In this release only `Disable` is accepted.
     ///
-    /// Aceito por compatibilidade: o legado **não** usa este valor no `pg_dump`.
+    /// `Prefer` and `Require` are refused until certificate validation for the external PostgreSQL
+    /// binaries is implemented. The default is `Disable`.
     #[arg(long = "ssl-mode", value_name = "mode")]
     pub ssl_mode: Option<String>,
 
@@ -287,7 +288,10 @@ pub struct DatabaseRestoreArgs {
     #[arg(long = "password-stdin", conflicts_with = "password")]
     pub password_stdin: bool,
 
-    /// SSL mode for the database connection.
+    /// TLS mode for the database connection. In this release only `Disable` is accepted.
+    ///
+    /// `Prefer` and `Require` are refused until certificate validation for the external PostgreSQL
+    /// binaries is implemented. The default is `Disable`.
     #[arg(long = "ssl-mode", value_name = "mode")]
     pub ssl_mode: Option<String>,
 

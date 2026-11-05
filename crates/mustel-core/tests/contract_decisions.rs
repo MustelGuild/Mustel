@@ -263,7 +263,7 @@ fn the_pgpass_file_is_owner_only_on_unix() {
     let path = dir.path().join("pgpass.conf");
     let store = PgPassStore::new(path.clone());
     let entry = mustel_core::pgpass::entry::PgPassEntry {
-        host: "localhost".to_string(),
+        hostname: "localhost".to_string(),
         port: "5432".to_string(),
         database: "db".to_string(),
         username: "postgres".to_string(),
@@ -277,4 +277,43 @@ fn the_pgpass_file_is_owner_only_on_unix() {
         .mode()
         & 0o777;
     assert_eq!(mode, 0o600, "modo esperado 0600, veio {mode:o}");
+}
+
+/// O repositório precisa continuar recusando os arquivos de segredo mais comuns.
+#[test]
+fn the_gitignore_hides_common_secret_files() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("raiz do repositório")
+        .to_path_buf();
+    let text = std::fs::read_to_string(root.join(".gitignore")).expect("lê .gitignore");
+    let patterns: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .collect();
+
+    for pattern in [
+        ".env",
+        ".env.*",
+        "*.pem",
+        "*.key",
+        "*.pfx",
+        "*.p12",
+        "*.p8",
+        "*.jks",
+        "*.keystore",
+        "*.kdbx",
+        "id_rsa",
+        "id_ed25519",
+        "*.ppk",
+        ".cargo/credentials",
+        ".cargo/credentials.toml",
+    ] {
+        assert!(
+            patterns.contains(&pattern),
+            "padrão de segredo ausente do .gitignore: {pattern}"
+        );
+    }
 }

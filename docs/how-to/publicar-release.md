@@ -3,7 +3,7 @@
 > Você precisa **lançar uma versão nova** do Mustel — os binários na página de release e o pacote no
 > crates.io. Este é o caminho completo, do incremento de versão até a publicação.
 
-Canais (decisão `D17`): **GitHub Releases** (executável) e **crates.io** (`cargo install mustel`).
+Canais (decisão `D17`): **GitHub Releases** (executável) e **crates.io** (`cargo install --locked mustel`).
 Não há winget.
 
 ## Pré-requisitos
@@ -82,6 +82,15 @@ Os dois scripts geram os arquivos em `packaging/`:
 - `mustel-<versao>-x86_64-pc-windows-msvc.zip` e `.sha256`;
 - `mustel-<versao>-x86_64-unknown-linux-gnu.tar.gz` e `.sha256`.
 
+Os scripts exigem o `cargo-cyclonedx` (`cargo install cargo-cyclonedx --locked`, validado com a
+0.5.9) e incluem no pacote um `sbom.cdx.json` CycloneDX 1.5, gerado a partir do `Cargo.lock` para
+o alvo compilado, com hash SHA-256 por componente e o grafo de dependências.
+
+Exigem também o `cargo-about` (`cargo install cargo-about --locked --features cli`, validado com a
+0.9.3), que gera o `THIRD-PARTY-LICENSES.md` com os textos completos das licenças dos componentes
+compilados. A lista de licenças aceitas está em `about.toml` e é a mesma do `deny.toml`; um
+componente com licença fora dela faz o release falhar.
+
 Confira que o número nos nomes é o mesmo de `Cargo.toml` e da tag:
 
 ```bash
@@ -96,7 +105,7 @@ A release não é criada por workflow. Depois de empurrar a tag, crie a release 
 
 - o `.zip` e o `.sha256` do Windows;
 - o `.tar.gz` e o `.sha256` do Linux;
-- o `sbom.cdx.json` da raiz.
+- o `sbom.cdx.json` da raiz (inventário de todos os alvos; cada pacote já leva o do seu alvo).
 
 Alternativa por linha de comando, se você usa o GitHub CLI:
 
@@ -120,7 +129,7 @@ cargo publish -p mustel-gui
 cargo publish -p mustel
 ```
 
-`mustel` é o comando que o usuário roda (`cargo install mustel`); os outros dois vão como
+`mustel` é o comando que o usuário roda (`cargo install --locked mustel`); os outros dois vão como
 **dependências**. `mustel-testkit` não é publicado (`publish = false`, fora do ciclo de release).
 
 Cada `cargo publish` é **irreversível**: a versão publicada não pode ser reaproveitada, e uma falha
@@ -129,17 +138,22 @@ no meio exige subir a versão para tentar de novo.
 ## 7. Conferir
 
 ```bash
-cargo install mustel --force
+cargo install --locked mustel --force
 mustel --version        # deve dizer a versão nova
 ```
 
+Use o mesmo comando que o README recomenda ao usuário (`--locked`): é ele que instala o grafo de
+dependências do `Cargo.lock` empacotado, e não uma resolução nova.
+
 E na página de release: os dois arquivos, os dois `.sha256`, e a nota de release gerada.
 
-## O que é automático
+## O que roda sozinho
 
-Só o gate de qualidade em push/PR (`.github/workflows/ci.yml`: `fmt`, `clippy`, `test`). O release
-é **inteiramente manual**: empacotamento por `publish.ps1`/`publish.sh`, criação da release no
-GitHub, upload dos artefatos e `cargo publish` (decisões `D24`, `D26` e `D29`).
+**Nada.** O gate de qualidade (`.github/workflows/ci.yml`: `fmt`, `clippy`, `test`) dispara
+**apenas** por `workflow_dispatch`: o dono clica em "Run workflow" na aba Actions. Push e pull
+request não rodam workflow nenhum. O release é **inteiramente manual**: empacotamento por
+`publish.ps1`/`publish.sh`, criação da release no GitHub, upload dos artefatos e `cargo publish`
+(decisões `D24`, `D26` e `D29`).
 
-Não existe `.github/workflows/release-build.yml`; release não é disparada por tag, botão do Actions
-nem `workflow_dispatch`.
+Não existe `.github/workflows/release-build.yml`, e nenhuma release é disparada por tag, botão do
+Actions ou `workflow_dispatch`.

@@ -27,6 +27,8 @@ fn server_from_url() -> Option<(ServerConfigEntry, ServerRun, String)> {
 
     let host = match parsed.get_hosts().first()? {
         tokio_postgres::config::Host::Tcp(host) => host.clone(),
+        // O variante só existe em Unix; no Windows o enum tem apenas `Tcp`.
+        #[cfg(unix)]
         tokio_postgres::config::Host::Unix(_) => return None,
     };
     let port = parsed.get_ports().first().copied().unwrap_or(5432);

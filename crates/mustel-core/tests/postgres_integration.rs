@@ -33,6 +33,8 @@ fn settings() -> Option<ConnectionSettings> {
         .first()
         .map(|host| match host {
             tokio_postgres::config::Host::Tcp(name) => name.clone(),
+            // O variante só existe em Unix; no Windows o enum tem apenas `Tcp`.
+            #[cfg(unix)]
             tokio_postgres::config::Host::Unix(path) => path.display().to_string(),
         })
         .unwrap_or_else(|| "localhost".to_string());

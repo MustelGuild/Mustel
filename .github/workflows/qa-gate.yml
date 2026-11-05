@@ -1,11 +1,19 @@
-# Gate de qualidade **somente manual** (`workflow_dispatch`): nenhum push ou PR dispara estas
-# ações — quem roda é o dono, pelo botão "Run workflow" na aba Actions. As actions são pinadas por
-# SHA (o comentário diz a versão) para que uma tag re-apontada não execute código com o token do
-# repositório.
-name: ci
+# QA Gate do Mustel. Roda de duas formas:
+#   - manual, pelo botão "Run workflow" na aba Actions (`workflow_dispatch`);
+#   - chamado pelo `publish.yml` (`workflow_call`), antes de empacotar a release.
+# Push e pull request não disparam nada. As actions são pinadas por SHA (o comentário diz a versão)
+# para que uma tag re-apontada não execute código com o token do repositório.
+name: QA Gate
 
 on:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Ref (branch ou tag) a verificar; vazio usa o ref do disparo'
+        required: false
+        default: ''
+        type: string
 
 permissions: {}
 
@@ -17,6 +25,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # O `publish` passa a tag: o gate precisa testar exatamente o commit que vira release,
+          # não o branch que estava selecionado na hora do clique.
+          ref: ${{ inputs.ref || github.ref }}
       - name: instalar Rust
         uses: dtolnay/rust-toolchain@18f0487477426dce244608110aa2660c2893deb7 # 1.98.1
         with:
@@ -37,6 +49,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - name: instalar Rust
         uses: dtolnay/rust-toolchain@18f0487477426dce244608110aa2660c2893deb7 # 1.98.1
       - name: auditoria RustSec

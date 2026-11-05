@@ -32,10 +32,11 @@ porquê das `S` está em [Por que as queries salvas são assim](saved-queries.md
 | `D11` | Migração **ou** Seleção | crates principais × `gui.selections` (`IF-229`/`IF-234`, `config/model.rs`) |
 | `D12` | Migração | `tokio-postgres`, em `crates/mustel-core/src/postgres/**` |
 | `D15` | Migração **ou** Seleção | versão inicial `1.0.0` × bases explícitas (`IF-228`, `gui/query.rs`) |
-| `D24` | Migração | `.github/workflows/ci.yml` (gate de qualidade; o release não é automatizado) |
+| `D24` | Migração | `.github/workflows/qa-gate.yml` (QA Gate; sem release) |
 | `D25` | Migração | manifesto `IF-071`/`IF-072` (`--create-if-not-exists`) |
-| `D26` | Migração | `publish.ps1` / `publish.sh` (release manual) |
-| `D29` | Release | `docs/how-to/publicar-release.md` (release manual, sem workflow) |
+| `D26` | Migração | `publish.ps1` / `publish.sh` (empacotamento) |
+| `D29` | Release | `docs/how-to/publicar-release.md` (release manual — substituída por `D30`) |
+| `D30` | Release | `.github/workflows/publish.yml` (manual sobre a tag `v*` → QA Gate → pacotes → release) |
 | `B1` | Build | `crates/mustel-core/Cargo.toml`, `README.md`/`README.pt-BR.md` (nenhuma libdbus: o store do `keyring` 4 fala D-Bus por `zbus`) |
 
 Os casos com duas numerações (`D10`, `D11`, `D15`) são os que exigem atenção: o texto entre
@@ -51,7 +52,7 @@ código implementa e que o número representa:
   nunca é silenciosa: a base entra na lista desabilitada, com o motivo visível.
 - **`R10`** — o `Run query` leva **só** o servidor que tem base marcada.
 
-## Migração para Rust (`D1`–`D27`) e release (`D29`)
+## Migração para Rust (`D1`–`D27`) e release (`D29`–`D30`)
 
 | ID | Tema | Decisão | Por quê |
 |---|---|---|---|
@@ -78,11 +79,12 @@ código implementa e que o número representa:
 | `D21` | Backlog | Grupos fora do escopo voltam numa **segunda onda**, depois do 1.0 | Não é descarte |
 | `D22` | Pacote winget antigo | `FurLab.CLI` permanece como está; o Mustel **não** publica no winget | Não mexer no antigo, e o canal saiu de escopo (`D17`) |
 | `D23` | Notarização macOS | Fora do escopo; documentar `xattr -d com.apple.quarantine` | macOS está fora do release |
-| `D24` | Automação de CI | O gate automático foi removido no commit `3c81ff1` e reintroduzido como `.github/workflows/ci.yml` no endurecimento de 2026-10-26 (`fmt`, `clippy`, `test`); desde 2026-10-28 ele dispara **só** por `workflow_dispatch` — push e PR não rodam nada; **o release não é automatizado** | O CI vermelho a cada push atrapalhava o desenvolvimento; o gate atual é manual, separado do release |
+| `D24` | Automação de CI | O gate automático foi removido no commit `3c81ff1` e reintroduzido como `.github/workflows/ci.yml` no endurecimento de 2026-10-26 (`fmt`, `clippy`, `test`); desde 2026-10-28 ele dispara **só** por `workflow_dispatch` — push e PR não rodam nada. Desde 2026-11-04 é o **QA Gate** (`.github/workflows/qa-gate.yml`): além do disparo manual, é chamado pelo `publish.yml` por `workflow_call` (`D30`), e continua sem rodar em push/PR | O CI vermelho a cada push atrapalhava o desenvolvimento; o gate segue manual, e o release ganhou workflow próprio |
 | `D25` | Criar banco no `restore` | **Falhar por padrão** (paridade) + `--create-if-not-exists`, criando pelo driver | O `CreateDatabaseIfNeeded` do legado, via `psql`, nunca criava nada — divergência 11 |
 | `D26` | Release sem CI | Dois scripts locais (`publish.ps1`, `publish.sh`) geram o pacote + SHA256; **publicação manual** | O dono publica de `packaging/` onde quiser |
-| `D27` | Workflow empacota **e publica a release** | **Substituído em 2026-10-28**: `release-build.yml` foi removido; empacotamento e publicação são manuais (`D29`) | O dono quer o release sob controle manual; não há `workflow_dispatch` nem criação automática de release |
-| `D29` | Release manual | Sem workflow de release: `publish.ps1`/`publish.sh` geram `packaging/`; a release no GitHub, o upload dos artefatos e o `cargo publish` são passos manuais do dono | Decisão do dono em 2026-10-28; o `ci.yml` continua apenas como gate de qualidade, rodado à mão (`D24`) |
+| `D27` | Workflow empacota **e publica a release** | **Substituído em 2026-10-28** por `D29` e **reintroduzido em 2026-11-04** por `D30`: o `publish.yml` empacota (Windows e Linux) e cria a release | O dono quer o release a partir da tag, sem empacotar à mão |
+| `D29` | Release manual | **Substituída em 2026-11-04** por `D30`: a release nasce do workflow a partir da tag; o `cargo publish` continua manual porque é irreversível | Decisão do dono em 2026-10-28, revista em 2026-11-04 — o release saiu do "manual por falta de CI" para "CI a partir da tag" |
+| `D30` | Release manual a partir da tag | `.github/workflows/publish.yml` dispara **só** por `workflow_dispatch`, com a tag informada no `input` (push de tag não aciona nada), chama o QA Gate (`qa-gate.yml`, `workflow_call`, no ref da tag) e confere tag × `[workspace.package] version`; empacota com os mesmos `publish.ps1`/`publish.sh` e cria ou atualiza a release com os `.zip`/`.tar.gz`, os `.sha256`, o `SHA256SUMS` e o `sbom.cdx.json` | Decisão do dono em 2026-11-04: o pipeline é automático, mas o **disparo é manual** — a tag não publica sozinha; a conferência que o `release-build.yml` antigo fazia volta a ser automática, sem duplicar o empacotamento |
 
 ## Autocomplete do editor (`D1`–`D20`)
 

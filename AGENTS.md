@@ -78,9 +78,10 @@ cargo run -p mustel-testkit --bin oracle-compare -- --report --scope query,datab
 # Release (ver docs/how-to/publicar-release.md)
 cargo release patch             # ensaio: mostra o bump e o commit/tag que faria (não altera nada)
 cargo release patch --execute   # bump + commit + tag v<versao>
-# release manual: ./publish.ps1 / ./publish.sh, depois release no GitHub; sem workflow
-# CI: .github/workflows/ci.yml roda SÓ por workflow_dispatch (botão na aba Actions); push e PR não
-# disparam nada — nunca conte com o CI depois de um push, rode o gate aqui
+# release: ./publish.ps1 / ./publish.sh empacotam à mão; .github/workflows/publish.yml roda
+# MANUALMENTE com a tag informada (Actions → Run workflow) e publica a release no GitHub
+# CI: .github/workflows/qa-gate.yml é o QA Gate; roda por workflow_dispatch (botão na aba Actions)
+# ou chamado pelo publish; push e PR não disparam nada — nunca conte com o CI depois de um push
 ```
 
 ## Verificar a GUI na janela

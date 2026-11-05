@@ -61,9 +61,35 @@ git tag --list 'v*'
 git push --follow-tags
 ```
 
-## 4. Empacotar localmente
+Empurrar a tag **não publica nada**: o `publish` é disparado à mão (passo 4). A tag só precisa
+existir no remoto, porque o `preflight` e o `gh release create --verify-tag` conferem que ela está lá.
 
-Cada plataforma é empacotada na máquina dela. Não há build cruzado nem workflow de release.
+## 4. Disparar o `publish` (manual)
+
+**Actions → publish → Run workflow**, informando a **tag** no campo (ex.: `v1.0.0`). A tag precisa
+existir no remoto: o `preflight` faz checkout dela e o `gh release create --verify-tag` confere.
+Tag fora do padrão `v<versao>` — ou que não case com `[workspace.package] version` — é recusada com
+`::error::`, dizendo o que recebeu.
+
+`.github/workflows/publish.yml` roda nesta ordem:
+
+1. o **QA Gate** (`.github/workflows/qa-gate.yml`, chamado por `workflow_call`): `fmt`, `clippy` e
+   `test` no Windows, RustSec e `cargo-deny` no Linux;
+2. o `preflight`: a tag precisa ser `v<versao>` e `<versao>` precisa ser a de
+   `[workspace.package] version`;
+3. o empacotamento nas duas plataformas, com os mesmos scripts usados à mão — `publish.ps1` no
+   Windows e `publish.sh` no Linux —, gerando o `.zip` (com o `mustel.exe`), o `.tar.gz`, os
+   `.sha256`, o `sbom.cdx.json` do alvo e o `THIRD-PARTY-LICENSES.md` dentro de cada pacote;
+4. o `SHA256SUMS`, com o hash de cada anexo, para conferir tudo de uma vez;
+5. a release no GitHub, com a tag, os dois pacotes, os dois `.sha256`, o `SHA256SUMS` e o
+   `sbom.cdx.json` da raiz.
+
+Se a release já existir (reexecução), os assets são reenviados com `--clobber` em vez de falhar.
+
+### Empacotar sem publicar
+
+Os scripts continuam sendo a fonte única do empacotamento e podem rodar localmente — útil para
+conferir o pacote antes de taguear:
 
 No Windows:
 
@@ -77,7 +103,7 @@ No Linux:
 ./publish.sh
 ```
 
-Os dois scripts geram os arquivos em `packaging/`:
+Os dois geram os arquivos em `packaging/`:
 
 - `mustel-<versao>-x86_64-pc-windows-msvc.zip` e `.sha256`;
 - `mustel-<versao>-x86_64-unknown-linux-gnu.tar.gz` e `.sha256`.
@@ -89,7 +115,8 @@ o alvo compilado, com hash SHA-256 por componente e o grafo de dependências.
 Exigem também o `cargo-about` (`cargo install cargo-about --locked --features cli`, validado com a
 0.9.3), que gera o `THIRD-PARTY-LICENSES.md` com os textos completos das licenças dos componentes
 compilados. A lista de licenças aceitas está em `about.toml` e é a mesma do `deny.toml`; um
-componente com licença fora dela faz o release falhar.
+componente com licença fora dela faz o release falhar. O CI instala as duas ferramentas na versão
+pinada, então o pacote sai igual ao gerado à mão.
 
 Confira que o número nos nomes é o mesmo de `Cargo.toml` e da tag:
 
@@ -98,26 +125,28 @@ git tag --points-at HEAD
 ls packaging/
 ```
 
-## 5. Criar a release no GitHub (manual)
+## 5. Conferir a release publicada
 
-A release não é criada por workflow. Depois de empurrar a tag, crie a release manualmente na página
-**Releases → Draft a new release** do repositório, escolha a tag e anexe:
+Na página **Releases** do repositório, a release `Mustel v<versao>` deve ter:
 
 - o `.zip` e o `.sha256` do Windows;
 - o `.tar.gz` e o `.sha256` do Linux;
+- o `SHA256SUMS`, com o hash de cada anexo;
 - o `sbom.cdx.json` da raiz (inventário de todos os alvos; cada pacote já leva o do seu alvo).
 
-Alternativa por linha de comando, se você usa o GitHub CLI:
+Os nomes saem do `cargo pkgid` e do host do runner, então batem com a tag e com o `Cargo.toml` por
+construção — o `preflight` recusou o contrário. Se faltar algum asset, reexecute o workflow para a
+mesma tag. Pela linha de comando:
 
 ```bash
-gh release create "v<versao>" \
-  packaging/*.zip packaging/*.tar.gz packaging/*.sha256 \
-  sbom.cdx.json \
-  --title "Mustel v<versao>" --generate-notes
+gh release view "v<versao>"
 ```
 
-Antes de publicar, confira que a tag, a versão do `Cargo.toml` e os nomes dos artefatos são os
-mesmos. O workflow antigo fazia essa conferência; agora ela é um passo manual.
+Para conferir os downloads depois de baixá-los, com os `.sha256` de cada pacote:
+
+```bash
+sha256sum -c ./*.sha256     # no Linux
+```
 
 ## 6. Publicar no crates.io
 
@@ -145,15 +174,24 @@ mustel --version        # deve dizer a versão nova
 Use o mesmo comando que o README recomenda ao usuário (`--locked`): é ele que instala o grafo de
 dependências do `Cargo.lock` empacotado, e não uma resolução nova.
 
-E na página de release: os dois arquivos, os dois `.sha256`, e a nota de release gerada.
+E na página de release: os dois arquivos, os dois `.sha256`, o `SHA256SUMS` e a nota de release
+gerada.
 
 ## O que roda sozinho
 
-**Nada.** O gate de qualidade (`.github/workflows/ci.yml`: `fmt`, `clippy`, `test`) dispara
-**apenas** por `workflow_dispatch`: o dono clica em "Run workflow" na aba Actions. Push e pull
-request não rodam workflow nenhum. O release é **inteiramente manual**: empacotamento por
-`publish.ps1`/`publish.sh`, criação da release no GitHub, upload dos artefatos e `cargo publish`
-(decisões `D24`, `D26` e `D29`).
+| Evento | O que roda |
+|---|---|
+| push de tag, de branch ou pull request | **nada** |
+| `workflow_dispatch` no `qa-gate.yml` | só o QA Gate |
+| `workflow_dispatch` no `publish.yml` informando a tag | o pipeline de release inteiro |
 
-Não existe `.github/workflows/release-build.yml`, e nenhuma release é disparada por tag, botão do
-Actions ou `workflow_dispatch`.
+O QA Gate (`.github/workflows/qa-gate.yml`: `fmt`, `clippy`, `test`, RustSec, `cargo-deny`) roda
+sozinho pelo botão **Run workflow** e é chamado pelo `publish.yml` por `workflow_call` — nunca por
+um evento de push de branch.
+
+**Fora do CI:** o incremento de versão e a tag (`cargo release`), o push (`git push --follow-tags`),
+o disparo do `publish` (manual, sobre a tag) e o `cargo publish`, que é irreversível e exige o token
+do crates.io. O `cargo release` continua configurado para **não** publicar e **não** empurrar
+(`publish = false`, `push = false`).
+
+Decisões: `D24` (QA Gate), `D26` (scripts de empacotamento) e `D30` (release manual a partir da tag).

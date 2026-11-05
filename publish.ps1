@@ -6,9 +6,9 @@
     Builda o binário release (com --locked), monta a pasta do pacote com binário,
     configuração de exemplo, LICENSE e o aviso da Fira Code (SIL OFL 1.1), gera o .zip
     e o SHA256 em packaging/.
-    A **publicação é manual**: o script só produz o artefato. O equivalente no Unix é
-    o publish.sh, com o mesmo layout de saída. A release do GitHub é criada manualmente
-    a partir de packaging/ (D29).
+    O script só produz o artefato. O equivalente no Unix é o publish.sh, com o mesmo
+    layout de saída. No CI, o publish.yml chama este script e anexa o pacote à release
+    da tag (D30); rodar à mão serve para conferir o pacote sem publicar.
 
 .PARAMETER NoBuild
     Reempacota o binário já construído, sem rodar o cargo build.
@@ -105,7 +105,7 @@ Fonte embutida: Fira Code, sob SIL OFL 1.1 (ver FiraCode-OFL.txt).
     Write-Host ''
     Write-Host "pacote:  $archive"
     Write-Host "sha256:  $hash"
-    Write-Host 'publicação: manual (D26/D29) — anexe este arquivo à release do GitHub'
+    Write-Host 'publicação: o publish.yml anexa este arquivo à release da tag (D30)'
 }
 finally {
     Pop-Location

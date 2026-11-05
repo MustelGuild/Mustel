@@ -1,0 +1,162 @@
+# Release do Mustel: QA Gate → pacote Windows (`.exe`) e Linux → release no GitHub.
+#
+# Dispara **só manualmente** (`workflow_dispatch`): Actions → publish → Run workflow, informando a
+# **tag** no campo. Push de tag, push de branch e pull request não disparam nada — a publicação é
+# ato do dono.
+#
+# A tag informada é o que define a release: o QA Gate verifica o commit dela, o preflight confere a
+# tag contra `[workspace.package] version` e os binários saem desse commit — nunca do branch que
+# estava selecionado no clique.
+#
+# O gate é o mesmo do `.github/workflows/qa-gate.yml`, chamado por `workflow_call`. O empacotamento
+# em si continua sendo o dos scripts locais (`publish.ps1`/`publish.sh`) — uma única implementação,
+# usada aqui e à mão.
+#
+# O `cargo publish` **não** roda aqui: é irreversível e continua sendo passo manual do dono
+# (docs/how-to/publicar-release.md).
+name: publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag da release (ex.: v1.0.0)'
+        required: true
+        type: string
+
+# Uma release por tag: dois empacotamentos do mesmo ref não competem pelo upload dos artefatos.
+concurrency:
+  group: publish-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.tag }}
+
+permissions: {}
+
+jobs:
+  gate:
+    name: QA Gate
+    uses: ./.github/workflows/qa-gate.yml
+    with:
+      ref: ${{ inputs.tag }}
+    permissions:
+      contents: read
+
+  preflight:
+    name: conferir tag x versão
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.tag }}
+      - name: instalar Rust
+        uses: dtolnay/rust-toolchain@18f0487477426dce244608110aa2660c2893deb7 # 1.98.1
+      - name: a tag tem de casar com a versão do Cargo.toml
+        run: |
+          set -eu
+          if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::informe uma tag v<versao> (ex.: v1.0.0); recebido: $RELEASE_TAG"
+            exit 1
+          fi
+          version=$(cargo pkgid -p mustel | sed 's/.*#//')
+          if [ "v$version" != "$RELEASE_TAG" ]; then
+            echo "::error::a tag $RELEASE_TAG não casa com a versão $version do Cargo.toml"
+            exit 1
+          fi
+          echo "release: $RELEASE_TAG"
+
+  package:
+    name: pacote (${{ matrix.artifact }})
+    needs: [gate, preflight]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: windows
+          - os: ubuntu-latest
+            artifact: linux
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.tag }}
+      - name: instalar Rust
+        uses: dtolnay/rust-toolchain@18f0487477426dce244608110aa2660c2893deb7 # 1.98.1
+      - name: cache do cargo
+        uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      # Versões pinadas: são as validadas em docs/how-to/publicar-release.md, para o pacote sair
+      # igual ao gerado à mão.
+      - name: instalar ferramentas de empacotamento
+        run: |
+          cargo install cargo-cyclonedx --version =0.5.9 --locked
+          cargo install cargo-about --version =0.9.3 --locked --features cli
+        shell: bash
+      # O `shell` não aceita o contexto `matrix`, então o script é escolhido pelo runner.
+      - name: empacotar (Windows)
+        if: runner.os == 'Windows'
+        run: ./publish.ps1
+        shell: pwsh
+      - name: empacotar (Linux)
+        if: runner.os == 'Linux'
+        run: ./publish.sh
+        shell: bash
+      - name: guardar os artefatos da execução
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: package-${{ matrix.artifact }}
+          path: |
+            packaging/*.zip
+            packaging/*.tar.gz
+            packaging/*.sha256
+          if-no-files-found: error
+
+  release:
+    name: release no GitHub
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: dist
+          merge-multiple: true
+      # O hash de cada arquivo vai na release de duas formas: os `.sha256` que os scripts já geram
+      # (um por pacote) e este `SHA256SUMS` único sobre todos os anexos, para quem quer conferir
+      # tudo de uma vez com `sha256sum -c`.
+      - name: calcular o SHA256 dos arquivos
+        run: |
+          set -eu
+          cp sbom.cdx.json dist/
+          cd dist
+          sha256sum ./*.zip ./*.tar.gz ./sbom.cdx.json > SHA256SUMS
+          cat SHA256SUMS
+          {
+            echo '### SHA256'
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # Reexecução da mesma tag (ex.: um pacote falhou depois do outro) atualiza a release em vez de
+      # falhar com "release already exists".
+      - name: criar ou atualizar a release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          ls -l dist
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/* --verify-tag \
+              --title "Mustel ${RELEASE_TAG#v}" --generate-notes
+          fi

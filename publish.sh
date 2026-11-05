@@ -5,9 +5,9 @@
 #   ./publish.sh              # build release + pacote em packaging/
 #   ./publish.sh --no-build   # reempacota o binário já construído
 #
-# A **publicação é manual**: o script só produz o artefato e o SHA256. O equivalente no
-# Windows é o `publish.ps1`, com o mesmo layout de saída. A release do GitHub é criada
-# manualmente a partir de packaging/ (D29).
+# O script só produz o artefato e o SHA256; o `publish.ps1` é o equivalente no Windows, com o
+# mesmo layout. No CI, o `publish.yml` chama este script e anexa o pacote à release da tag
+# (D30); rodar à mão serve para conferir o pacote sem publicar.
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -114,4 +114,4 @@ fi
 echo
 echo "pacote:    $archive"
 [ -n "$sum" ] && echo "sha256:    $sum"
-echo "publicação: manual (D26/D29) — anexe este arquivo à release do GitHub"
+echo "publicação: o publish.yml anexa este arquivo à release da tag (D30)"

@@ -54,11 +54,18 @@ enum Category {
     DatabaseList,
     /// Perfis de IA (modelo, endpoint, chave).
     Ai,
+    /// Versão, licença e os textos legais que acompanham o binário.
+    About,
 }
 
 impl Category {
     /// Todas, na ordem do menu.
-    const ALL: [Category; 3] = [Category::Appearance, Category::DatabaseList, Category::Ai];
+    const ALL: [Category; 4] = [
+        Category::Appearance,
+        Category::DatabaseList,
+        Category::Ai,
+        Category::About,
+    ];
 
     /// Rótulo do menu (só texto: o ícone vem da fonte embutida, nunca emoji).
     fn label(self) -> &'static str {
@@ -66,6 +73,7 @@ impl Category {
             Category::Appearance => "Appearance",
             Category::DatabaseList => "Database list",
             Category::Ai => "AI profiles",
+            Category::About => "About",
         }
     }
 
@@ -76,6 +84,7 @@ impl Category {
             Category::Appearance => crate::icons::Icon::ThemeLight,
             Category::DatabaseList => crate::icons::Icon::List,
             Category::Ai => crate::icons::Icon::Sparkles,
+            Category::About => crate::icons::Icon::Info,
         }
     }
 
@@ -86,6 +95,9 @@ impl Category {
             Category::DatabaseList => "How the database list in the Query tab is drawn.",
             Category::Ai => {
                 "Models for the AI that writes SQL in the Query tab. The key goes to the system vault."
+            }
+            Category::About => {
+                "Version, license and the legal notices that travel with this program."
             }
         }
     }
@@ -166,6 +178,8 @@ pub struct State {
     ai_message: Option<String>,
     /// Categoria aberta no menu da esquerda.
     category: Category,
+    /// Documento aberto no leitor da categoria About (índice em [`crate::about::DOCUMENTS`]).
+    about_document: usize,
     /// Recado do atalho do arquivo de configuração (arquivo ausente, editor que não abriu).
     config_hint: Option<String>,
 }
@@ -275,8 +289,6 @@ impl State {
             .exact_size(CATEGORY_WIDTH)
             .show(ui, |ui| self.categories_ui(ui));
 
-        // Painel da categoria escolhida. Barra **sólida**: a flutuante só aparece enquanto se rola e
-        // some depois; com a sólida, quem tem conteúdo abaixo vê que tem.
         let outcome = egui::Frame::NONE
             .inner_margin(egui::Margin {
                 left: CONTENT_GAP,
@@ -284,12 +296,21 @@ impl State {
             })
             .show(ui, |ui| {
                 ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
-                egui::ScrollArea::vertical()
-                    .id_salt("settings_content")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.category_ui(ui))
+                // O **About** gerencia a própria altura: o leitor da licença ocupa o painel inteiro e
+                // tem a sua barra de rolagem. Envolvê-lo no rolo do painel o espremeria no topo.
+                if self.category == Category::About {
+                    self.category_ui(ui)
+                } else {
+                    // Painel da categoria escolhida. Barra **sólida**: a flutuante só aparece
+                    // enquanto se rola e some depois; com a sólida, quem tem conteúdo abaixo vê que
+                    // tem.
+                    egui::ScrollArea::vertical()
+                        .id_salt("settings_content")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| self.category_ui(ui))
+                        .inner
+                }
             })
-            .inner
             .inner;
 
         // O pedido da categoria (chave no cofre, `Test`, gravar perfis) tem precedência: ele é de
@@ -384,6 +405,7 @@ impl State {
             Category::Appearance => self.appearance_ui(ui, &mut outcome),
             Category::DatabaseList => self.database_list_ui(ui, &mut outcome),
             Category::Ai => outcome.request = self.ai_section_ui(ui),
+            Category::About => crate::about::ui(ui, &mut self.about_document),
         }
 
         outcome
@@ -991,8 +1013,8 @@ mod tests {
     fn every_category_has_its_own_icon_and_label() {
         assert_eq!(
             Category::ALL.len(),
-            3,
-            "Appearance, Database list, AI profiles"
+            4,
+            "Appearance, Database list, AI profiles, About"
         );
         assert_eq!(
             Category::default(),

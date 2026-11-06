@@ -19,6 +19,7 @@
 //! A crate inteira fica atrás da feature `gui` do binário: `--no-default-features` compila um CLI sem
 //! `egui` (verificado no T41).
 
+mod about;
 pub mod actions;
 pub mod ai_panel;
 pub mod app;

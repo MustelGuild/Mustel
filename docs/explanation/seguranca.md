@@ -103,7 +103,9 @@ Ver [Por que a IA escreve e o humano roda](ia.md).
 - `THIRD-PARTY-LICENSES.md` reproduz os textos completos das licenças dos componentes compilados,
   gerado pelo `cargo-about` com a mesma lista de licenças aceitas do `deny.toml` (`about.toml`). Sem
   ele, MIT/BSD/Apache-2.0 ficariam sem o aviso de copyright que exigem. `THIRD-PARTY-NOTICES.md`
-  continua sendo o resumo curto, com a fonte embutida e o MPL-2.0 do `option-ext`.
+  continua sendo o resumo curto, com a fonte embutida e o MPL-2.0 do `option-ext`. Os mesmos textos
+  viajam **embutidos no binário** e aparecem na aba Settings › **About**, para quem recebe só o
+  executável não depender dos arquivos do pacote.
 - O Dependabot acompanha as dependências, e as actions do CI são pinadas por SHA — uma tag
   re-apontada não executa código com o token do repositório.
 - **Crates não mantidos (Linux).** O `keyring` 4 traz `secret-service` → `zbus` 5, e com ele

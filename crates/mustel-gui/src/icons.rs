@@ -22,6 +22,8 @@ pub enum Icon {
     Close,
     /// Aviso.
     Warning,
+    /// Informação (a aba About).
+    Info,
     /// Excluir (lixeira).
     Delete,
     /// Salvar.
@@ -83,6 +85,7 @@ impl Icon {
             Icon::Refresh => "arrow-path",
             Icon::Close | Icon::Cross => "x-mark",
             Icon::Warning => "exclamation-triangle",
+            Icon::Info => "information-circle",
             Icon::Delete => "trash",
             Icon::Save => "arrow-down-tray",
             Icon::SaveAs => "pencil-square",

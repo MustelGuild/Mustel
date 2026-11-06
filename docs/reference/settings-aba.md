@@ -1,7 +1,9 @@
 # Referência: aba Settings (aparência)
 
-> A aba Settings tem duas seções: **Appearance** (esta página) e **Database list**, a paginação da
-> lista de bases, descrita em [`gui.selectionList`](selecao-de-bases.md#paginação-opcional).
+> A aba Settings tem quatro categorias: **Appearance** (esta página), **Database list**, a paginação
+> da lista de bases, descrita em [`gui.selectionList`](selecao-de-bases.md#paginação-opcional),
+> **AI profiles**, descrita em [`gerar-sql-com-ia.md`](../how-to/gerar-sql-com-ia.md), e **About**
+> (versão e textos legais; ver [About](#about)).
 >
 > O cadastro de **seletores** **não** fica aqui: ele vive na aba **Connections**, na sub-aba
 > `Query Selector`, e está descrito na
@@ -128,3 +130,29 @@ perfil apaga a chave dele. `Test` faz uma chamada mínima e mostra o resultado (
 ```
 
 > Azure OpenAI não é suportado: ele usa `api-key` no lugar de `Bearer` e o deployment no path.
+
+## About
+
+A última categoria é **About**: versão do binário, licença do produto (`AGPL-3.0-only`), autor e
+repositório (um **link**: o clique pede ao sistema que abra a URL no navegador), e os **textos
+legais completos** que acompanham o executável — a AGPL do Mustel, o relatório de licenças de
+terceiros (todas as crates compiladas, para todas as plataformas), os avisos curtos e a SIL OFL 1.1
+da Fira Code.
+
+Os textos vão **embutidos no binário** (`crates/mustel-gui/assets/licenses/`), então quem recebe só
+o executável consegue ler a licença sem depender dos arquivos do pacote. Um **seletor** escolhe o
+documento; o texto do escolhido ocupa **toda a altura restante do painel**, com barra de rolagem
+própria (vertical e horizontal — licença tem linha longa, e quebrar linha mudaria a altura de cada
+uma) e um botão `Copy`. O rolo é virtualizado: só as linhas visíveis são desenhadas, porque montar
+400 KB de texto a cada quadro custaria o orçamento da janela.
+
+O relatório de terceiros é **gerado**, não escrito à mão:
+
+```bash
+cargo about -L warn generate -m crates/mustel/Cargo.toml about.hbs \
+    -o crates/mustel-gui/assets/licenses/THIRD-PARTY-LICENSES.md
+```
+
+Sem `--target`: a lista é a união das plataformas, porque o mesmo texto viaja no binário do Windows
+e no do Linux. Regenere quando o `Cargo.lock` mudar; `LICENSE` e `THIRD-PARTY-NOTICES.md` são cópias
+dos arquivos da raiz, e a raiz continua sendo a fonte da verdade.

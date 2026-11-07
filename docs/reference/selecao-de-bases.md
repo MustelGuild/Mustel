@@ -56,9 +56,11 @@ A sidebar tem **400 px** fixos, com **12 px de respiro** entre ela e o conteúdo
 mesma sidebar — a lista do cadastro fica lá, em cards que ocupam a largura toda, e o formulário
 ocupa a área principal.
 
-A **janela mínima** é **880 × 560** na escala 1,0x e cresce junto com o `fontScale`
-(Settings → Text size): a 100% e a 125% de escala do sistema cabe num 1366×768, mas a 125%
-com `fontScale` 1,25 o mínimo passa de 1100 × 700 e pode não caber.
+A **janela mínima** é **880 × 560** e **não** cresce com o `fontScale` (Settings → Text size): a
+sidebar, o menu de categorias e o painel da IA têm largura fixa, e o conteúdo é rolável e
+responsivo. Com o painel da IA aberto na aba Query, o mínimo é 1240 × 560 (os 360 px do painel).
+Assim o mínimo cabe num 1366×768 em qualquer escala — antes, a 1,25x, ele ia a 1100×700 e a janela
+restaurada pulava para esse tamanho.
 
 O combo de **Server** mostra o total de bases de cada servidor ao lado do nome (`Local 104`,
 `Local 2 0`) — o `0` é o sinal de que aquele servidor ainda não foi descoberto. A contagem é só de

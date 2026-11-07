@@ -235,31 +235,22 @@ pub fn apply(ctx: &egui::Context, chosen: &Chosen) -> Vec<String> {
     problems
 }
 
-/// Tamanho mínimo da janela para a escala escolhida.
+/// Tamanho mínimo da janela, em pontos, **independente da escala da fonte**.
 ///
-/// A linha mais larga da tela de consulta mede ~332 px a 1.0 com nomes típicos e ~413 px na fonte de
-/// sistema mais larga testada (Lucida Console). Escalar a fonte sem escalar o mínimo deixaria o
-/// layout apertado; por isso o mínimo acompanha.
-/// Tamanho mínimo da janela, em pontos, a 1,0x de escala.
+/// **880×560**: a sidebar tem 400 px, então a área principal precisa de ~450 para o SQL e a
+/// tabela continuarem usáveis. É o piso **com o painel da IA fechado**; aberto, ele come mais
+/// 360 px e quem soma isso é `app::min_window_size`.
 ///
-/// **880×560** (era 640×480): a sidebar tem 400 px, então a área principal precisa de ~450 para o
-/// SQL e a tabela continuarem usáveis. É o piso **com o painel da IA fechado**; aberto, ele come
-/// mais 360 px e quem soma isso é `app::min_window_size`.
-///
-/// Com o painel aberto são 1240×560: ainda cabe num notebook **1366×768**, mas a 125% de escala
-/// (1093×576 pontos) o mínimo de 1550×700 não cabe na largura — a janela abre maior que a tela e
-/// o dono precisa redimensionar.
+/// O piso **não** acompanha o `fontScale`: a sidebar, o menu de categorias e o painel da IA têm
+/// largura fixa, e o conteúdo é rolável e responsivo (o status trunca, o cartão de perfil desce as
+/// ações). Escalar o mínimo por 1,25 dava 1100×700 — a janela restaurada pulava de volta para esse
+/// tamanho e não podia ser encolhida.
 const MIN_WINDOW_WIDTH: f32 = 880.0;
 const MIN_WINDOW_HEIGHT: f32 = 560.0;
 
-/// Tamanho mínimo da janela para a escala de fonte dada (o `Sync` do egui usa isto).
-pub fn min_window_size(scale: f32) -> egui::Vec2 {
-    let scale = if scale.is_finite() {
-        scale.clamp(MIN_FONT_SCALE, MAX_FONT_SCALE)
-    } else {
-        DEFAULT_FONT_SCALE
-    };
-    egui::vec2(MIN_WINDOW_WIDTH * scale, MIN_WINDOW_HEIGHT * scale)
+/// Tamanho mínimo da janela (o `Sync` do egui usa isto).
+pub fn min_window_size() -> egui::Vec2 {
+    egui::vec2(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
 }
 
 #[cfg(test)]
@@ -379,18 +370,17 @@ mod tests {
         );
     }
 
-    /// O mínimo da janela acompanha a escala — o layout nunca fica mais apertado que antes.
+    /// O mínimo da janela é **um piso fixo**, independente da escala da fonte.
+    ///
+    /// Antes ele crescia com o `fontScale` (880×560 × escala = 1100×700 a 1,25x), e a janela
+    /// restaurada "pulava" de volta para esse tamanho e não podia ser encolhida. O texto escala,
+    /// mas a sidebar, o menu de categorias e o painel da IA têm largura fixa, e o conteúdo é
+    /// rolável e responsivo.
     ///
     /// CONTRACT: IF-220
     #[test]
-    fn the_minimum_window_grows_with_the_scale() {
-        assert_eq!(min_window_size(1.0), egui::vec2(880.0, 560.0));
-        assert_eq!(
-            min_window_size(1.25),
-            egui::vec2(880.0 * 1.25, 560.0 * 1.25)
-        );
-        // Valor corrompido não vira janela gigante nem invisível.
-        assert_eq!(min_window_size(f32::NAN), egui::vec2(880.0, 560.0));
+    fn the_minimum_window_is_a_fixed_floor() {
+        assert_eq!(min_window_size(), egui::vec2(880.0, 560.0));
     }
 
     /// Ida e volta das preferências: o que a tela escolhe é o que vai para o arquivo.

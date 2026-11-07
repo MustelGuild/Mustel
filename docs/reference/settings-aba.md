@@ -66,13 +66,16 @@ alerta tem uma variante para cada fundo, com contraste medido.
 editável à mão e um `5.0` salvo por engano deixaria a janela inutilizável antes de alguém conseguir
 abrir a aba para corrigir.
 
-O **tamanho mínimo da janela cresce junto**: a 1,25x o mínimo passa de 880×560 para 1100×700. É o
-que mantém a folga do layout em qualquer escala (a conta está na
+O **tamanho mínimo da janela não muda** com a escala: é **880×560** em qualquer `fontScale` (e
+1240×560 na aba Query com o painel da IA aberto). O texto escala, mas a sidebar, o menu de
+categorias e o painel da IA têm largura fixa, e o conteúdo é rolável e responsivo — a janela
+restaurada não "pula" para um mínimo maior só porque a fonte cresceu (a conta está na
 [explicação](../explanation/fontes.md)).
 
 ## O que a aba não faz
 
-- não muda o **tamanho da janela** (só o mínimo acompanha a escala da fonte);
+- não muda o **tamanho da janela**: o mínimo é fixo (880×560, ou 1240×560 com o painel da IA
+  aberto), independente da escala da fonte;
 - não lista fontes que não estejam instaladas e não instala nada;
 - não pede nada ao banco e não depende de servidor: a aparência vale antes de qualquer conexão;
 - não tem atalho de teclado para trocar de tema: a troca é só pelo controle da aba.

@@ -1780,10 +1780,13 @@ mod tests {
                         ui.separator();
                         ui.label("Query");
                         ui.separator();
-                        ui.label(
-                            "Could not list the databases of 'Local2': Connection failed: \
-                             error connecting to server. Could not list the databases of \
-                             'Local3': Connection failed: error connecting to server.",
+                        ui.add(
+                            egui::Label::new(
+                                "Could not list the databases of 'Local2': Connection failed: \
+                                 error connecting to server. Could not list the databases of \
+                                 'Local3': Connection failed: error connecting to server.",
+                            )
+                            .truncate(),
                         );
                     });
                     ui.separator();

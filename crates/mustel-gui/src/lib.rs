@@ -85,7 +85,7 @@ fn viewport() -> egui::ViewportBuilder {
     let builder = egui::ViewportBuilder::default()
         .with_inner_size([900.0, 620.0])
         .with_min_inner_size({
-            let min = crate::fonts::min_window_size(1.0);
+            let min = crate::fonts::min_window_size();
             [min.x, min.y]
         })
         .with_title("Mustel")

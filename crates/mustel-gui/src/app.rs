@@ -109,10 +109,10 @@ const AI_PANEL_WIDTH: f32 = 360.0;
 /// come 360 px da área de conteúdo, e com o mínimo antigo (880) sobravam ~108 px: as linhas do
 /// formulário não cabiam e o texto caía por cima do painel. Cada painel aberto soma a própria
 /// largura ao mínimo, na mesma proporção da escala (fonte maior, janela maior).
-fn min_window_size(scale: f32, ai_open: bool) -> egui::Vec2 {
-    let base = crate::fonts::min_window_size(scale);
+fn min_window_size(ai_open: bool) -> egui::Vec2 {
+    let base = crate::fonts::min_window_size();
     if ai_open {
-        base + egui::vec2(AI_PANEL_WIDTH * scale, 0.0)
+        base + egui::vec2(AI_PANEL_WIDTH, 0.0)
     } else {
         base
     }
@@ -300,10 +300,7 @@ impl App {
     /// O mínimo da janela para o layout **atual**: a escala escolhida e o painel da IA, quando
     /// aberto (é o único painel que fica fora do piso de [`min_window_size`]).
     fn min_inner_size(&self) -> egui::Vec2 {
-        min_window_size(
-            self.settings.chosen().scale,
-            self.ai.open && self.screen == Screen::Query,
-        )
+        min_window_size(self.ai.open && self.screen == Screen::Query)
     }
 
     /// Mantém o mínimo da janela em dia com a escala e com os painéis abertos.
@@ -363,8 +360,8 @@ impl App {
             Request::ApplyGuiPrefs(chosen) => {
                 let problems = crate::fonts::apply(ctx, &chosen);
                 self.settings.set_warning(problems.first().cloned());
-                // O mínimo acompanha a escala e os painéis abertos: `sync_min_window_size` o
-                // reaplica no quadro seguinte (não há um segundo lugar decidindo isso).
+                // O mínimo depende dos painéis abertos (não da escala): `sync_min_window_size`
+                // o reaplica no quadro seguinte (não há um segundo lugar decidindo isso).
             }
             // A lista de **queries salvas** mudou: compõe a seção `gui` inteira e grava.
             Request::SaveSavedQueries(queries) => {
@@ -1447,32 +1444,26 @@ mod tests {
         found[0]
     }
 
-    /// O mínimo da janela **cresce com o painel da IA**: sem ele, sobrava uma tira de conteúdo.
+    /// O mínimo da janela **cresce com o painel da IA**, e não com a escala da fonte.
     ///
-    /// O piso de `fonts` (880 a 1,0) supõe a sidebar aberta e o painel fechado. Com o painel
-    /// aberto, 360 px saem da área de conteúdo: 880 + 360 = 1240 a 1,0. Abrir o painel numa janela
-    /// de 900 deixava ~120 px para o formulário — as linhas não cabiam e o texto caía sobre o
-    /// painel.
+    /// O piso de `fonts` (880) supõe a sidebar aberta e o painel fechado. Com o painel aberto,
+    /// 360 px saem da área de conteúdo: 880 + 360 = 1240. Abrir o painel numa janela de 900
+    /// deixava ~120 px para o formulário — as linhas não cabiam e o texto caía sobre o painel.
     #[test]
     fn the_minimum_window_grows_with_the_ai_panel() {
-        let base = crate::fonts::min_window_size(1.0);
+        let base = crate::fonts::min_window_size();
         assert_eq!(
-            min_window_size(1.0, false),
+            min_window_size(false),
             base,
             "sem o painel, o piso de sempre"
         );
         assert_eq!(
-            min_window_size(1.0, true),
+            min_window_size(true),
             egui::vec2(base.x + AI_PANEL_WIDTH, base.y),
             "com o painel, some a largura dele"
         );
-        // A escala continua valendo para os dois lados (fonte maior, janela maior).
-        assert_eq!(
-            min_window_size(1.25, true),
-            egui::vec2((base.x + AI_PANEL_WIDTH) * 1.25, base.y * 1.25)
-        );
         // A altura não muda: o painel é uma coluna, não ocupa altura a mais.
-        assert_eq!(min_window_size(1.0, true).y, min_window_size(1.0, false).y);
+        assert_eq!(min_window_size(true).y, min_window_size(false).y);
     }
 
     /// A conta do `min_window_size` deixa a área de conteúdo com o que o formulário pede.
@@ -1485,7 +1476,7 @@ mod tests {
     #[test]
     fn the_minimum_leaves_room_for_the_form() {
         const FORM: f32 = 450.0;
-        let window = min_window_size(1.0, true).x;
+        let window = min_window_size(true).x;
         let left = SIDEBAR_WIDTH + f32::from(CONTENT_GAP);
         let content = window - left - AI_PANEL_WIDTH;
         assert!(

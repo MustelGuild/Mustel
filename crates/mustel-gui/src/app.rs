@@ -688,24 +688,29 @@ impl App {
             }
             Request::TestConnection(server) => {
                 let name = server.name.clone();
+                let results = self.results.clone();
                 let password = match query::stored_password(&name) {
                     Ok(password) => password,
                     Err(error) => {
-                        self.status = error.to_string();
+                        // Sem senha não há como testar — mas o cartão já marcou o `Test` como em
+                        // andamento: fecha o spinner com o erro em vez de deixá-lo girando.
+                        let _ = results.send(JobResult::Tested {
+                            server: name,
+                            outcome: Err(error.to_string()),
+                        });
                         return;
                     }
                 };
-                let results = self.results.clone();
                 self.status = format!("Testing connection to {name}...");
                 self.spawn("test connection", ctx, move |_token| async move {
-                    let result = match db_servers::test_connection(&server, &password).await {
-                        Ok(report) => JobResult::Tested {
-                            server: name,
-                            databases: report.databases,
-                        },
-                        Err(error) => JobResult::Failed(error.to_string()),
+                    let outcome = match db_servers::test_connection(&server, &password).await {
+                        Ok(report) => Ok(report.databases),
+                        Err(error) => Err(error.to_string()),
                     };
-                    let _ = results.send(result);
+                    let _ = results.send(JobResult::Tested {
+                        server: name,
+                        outcome,
+                    });
                 });
             }
             Request::DiscoverDatabases { server } => {
@@ -1017,9 +1022,11 @@ impl App {
                 JobResult::Saved(name) => format!("Server '{name}' saved."),
                 JobResult::Removed(name) => format!("Server '{name}' removed."),
                 JobResult::PasswordSaved(name) => format!("Password saved for '{name}'."),
-                JobResult::Tested { server, databases } => {
-                    format!("'{server}' connected: {} database(s)", databases.len())
-                }
+                JobResult::Tested { outcome, .. } => match outcome {
+                    // Sucesso é o check no botão do cartão; a barra não repete a contagem de bases.
+                    Ok(_) => "Ready.".to_string(),
+                    Err(error) => format!("Connection failed: {error}"),
+                },
                 JobResult::QueryDone { total_rows, .. } => {
                     format!("Query finished: {total_rows} row(s).")
                 }

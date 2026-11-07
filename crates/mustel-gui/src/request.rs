@@ -179,12 +179,16 @@ pub enum JobResult {
     Removed(String),
     /// A senha foi guardada.
     PasswordSaved(String),
-    /// O teste de conexão passou.
+    /// O teste de conexão terminou.
+    ///
+    /// Carrega o **resultado** (e não só o sucesso) porque o botão do cartão precisa marcar o
+    /// servidor certo com check ou X: a falha antes vinha como `Failed`, genérico, sem dizer qual
+    /// servidor era.
     Tested {
         /// Servidor testado.
         server: String,
-        /// Bancos encontrados.
-        databases: Vec<String>,
+        /// Deu certo? Os bancos encontrados, ou a mensagem do erro.
+        outcome: Result<Vec<String>, String>,
     },
     /// A consulta terminou; os caminhos vêm do núcleo.
     QueryDone {

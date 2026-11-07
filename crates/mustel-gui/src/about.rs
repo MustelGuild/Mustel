@@ -28,6 +28,9 @@ pub(crate) const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Repositório do projeto — o `Cargo.toml` é a fonte.
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 
+/// Endereço de suporte do produto — o mesmo destino do relatório de atividade.
+const SUPPORT_EMAIL: &str = "support@mustelguild.dev";
+
 /// Autor(es) declarados no `Cargo.toml`.
 const AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
 
@@ -111,6 +114,10 @@ pub(crate) fn ui(ui: &mut egui::Ui, selected: &mut usize) {
             // Link de verdade: o clique abre no navegador do sistema (o `eframe` trata o
             // `OutputCommand::OpenUrl`). Texto = URL, para copiar ser seleção de texto, não botão.
             ui.hyperlink_to(REPOSITORY, REPOSITORY);
+            ui.end_row();
+
+            ui.label("Support");
+            ui.hyperlink_to(SUPPORT_EMAIL, format!("mailto:{SUPPORT_EMAIL}"));
             ui.end_row();
         });
 
@@ -432,6 +439,68 @@ mod tests {
                     egui::OutputCommand::OpenUrl(open) if open.url == REPOSITORY
                 )),
             "o clique no repositório pede a abertura da URL: {:?}",
+            second.platform_output.commands
+        );
+    }
+
+    /// O endereço de suporte é um link `mailto:`.
+    /// CONTRACT: IF-267
+    #[test]
+    fn the_support_address_is_a_clickable_mailto() {
+        let ctx = egui::Context::default();
+        let screen = || egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(900.0, 700.0),
+            )),
+            ..Default::default()
+        };
+        let mut selected = 0;
+
+        let mut first = ctx.run_ui(screen(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |panel| ui(panel, &mut selected));
+        });
+        first.textures_delta.clear();
+        let mut painted = Vec::new();
+        collect_text(&first.shapes, &mut painted);
+        let position = painted
+            .iter()
+            .find(|(text, _)| text == SUPPORT_EMAIL)
+            .map(|(_, position)| *position)
+            .expect("o endereço de suporte está na tela");
+        let target = egui::pos2(position.x + 4.0, position.y + 6.0);
+
+        let mut second = ctx.run_ui(
+            egui::RawInput {
+                events: vec![
+                    egui::Event::PointerMoved(target),
+                    egui::Event::PointerButton {
+                        pos: target,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                    egui::Event::PointerButton {
+                        pos: target,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                ..screen()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |panel| ui(panel, &mut selected));
+            },
+        );
+        second.textures_delta.clear();
+
+        assert!(
+            second.platform_output.commands.iter().any(|command| matches!(
+                command,
+                egui::OutputCommand::OpenUrl(open) if open.url == "mailto:support@mustelguild.dev"
+            )),
+            "o clique no suporte pede a abertura do mailto: {:?}",
             second.platform_output.commands
         );
     }

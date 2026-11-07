@@ -190,6 +190,11 @@ fn support_isolates_the_environment() {
         "MUSTEL_PGPASS_FILE deveria ficar no temporário, veio {}",
         pgpass.display()
     );
+    assert!(
+        sandbox.log_dir().starts_with(std::env::temp_dir()),
+        "MUSTEL_LOG_DIR deveria ficar no temporário, veio {}",
+        sandbox.log_dir().display()
+    );
 
     // Um comando que só lê o cadastro: exercita o isolamento sem tocar rede.
     let output = sandbox.run(&[
@@ -198,6 +203,17 @@ fn support_isolates_the_environment() {
         "ls".to_string(),
     ]);
     assert_eq!(output.exit_code, Some(0));
+
+    // O comando deixou uma linha de atividade **no sandbox**, não no log real do usuário.
+    let log: String = std::fs::read_dir(sandbox.log_dir())
+        .expect("o log foi criado no sandbox")
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| std::fs::read_to_string(entry.path()).ok())
+        .collect();
+    assert!(
+        log.contains("settings.db_servers.ls"),
+        "o comando virou entrada no log: {log}"
+    );
     assert!(
         sandbox.config_file().starts_with(&config_dir),
         "o arquivo de config precisa cair dentro do sandbox"

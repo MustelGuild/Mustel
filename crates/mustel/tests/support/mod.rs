@@ -45,6 +45,11 @@ impl Sandbox {
         self.config_dir().join("mustel.jsonc")
     }
 
+    /// Diretório do log de atividade isolado (`MUSTEL_LOG_DIR`).
+    pub fn log_dir(&self) -> PathBuf {
+        self.dir.path().join("logs")
+    }
+
     /// Caminho do `pgpass.conf` do sandbox (`MUSTEL_PGPASS_FILE`).
     pub fn pgpass_file(&self) -> PathBuf {
         self.dir.path().join("postgresql").join("pgpass.conf")
@@ -76,6 +81,7 @@ impl Sandbox {
             .args(argv)
             .env("MUSTEL_CONFIG_DIR", self.config_dir())
             .env("MUSTEL_PGPASS_FILE", self.pgpass_file())
+            .env("MUSTEL_LOG_DIR", self.log_dir())
             .output()
             .expect("mustel binary must run");
 

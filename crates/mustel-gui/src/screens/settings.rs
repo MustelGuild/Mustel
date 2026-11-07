@@ -54,16 +54,19 @@ enum Category {
     DatabaseList,
     /// Perfis de IA (modelo, endpoint, chave).
     Ai,
+    /// Log de execução e erros.
+    Activity,
     /// Versão, licença e os textos legais que acompanham o binário.
     About,
 }
 
 impl Category {
     /// Todas, na ordem do menu.
-    const ALL: [Category; 4] = [
+    const ALL: [Category; 5] = [
         Category::Appearance,
         Category::DatabaseList,
         Category::Ai,
+        Category::Activity,
         Category::About,
     ];
 
@@ -73,6 +76,7 @@ impl Category {
             Category::Appearance => "Appearance",
             Category::DatabaseList => "Database list",
             Category::Ai => "AI profiles",
+            Category::Activity => "Activity",
             Category::About => "About",
         }
     }
@@ -84,6 +88,7 @@ impl Category {
             Category::Appearance => crate::icons::Icon::ThemeLight,
             Category::DatabaseList => crate::icons::Icon::List,
             Category::Ai => crate::icons::Icon::Sparkles,
+            Category::Activity => crate::icons::Icon::Magnifier,
             Category::About => crate::icons::Icon::Info,
         }
     }
@@ -96,6 +101,7 @@ impl Category {
             Category::Ai => {
                 "Models for the AI that writes SQL in the Query tab. The key goes to the system vault."
             }
+            Category::Activity => "What ran and what failed, kept on this computer for 30 days.",
             Category::About => {
                 "Version, license and the legal notices that travel with this program."
             }
@@ -208,8 +214,10 @@ pub struct State {
     category: Category,
     /// Documento aberto no leitor da categoria About (índice em [`crate::about::DOCUMENTS`]).
     about_document: usize,
-    /// Recado do atalho do arquivo de configuração (arquivo ausente, editor que não abriu).
+    /// Último recado do atalho do arquivo de configuração (arquivo ausente, editor que não abriu).
     config_hint: Option<String>,
+    /// A aba **Activity**: filtro, seleção e modal do relatório.
+    activity: crate::screens::activity::State,
 }
 
 /// O formulário de um perfil de IA (nome, endpoint, modelo, temperatura e chave).
@@ -312,7 +320,11 @@ impl State {
     ///
     /// A aba é **menu fixo + painel**: o menu ([`Category`]) não rola com o conteúdo e não depende
     /// da categoria para existir. Só o painel da direita rola, e só quando não cabe.
-    pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Request> {
+    pub(crate) fn ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        activity: &mut crate::screens::activity::Context<'_>,
+    ) -> Option<Request> {
         // Menu de categorias: painel próprio (desenha o fundo e a divisória), como a sidebar de
         // servidores da aba Query.
         egui::Panel::left("settings_categories")
@@ -326,10 +338,11 @@ impl State {
             })
             .show(ui, |ui| {
                 ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
-                // O **About** gerencia a própria altura: o leitor da licença ocupa o painel inteiro e
-                // tem a sua barra de rolagem. Envolvê-lo no rolo do painel o espremeria no topo.
-                if self.category == Category::About {
-                    self.category_ui(ui)
+                // O **About** e a **Activity** gerenciam a própria altura: o leitor da licença e a
+                // tabela virtualizada ocupam o painel inteiro e têm a própria rolagem. Envolvê-los
+                // no rolo do painel os espremeria no topo.
+                if matches!(self.category, Category::About | Category::Activity) {
+                    self.category_ui(ui, activity)
                 } else {
                     // Painel da categoria escolhida. Barra **sólida**: a flutuante só aparece
                     // enquanto se rola e some depois; com a sólida, quem tem conteúdo abaixo vê que
@@ -337,7 +350,7 @@ impl State {
                     egui::ScrollArea::vertical()
                         .id_salt("settings_content")
                         .auto_shrink([false, false])
-                        .show(ui, |ui| self.category_ui(ui))
+                        .show(ui, |ui| self.category_ui(ui, activity))
                         .inner
                 }
             })
@@ -420,7 +433,11 @@ impl State {
     }
 
     /// O painel da categoria aberta.
-    fn category_ui(&mut self, ui: &mut egui::Ui) -> Outcome {
+    fn category_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        activity: &mut crate::screens::activity::Context<'_>,
+    ) -> Outcome {
         let mut outcome = Outcome::default();
 
         // Cabeçalho do painel: o nome da categoria e do que ela trata — é o que confirma que o
@@ -435,6 +452,7 @@ impl State {
             Category::Appearance => self.appearance_ui(ui, &mut outcome),
             Category::DatabaseList => self.database_list_ui(ui, &mut outcome),
             Category::Ai => outcome.request = self.ai_section_ui(ui),
+            Category::Activity => self.activity.ui(ui, activity),
             Category::About => crate::about::ui(ui, &mut self.about_document),
         }
 
@@ -1057,6 +1075,19 @@ fn config_open_hint(path: &std::path::Path) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// Desenha a tela com uma aba Activity vazia (as categorias dos testes não a usam).
+    fn ui_with_empty_activity(state: &mut State, ui: &mut egui::Ui) {
+        let mut log = crate::activity_log::Log::in_memory(Vec::new());
+        let reports = std::env::temp_dir();
+        let mut context = crate::screens::activity::Context {
+            log: &mut log,
+            servers: &[],
+            profiles: &[],
+            reports_dir: &reports,
+        };
+        let _ = state.ui(ui, &mut context);
+    }
+
     /// Trocar a fonte emite **um** pedido, e é o de commit (grava + aplica).
     ///
     /// Era o bug relatado: `changed` e `apply_now` verdadeiros juntos, dois `if` separados e o
@@ -1099,8 +1130,8 @@ mod tests {
     fn every_category_has_its_own_icon_and_label() {
         assert_eq!(
             Category::ALL.len(),
-            4,
-            "Appearance, Database list, AI profiles, About"
+            5,
+            "Appearance, Database list, AI profiles, Activity, About"
         );
         assert_eq!(
             Category::default(),
@@ -1144,7 +1175,7 @@ mod tests {
         for _ in 0..2 {
             let mut output = ctx.run_ui(screen(900.0, 700.0), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    let _ = state.ui(ui);
+                    ui_with_empty_activity(&mut state, ui);
                 });
             });
             painted.clear();
@@ -1209,7 +1240,7 @@ mod tests {
         for _ in 0..2 {
             let mut output = ctx.run_ui(screen(900.0, 700.0), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    let _ = state.ui(ui);
+                    ui_with_empty_activity(&mut state, ui);
                 });
             });
             painted.clear();
@@ -1247,7 +1278,7 @@ mod tests {
         for _ in 0..2 {
             let mut output = ctx.run_ui(screen(900.0, 700.0), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    let _ = state.ui(ui);
+                    ui_with_empty_activity(&mut state, ui);
                 });
             });
             painted.clear();
@@ -1280,7 +1311,7 @@ mod tests {
         let mut painted: Vec<(String, egui::Pos2)> = Vec::new();
         let mut output = ctx.run_ui(screen(900.0, 700.0), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                let _ = state.ui(ui);
+                ui_with_empty_activity(&mut state, ui);
             });
         });
         collect_text(&output.shapes, &mut painted);
@@ -1314,7 +1345,7 @@ mod tests {
         painted.clear();
         let mut clicked = ctx.run_ui(input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                let _ = state.ui(ui);
+                ui_with_empty_activity(&mut state, ui);
             });
         });
         collect_text(&clicked.shapes, &mut painted);
@@ -1918,7 +1949,7 @@ mod tests {
                         .inner_margin(egui::Margin::ZERO)
                         .show(ui, |ui| {
                             ui.set_clip_rect(ui.max_rect());
-                            let _ = state.ui(ui);
+                            ui_with_empty_activity(&mut state, ui);
                         });
                 });
             });
@@ -1966,7 +1997,7 @@ mod tests {
     ) -> Vec<(String, egui::Rect, egui::Rect)> {
         let mut output = ctx.run_ui(screen(width, height), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                let _ = state.ui(ui);
+                ui_with_empty_activity(state, ui);
             });
         });
         output.textures_delta.clear();

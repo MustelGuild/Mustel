@@ -41,6 +41,7 @@ fn run_with_config(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_mustel"))
         .args(args)
         .env("MUSTEL_CONFIG_DIR", dir)
+        .env("MUSTEL_LOG_DIR", dir.join("logs"))
         .output()
         .expect("binary must run")
 }

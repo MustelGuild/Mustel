@@ -41,6 +41,7 @@ só é a origem da maior parte da documentação ruim.
 | | | | [Decisões de engenharia](explanation/decisoes.md) |
 | | | | [Diferenças deliberadas](explanation/diferencas-deliberadas.md) |
 | | | | [Ajustes de segurança](explanation/seguranca.md) |
+| | | [Log de atividade](reference/activity-log.md) | [Por que o log é assim](explanation/log-e-privacidade.md) |
 
 ## A bússola
 

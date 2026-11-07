@@ -40,7 +40,8 @@ como contrato em `fixtures/baseline/` e em `docs/contrato-de-interface.md`.
   Linux o store é o `zbus-secret-service`, D-Bus em Rust puro: não há `dbus`/`libdbus-sys` no grafo
   (decisão `B1` em `docs/explanation/decisoes.md`) — não reintroduza essa dependência achando que é
   código morto
-- Erros: `thiserror` no core, `anyhow` apenas no binário · logs: `tracing`
+- Erros: `thiserror` no core, `anyhow` apenas no binário · logs: log de atividade em JSONL
+  (`mustel_core::activity`), não `tracing`
 - GUI: `eframe`/`egui` (+ `egui_extras`), atrás da feature `gui`
 - Testes: `insta` (snapshots), `expectrl` (PTY), `tempfile`, `tokio-postgres` (integração Postgres)
 

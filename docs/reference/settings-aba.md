@@ -1,8 +1,9 @@
 # Referência: aba Settings (aparência)
 
-> A aba Settings tem quatro categorias: **Appearance** (esta página), **Database list**, a paginação
+> A aba Settings tem cinco categorias: **Appearance** (esta página), **Database list**, a paginação
 > da lista de bases, descrita em [`gui.selectionList`](selecao-de-bases.md#paginação-opcional),
-> **AI profiles**, descrita em [`gerar-sql-com-ia.md`](../how-to/gerar-sql-com-ia.md), e **About**
+> **AI profiles**, descrita em [`gerar-sql-com-ia.md`](../how-to/gerar-sql-com-ia.md), **Activity**,
+> o log de execução e erros, descrito em [`activity-log.md`](activity-log.md), e **About**
 > (versão e textos legais; ver [About](#about)).
 >
 > O cadastro de **seletores** **não** fica aqui: ele vive na aba **Connections**, na sub-aba

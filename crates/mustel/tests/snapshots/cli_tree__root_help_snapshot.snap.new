@@ -1,6 +1,6 @@
 ---
 source: crates/mustel/tests/cli_tree.rs
-assertion_line: 412
+assertion_line: 415
 expression: "stdout_of(&[\"--help\"])"
 ---
 Mustel — automation CLI for PostgreSQL queries, database backups and server settings

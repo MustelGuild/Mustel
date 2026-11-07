@@ -88,6 +88,8 @@ struct Running {
     label: String,
     /// Token para cancelar.
     token: CancellationToken,
+    /// Quando o job começou (a duração vai para o log de atividade).
+    started: std::time::Instant,
 }
 
 /// A aplicação.
@@ -176,6 +178,8 @@ pub struct App {
     min_inner: Option<egui::Vec2>,
     /// Recados efêmeros (toasts) — o que já foi feito, sem ocupar a barra de status.
     toasts: crate::toast::Toasts,
+    /// O log de atividade: o que rodou e o que falhou.
+    activity: crate::activity_log::Log,
 }
 
 impl App {
@@ -227,6 +231,19 @@ impl App {
         // O tema também vale no primeiro quadro: `System` (default) deixa a decisão ao SO.
         crate::theme::apply(&cc.egui_ctx, settings.theme());
 
+        // Um erro de configuração na abertura é parte do que aconteceu: vai para o log.
+        let mut activity = crate::activity_log::Log::open();
+        if let Some(error) = &config_error {
+            activity.record(
+                mustel_core::activity::Entry::new(
+                    mustel_core::activity::Area::App,
+                    "app.config",
+                    mustel_core::activity::Status::Error,
+                )
+                .with_error(error),
+            );
+        }
+
         Ok(Self {
             runtime,
             ctx: cc.egui_ctx.clone(),
@@ -271,6 +288,7 @@ impl App {
                 .unwrap_or_default(),
             min_inner: None,
             toasts: crate::toast::Toasts::default(),
+            activity,
         })
     }
 
@@ -947,6 +965,7 @@ impl App {
         self.running = Some(Running {
             label: label.to_string(),
             token,
+            started: std::time::Instant::now(),
         });
     }
 
@@ -1014,6 +1033,13 @@ impl App {
         while let Ok(result) = self.results_rx.try_recv() {
             // A descoberta de bancos roda fora da fila única do app: ela não pode desligar o
             // "Running" de uma consulta que continua em andamento.
+            let duration_ms = if matches!(result, JobResult::Databases { .. }) {
+                None
+            } else {
+                self.running
+                    .as_ref()
+                    .map(|running| running.started.elapsed().as_millis() as u64)
+            };
             if !matches!(result, JobResult::Databases { .. }) {
                 self.running = None;
             }
@@ -1136,6 +1162,14 @@ impl App {
                 if kind == crate::toast::Kind::Success {
                     self.status = "Ready.".to_string();
                 }
+            }
+
+            // O log de atividade recebe **todos** os resultados (o toast só recebe os que merecem
+            // atenção): é dele que a aba Activity e o relatório vivem.
+            if let Some(entry) =
+                crate::activity_log::entry_for(&result, &self.ai_profiles, duration_ms)
+            {
+                self.activity.record(entry);
             }
 
             // Um `Save` com senha encadeia o pedido de guardar no cofre, na mesma ordem do CLI.
@@ -1356,7 +1390,17 @@ impl eframe::App for App {
                             self.query.set_saved_queries(self.saved_queries.clone());
                             self.query.ui(ui, &servers, schema, &self.reference)
                         }
-                        Screen::Settings => self.settings.ui(ui),
+                        Screen::Settings => {
+                            let reports = crate::activity_log::reports_dir()
+                                .unwrap_or_else(std::env::temp_dir);
+                            let mut activity = crate::screens::activity::Context {
+                                log: &mut self.activity,
+                                servers: &servers,
+                                profiles: &self.ai_profiles,
+                                reports_dir: &reports,
+                            };
+                            self.settings.ui(ui, &mut activity)
+                        }
                     }
                 });
             request = main.inner.or(request);

@@ -7,10 +7,12 @@
 //! Os frontends (`mustel` CLI e `mustel gui`) consomem estes casos de uso passando entradas já
 //! resolvidas e recebendo eventos por um `EventSink`.
 
+pub mod activity;
 pub mod ai_transport;
 pub mod completion;
 pub mod config;
 pub mod credentials;
+pub mod datetime;
 pub mod error;
 pub mod events;
 pub mod pgpass;

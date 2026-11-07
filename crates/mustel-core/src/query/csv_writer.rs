@@ -172,7 +172,7 @@ pub fn iso8601_for(now: std::time::SystemTime) -> String {
 fn civil_parts(micros_since_unix: i64) -> (i64, u32, u32, i64, i64, i64) {
     let days = micros_since_unix.div_euclid(86_400_000_000);
     let micros_of_day = micros_since_unix.rem_euclid(86_400_000_000);
-    let (year, month, day) = crate::postgres::value::civil_from_days(days);
+    let (year, month, day) = crate::datetime::civil_from_days(days);
 
     let seconds_of_day = micros_of_day / 1_000_000;
 

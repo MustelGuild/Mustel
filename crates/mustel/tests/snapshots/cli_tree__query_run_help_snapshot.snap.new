@@ -1,6 +1,6 @@
 ---
 source: crates/mustel/tests/cli_tree.rs
-assertion_line: 417
+assertion_line: 420
 expression: "stdout_of(&[\"query\", \"run\", \"--help\"])"
 ---
 Execute SQL queries and export results to CSV

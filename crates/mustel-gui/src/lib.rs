@@ -41,6 +41,7 @@ pub mod sql_completion;
 pub mod sql_editor;
 pub mod tabs;
 pub mod theme;
+mod toast;
 
 pub use app::App;
 pub use events::{ChannelSink, GuiEvent};

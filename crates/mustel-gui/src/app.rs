@@ -174,6 +174,8 @@ pub struct App {
     ai_profiles: Vec<mustel_core::config::model::AiProfile>,
     /// Último mínimo de janela enviado ao sistema (evita repetir o comando a cada quadro).
     min_inner: Option<egui::Vec2>,
+    /// Recados efêmeros (toasts) — o que já foi feito, sem ocupar a barra de status.
+    toasts: crate::toast::Toasts,
 }
 
 impl App {
@@ -268,6 +270,7 @@ impl App {
                 .map(|prefs| prefs.ai.profiles.clone())
                 .unwrap_or_default(),
             min_inner: None,
+            toasts: crate::toast::Toasts::default(),
         })
     }
 
@@ -385,7 +388,9 @@ impl App {
                 match ConfigStore::with_default_path() {
                     Ok(store) => match gui_prefs::save(&store, Some(prefs)) {
                         Ok(()) => {
-                            self.status = "Saved queries saved.".to_string();
+                            // O recado é efêmero: a barra segue livre para o estado ambiente.
+                            self.toasts.success("Saved queries saved.");
+                            self.status = "Ready.".to_string();
                             ctx.request_repaint();
                         }
                         Err(error) => self.status = error.to_string(),
@@ -402,7 +407,8 @@ impl App {
                         Ok(()) => {
                             let selections = self.servers.selectors().selections().to_vec();
                             self.query.retain_selection_queries(&selections);
-                            self.status = "Selectors saved.".to_string();
+                            self.toasts.success("Selectors saved.");
+                            self.status = "Ready.".to_string();
                             ctx.request_repaint();
                         }
                         Err(error) => self.status = error.to_string(),
@@ -430,7 +436,8 @@ impl App {
                                 // A query em uso pode ter sido removida (ou renomeada) na aba Settings:
                                 // o combo da aba Query não pode continuar apontando para o nome antigo.
                                 self.query.retain_selection_queries(&selections);
-                                self.status = "Appearance saved.".to_string();
+                                self.toasts.success("Appearance saved.");
+                                self.status = "Ready.".to_string();
                                 ctx.request_repaint();
                             }
                             Err(error) => self.status = error.to_string(),
@@ -1022,12 +1029,11 @@ impl App {
                 JobResult::Saved(name) => format!("Server '{name}' saved."),
                 JobResult::Removed(name) => format!("Server '{name}' removed."),
                 JobResult::PasswordSaved(name) => format!("Password saved for '{name}'."),
-                JobResult::Tested { outcome, .. } => match outcome {
-                    // Sucesso é o check no botão do cartão; a barra não repete a contagem de bases.
-                    Ok(_) => "Ready.".to_string(),
-                    Err(error) => format!("Connection failed: {error}"),
-                },
+                // O resultado do `Test` é do cartão (check/X) e, na falha, do balão; a barra não
+                // repete a contagem de bases nem o motivo.
+                JobResult::Tested { .. } => "Ready.".to_string(),
                 JobResult::QueryDone { total_rows, .. } => {
+                    // A contagem final é recado de ação concluída; a barra volta ao repouso.
                     format!("Query finished: {total_rows} row(s).")
                 }
                 JobResult::QueryWithoutDatabases => {
@@ -1106,6 +1112,16 @@ impl App {
                 }
                 JobResult::Failed(error) => error.clone(),
             };
+
+            // Quem merece balão é decidido em um só lugar (e testado); o status acima continua
+            // sendo o estado ambiente. Sucesso não ocupa a barra — ela volta ao repouso —, mas
+            // aviso e erro continuam explicados nela.
+            if let Some((kind, message)) = toast_for(&result) {
+                self.toasts.notify(kind, message);
+                if kind == crate::toast::Kind::Success {
+                    self.status = "Ready.".to_string();
+                }
+            }
 
             // Um `Save` com senha encadeia o pedido de guardar no cofre, na mesma ordem do CLI.
             if matches!(result, JobResult::Saved(_))
@@ -1337,6 +1353,9 @@ impl eframe::App for App {
             // O conteúdo fica no topo; o resto do painel é fundo, não área morta de outro widget.
             ui.allocate_space(ui.available_size());
         });
+
+        // Toasts por cima de tudo — inclusive dos painéis e do conteúdo.
+        self.toasts.show(&ctx);
     }
 }
 
@@ -1391,6 +1410,39 @@ fn reopen_handles(
     (reopen_sidebar, reopen_ai)
 }
 
+/// O balão que um resultado de job merece — ou `None` quando a tela já mostra o recado.
+///
+/// A regra é uma só: **não duplicar** o que o usuário vê sozinho. Servidor salvo/removido e senha
+/// guardada têm retorno na área principal; o `Test` que **passa** vira check no cartão. O que sobra
+/// é o que não tem texto na tela — inclusive a falha do `Test`, que o cartão só marca com X.
+fn toast_for(result: &JobResult) -> Option<(crate::toast::Kind, String)> {
+    use crate::toast::Kind;
+
+    match result {
+        JobResult::AiProfilesSaved => Some((Kind::Success, "AI profiles saved.".to_string())),
+        JobResult::QueryDone { total_rows, .. } => Some((
+            Kind::Success,
+            format!("Query finished: {total_rows} row(s)."),
+        )),
+        JobResult::QueryWithoutDatabases => Some((
+            Kind::Warning,
+            "No accessible databases found across selected servers.".to_string(),
+        )),
+        JobResult::Tested {
+            server,
+            outcome: Err(error),
+        } => Some((
+            Kind::Error,
+            // O erro do núcleo já vem com o embrulho (`Connection failed:`/`Authentication
+            // failed:`); só falta dizer **de qual** servidor — o balão pode aparecer com o
+            // usuário em outra aba.
+            format!("{server}: {error}"),
+        )),
+        JobResult::Failed(error) => Some((Kind::Error, error.clone())),
+        _ => None,
+    }
+}
+
 /// Abre o cadastro do caminho padrão e roda `action`; erro de configuração vira `JobResult::Failed`.
 fn with_store(action: impl FnOnce(&ConfigStore) -> JobResult) -> JobResult {
     match ConfigStore::with_default_path() {
@@ -1402,6 +1454,67 @@ fn with_store(action: impl FnOnce(&ConfigStore) -> JobResult) -> JobResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Só vira balão o resultado que o usuário não vê sozinho — e a falha do `Test` é um deles.
+    ///
+    /// Servidor salvo/removido e senha guardada já têm retorno na área principal; o `Test` que
+    /// passa vira check no cartão. Já a falha do `Test` não escreve mais nada na tela: o motivo
+    /// chega pelo toast.
+    /// CONTRACT: IF-263
+    #[test]
+    fn only_the_results_without_their_own_visible_message_get_a_toast() {
+        use crate::toast::Kind;
+
+        assert_eq!(
+            toast_for(&JobResult::QueryDone {
+                consolidated: None,
+                log: std::path::PathBuf::from("run.log"),
+                servers: 1,
+                successes: 1,
+                failures: 0,
+                total_rows: 42,
+            }),
+            Some((Kind::Success, "Query finished: 42 row(s).".to_string()))
+        );
+        assert_eq!(
+            toast_for(&JobResult::AiProfilesSaved),
+            Some((Kind::Success, "AI profiles saved.".to_string()))
+        );
+        assert_eq!(
+            toast_for(&JobResult::QueryWithoutDatabases),
+            Some((
+                Kind::Warning,
+                "No accessible databases found across selected servers.".to_string()
+            ))
+        );
+        assert_eq!(
+            toast_for(&JobResult::Failed("boom".to_string())),
+            Some((Kind::Error, "boom".to_string()))
+        );
+        assert_eq!(
+            toast_for(&JobResult::Tested {
+                server: "Local".to_string(),
+                outcome: Err("Connection failed: connection refused".to_string()),
+            }),
+            Some((
+                Kind::Error,
+                "Local: Connection failed: connection refused".to_string()
+            ))
+        );
+
+        for quiet in [
+            JobResult::Saved("dev".to_string()),
+            JobResult::Removed("dev".to_string()),
+            JobResult::PasswordSaved("dev".to_string()),
+            // O `Test` que passa já vira check no cartão.
+            JobResult::Tested {
+                server: "dev".to_string(),
+                outcome: Ok(Vec::new()),
+            },
+        ] {
+            assert_eq!(toast_for(&quiet), None, "não devia virar balão: {quiet:?}");
+        }
+    }
 
     /// O que a linha de alças pintou: textos com a posição, altura consumida e o que foi clicado.
     struct Painted {

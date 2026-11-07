@@ -200,16 +200,36 @@ pub fn button(ui: &mut egui::Ui, icon: Icon) -> egui::Response {
     button_enabled(ui, icon, true)
 }
 
+/// Ícone clicável com **largura mínima** conhecida.
+///
+/// Quem desenha algo que quebra linha ao lado precisa saber quanto reservar **antes** de medir o
+/// texto; sem isso a linha estoura o teto de largura.
+pub fn button_sized(ui: &mut egui::Ui, icon: Icon, width: f32) -> egui::Response {
+    button_enabled_sized(ui, icon, true, width)
+}
+
 /// Ícone clicável, respeitando o estado habilitado.
 ///
 /// **Com moldura** (`.small()`, sem `frame(false)`): ícone solto no meio da linha não parece
 /// clicável — a moldura é o que diz "isto é um botão". Era assim antes da migração para a fonte de
 /// ícones (`small_button`/`Button`), e continua valendo para os quatro tamanhos de linha.
 pub fn button_enabled(ui: &mut egui::Ui, icon: Icon, enabled: bool) -> egui::Response {
+    button_enabled_sized(ui, icon, enabled, 0.0)
+}
+
+/// [`button_enabled`] com largura mínima.
+fn button_enabled_sized(
+    ui: &mut egui::Ui,
+    icon: Icon,
+    enabled: bool,
+    width: f32,
+) -> egui::Response {
     let size = ui.text_style_height(&egui::TextStyle::Body);
     // Sem cor fixa: quem pinta (o `Button`) decide, inclusive o cinza do desabilitado.
     let text = egui::RichText::new(icon.glyph().to_string()).font(font_id(size));
-    let button = egui::Button::new(text).small();
+    let button = egui::Button::new(text)
+        .small()
+        .min_size(egui::vec2(width, 0.0));
     ui.add_enabled(enabled, button)
 }
 

@@ -255,9 +255,10 @@ impl State {
                 self.tested.retain(|(name, _, _)| name != server);
                 self.tested
                     .push((server.clone(), outcome.is_ok(), std::time::Instant::now()));
-                // O resultado é do **cartão** (check ou X); o erro, quando há, continua explicando
-                // o X na área principal. Nada de listar as bases aqui (era o texto antigo).
-                self.error = outcome.as_ref().err().cloned();
+                // O resultado é do **cartão** (check ou X); o motivo da falha vai para o toast, e
+                // a área principal não repete o texto vermelho. Nada de listar as bases aqui
+                // (era o texto antigo).
+                self.error = None;
             }
             JobResult::Failed(error) => {
                 self.error = Some(error.clone());
@@ -769,6 +770,7 @@ mod tests {
     ///
     /// Limite deste teste: o `Response` reporta a mesma altura nos dois códigos — a diferença era
     /// na moldura pintada, que só se confere na janela. Aqui fica presa a linha do texto.
+    /// CONTRACT: IF-262
     #[test]
     fn the_test_label_sits_on_the_same_line_as_edit_and_remove() {
         let ctx = egui::Context::default();
@@ -886,6 +888,7 @@ mod tests {
     }
 
     /// `Test` que passou: o botão vira **check** e a lista de bases não aparece em texto.
+    /// CONTRACT: IF-262
     #[test]
     fn a_successful_test_shows_a_check_and_no_database_list() {
         let mut state = State::new(vec![ServerConfigEntry {
@@ -916,9 +919,11 @@ mod tests {
         assert!(state.testing.is_empty(), "o spinner saiu");
     }
 
-    /// `Test` que falhou: o botão vira **X** e o motivo continua escrito.
+    /// `Test` que falhou: o botão vira **X** e o motivo **não** fica na área principal — vai para
+    /// o toast (é o mesmo recado, sem o texto vermelho ocupando a tela).
+    /// CONTRACT: IF-262
     #[test]
-    fn a_failed_test_shows_a_cross_and_the_reason() {
+    fn a_failed_test_shows_a_cross_and_leaves_the_reason_to_the_toast() {
         let mut state = State::new(vec![ServerConfigEntry {
             name: "Local".to_string(),
             ..ServerConfigEntry::default()
@@ -937,13 +942,14 @@ mod tests {
             "o botão mostra o X: {everything}"
         );
         assert!(
-            everything.contains("password authentication failed"),
-            "o motivo aparece: {everything}"
+            !everything.contains("password authentication failed"),
+            "o motivo saiu da área principal (vai no toast): {everything}"
         );
         assert!(state.testing.is_empty(), "o spinner saiu");
     }
 
     /// Enquanto verifica, o botão vira spinner: o rótulo `Test` sai de cena.
+    /// CONTRACT: IF-262
     #[test]
     fn the_test_button_shows_a_spinner_while_running() {
         let mut state = State::new(vec![ServerConfigEntry {

@@ -1677,10 +1677,167 @@ mod tests {
         );
     }
 
+    /// A janela real **abre maximizada** e o dono a encolhe — mesmo `Context`, mesma memória.
+    ///
+    /// Os testes anteriores criavam um contexto novo por largura, e por isso não viam o que o dono
+    /// via: o estado de layout do egui sobrevive ao redimensionamento.
+    #[test]
+    fn shrinking_the_window_after_a_maximized_frame_keeps_the_actions_visible() {
+        let mut prefs = GuiPrefs::default();
+        prefs
+            .ai
+            .profiles
+            .push(mustel_core::config::model::AiProfile {
+                id: "longo".to_string(),
+                name: "Perfil com nome comprido".to_string(),
+                base_url: "https://api.example.com/v1/um/caminho/bem/comprido/que/nao/acaba"
+                    .to_string(),
+                model: "modelo-com-nome-comprido".to_string(),
+                temperature: 0.2,
+            });
+        prefs.ai.active_profile = "longo".to_string();
+
+        let mut state = State::with_prefs(Some(&prefs));
+        state.category = Category::Ai;
+
+        let ctx = egui::Context::default();
+
+        // Primeiro quadro: maximizada, como o app abre.
+        let maximized = painted_with(&ctx, &mut state, 1500.0, 900.0);
+        assert!(
+            maximized.iter().any(|(text, _, _)| text == "Remove"),
+            "maximizada, as ações existem"
+        );
+
+        // Depois, o dono encolhe a janela — sem trocar de contexto nem de estado.
+        let panel_left = CATEGORY_WIDTH + f32::from(CONTENT_GAP);
+        for width in [1100.0, 800.0, 600.0, 430.0, 360.0] {
+            let painted = painted_with(&ctx, &mut state, width, 900.0);
+
+            for action in ["Test", "Edit", "Remove"] {
+                let (_, rect, clip) = painted
+                    .iter()
+                    .find(|(text, _, _)| text == action)
+                    .unwrap_or_else(|| panic!("a {width}px o botão {action} sumiu do cartão"));
+                assert!(
+                    rect.min.x >= panel_left,
+                    "a {width}px o botão {action} invadiu o menu (x={} < {panel_left})",
+                    rect.min.x
+                );
+                assert!(
+                    rect.max.x <= width,
+                    "a {width}px o botão {action} saiu da janela (max.x={})",
+                    rect.max.x
+                );
+                assert!(
+                    clip.width() > 0.0 && clip.contains_rect(*rect),
+                    "a {width}px o botão {action} foi recortado (clipe={clip:?})"
+                );
+            }
+        }
+    }
+
+    /// A cadeia **completa do app**: barra de topo com um status longo, `Frame` com recorte e a aba
+    /// Settings, primeiro maximizada e depois encolhida no mesmo `Context`.
+    ///
+    /// Este é o teste que reproduziu o bug de verdade: com um status comprido na barra, a linha do
+    /// topo alargava o layout além da janela, e o `max_rect` do conteúdo ia junto — as ações do
+    /// cartão, alinhadas à direita, saíam da tela. Os testes que só desenhavam a aba (status curto)
+    /// passavam e escondiam o problema.
+    #[test]
+    fn a_long_status_does_not_widen_the_settings_content() {
+        let mut prefs = GuiPrefs::default();
+        prefs
+            .ai
+            .profiles
+            .push(mustel_core::config::model::AiProfile {
+                id: "longo".to_string(),
+                name: "Perfil com nome comprido".to_string(),
+                base_url: "https://api.example.com/v1/um/caminho/bem/comprido/que/nao/acaba"
+                    .to_string(),
+                model: "modelo-com-nome-comprido".to_string(),
+                temperature: 0.2,
+            });
+
+        let mut state = State::with_prefs(Some(&prefs));
+        state.category = Category::Ai;
+
+        let ctx = egui::Context::default();
+        crate::fonts::apply(&ctx, state.chosen());
+        crate::theme::apply(&ctx, state.theme());
+
+        // Maximizada primeiro; depois as larguras de quem encolhe a janela.
+        for (width, height) in [
+            (3400.0, 1400.0),
+            (1100.0, 733.0),
+            (800.0, 700.0),
+            (500.0, 700.0),
+        ] {
+            let mut output = ctx.run_ui(screen(width, height), |ui| {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.heading("Mustel");
+                        ui.separator();
+                        ui.label("Query");
+                        ui.separator();
+                        ui.label(
+                            "Could not list the databases of 'Local2': Connection failed: \
+                             error connecting to server. Could not list the databases of \
+                             'Local3': Connection failed: error connecting to server.",
+                        );
+                    });
+                    ui.separator();
+                    egui::Frame::NONE
+                        .inner_margin(egui::Margin::ZERO)
+                        .show(ui, |ui| {
+                            ui.set_clip_rect(ui.max_rect());
+                            let _ = state.ui(ui);
+                        });
+                });
+            });
+            output.textures_delta.clear();
+
+            let mut painted = Vec::new();
+            collect_rects(&output.shapes, &mut painted);
+
+            let panel_left = CATEGORY_WIDTH + f32::from(CONTENT_GAP);
+            for action in ["Test", "Edit", "Remove"] {
+                let (_, rect, clip) = painted
+                    .iter()
+                    .find(|(text, _, _)| text == action)
+                    .unwrap_or_else(|| panic!("a {width}px o botão {action} sumiu"));
+                assert!(
+                    rect.min.x >= panel_left,
+                    "a {width}px {action} invadiu o menu (x={})",
+                    rect.min.x
+                );
+                assert!(
+                    rect.max.x <= width,
+                    "a {width}px {action} saiu da janela (max.x={})",
+                    rect.max.x
+                );
+                assert!(
+                    clip.width() > 0.0 && clip.contains_rect(*rect),
+                    "a {width}px {action} foi recortado (rect={rect:?}, clipe={clip:?})"
+                );
+            }
+        }
+    }
+
     /// Desenha a aba uma vez na largura pedida e devolve o que foi pintado.
     fn painted_at(state: &mut State, width: f32) -> Vec<(String, egui::Rect, egui::Rect)> {
-        let ctx = egui::Context::default();
-        let mut output = ctx.run_ui(screen(width, 700.0), |ctx| {
+        painted_with(&egui::Context::default(), state, width, 700.0)
+    }
+
+    /// Desenha num contexto **existente** — é o que reproduz a janela de verdade, em que
+    /// maximizar e encolher compartilham a memória do egui entre os quadros.
+    fn painted_with(
+        ctx: &egui::Context,
+        state: &mut State,
+        width: f32,
+        height: f32,
+    ) -> Vec<(String, egui::Rect, egui::Rect)> {
+        let mut output = ctx.run_ui(screen(width, height), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 let _ = state.ui(ui);
             });

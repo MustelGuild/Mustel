@@ -1147,7 +1147,11 @@ impl eframe::App for App {
                     self.screen = screen;
                 }
                 ui.separator();
-                ui.label(&self.status);
+                // A barra é **uma linha**: um status comprido ("Could not list the databases…") não
+                // pode alargar o layout. Antes ele esticava a linha além da janela, o `max_rect`
+                // do conteúdo ia junto — e o que estava alinhado à direita (as ações do cartão de
+                // perfil) ficava fora da tela. Truncar mantém a barra dentro da largura.
+                ui.add(egui::Label::new(&self.status).truncate());
                 if let Some(running) = &self.running {
                     ui.spinner();
                     ui.label(format!("[{}]", running.label));

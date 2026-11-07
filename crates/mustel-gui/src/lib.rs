@@ -40,6 +40,7 @@ pub mod smooth_scroll;
 pub mod sql_completion;
 pub mod sql_editor;
 pub mod tabs;
+mod test_button;
 pub mod theme;
 mod toast;
 

@@ -518,6 +518,16 @@ impl App {
             }
             Request::TestAiProfile { profile } => {
                 let results = self.results.clone();
+                // O `spawn` recusa com um job em andamento e **não** emite resultado: sem esta
+                // saída, o botão ficaria girando para sempre.
+                if let Some(running) = &self.running {
+                    let _ = results.send(JobResult::AiTested {
+                        profile,
+                        result: Err(format!("Already running: {}.", running.label)),
+                    });
+                    ctx.request_repaint();
+                    return;
+                }
                 let entry = self
                     .ai_profiles
                     .iter()
@@ -696,6 +706,15 @@ impl App {
             Request::TestConnection(server) => {
                 let name = server.name.clone();
                 let results = self.results.clone();
+                // Mesma saída do `TestAiProfile`: o `spawn` recusa e nenhum resultado voltaria.
+                if let Some(running) = &self.running {
+                    let _ = results.send(JobResult::Tested {
+                        server: name,
+                        outcome: Err(format!("Already running: {}.", running.label)),
+                    });
+                    ctx.request_repaint();
+                    return;
+                }
                 let password = match query::stored_password(&name) {
                     Ok(password) => password,
                     Err(error) => {
@@ -1029,9 +1048,9 @@ impl App {
                 JobResult::Saved(name) => format!("Server '{name}' saved."),
                 JobResult::Removed(name) => format!("Server '{name}' removed."),
                 JobResult::PasswordSaved(name) => format!("Password saved for '{name}'."),
-                // O resultado do `Test` é do cartão (check/X) e, na falha, do balão; a barra não
-                // repete a contagem de bases nem o motivo.
-                JobResult::Tested { .. } => "Ready.".to_string(),
+                // O resultado de um `Test` é do botão (spinner → check/X) e, na falha, do balão;
+                // a barra não repete a lista de bases, a resposta da IA nem o motivo.
+                JobResult::Tested { .. } | JobResult::AiTested { .. } => "Ready.".to_string(),
                 JobResult::QueryDone { total_rows, .. } => {
                     // A contagem final é recado de ação concluída; a barra volta ao repouso.
                     format!("Query finished: {total_rows} row(s).")
@@ -1041,10 +1060,6 @@ impl App {
                 }
                 JobResult::Ddl { .. } | JobResult::SqlGenerated { .. } => self.status.clone(),
                 JobResult::AiProfilesSaved => "AI profiles saved.".to_string(),
-                JobResult::AiTested { result, .. } => match result {
-                    Ok(message) => format!("AI profile works: {message}"),
-                    Err(error) => format!("AI profile failed: {error}"),
-                },
                 JobResult::Schema {
                     server,
                     database,
@@ -1413,8 +1428,9 @@ fn reopen_handles(
 /// O balão que um resultado de job merece — ou `None` quando a tela já mostra o recado.
 ///
 /// A regra é uma só: **não duplicar** o que o usuário vê sozinho. Servidor salvo/removido e senha
-/// guardada têm retorno na área principal; o `Test` que **passa** vira check no cartão. O que sobra
-/// é o que não tem texto na tela — inclusive a falha do `Test`, que o cartão só marca com X.
+/// guardada têm retorno na área principal; o `Test` que **passa** vira check no botão. O que sobra
+/// é o que não tem texto na tela — inclusive a falha do `Test` (de conexão ou de perfil de IA), que
+/// o botão só marca com X.
 fn toast_for(result: &JobResult) -> Option<(crate::toast::Kind, String)> {
     use crate::toast::Kind;
 
@@ -1438,6 +1454,14 @@ fn toast_for(result: &JobResult) -> Option<(crate::toast::Kind, String)> {
             // usuário em outra aba.
             format!("{server}: {error}"),
         )),
+        JobResult::AiTested {
+            profile,
+            result: Err(error),
+        } => Some((
+            Kind::Error,
+            // O job carrega o `id` do perfil; é ele que identifica o cartão no balão.
+            format!("{profile}: {error}"),
+        )),
         JobResult::Failed(error) => Some((Kind::Error, error.clone())),
         _ => None,
     }
@@ -1458,8 +1482,8 @@ mod tests {
     /// Só vira balão o resultado que o usuário não vê sozinho — e a falha do `Test` é um deles.
     ///
     /// Servidor salvo/removido e senha guardada já têm retorno na área principal; o `Test` que
-    /// passa vira check no cartão. Já a falha do `Test` não escreve mais nada na tela: o motivo
-    /// chega pelo toast.
+    /// passa vira check no botão. Já a falha do `Test` (de conexão ou de perfil de IA) não escreve
+    /// mais nada na tela: o motivo chega pelo toast.
     /// CONTRACT: IF-263
     #[test]
     fn only_the_results_without_their_own_visible_message_get_a_toast() {
@@ -1501,6 +1525,16 @@ mod tests {
                 "Local: Connection failed: connection refused".to_string()
             ))
         );
+        assert_eq!(
+            toast_for(&JobResult::AiTested {
+                profile: "ollama".to_string(),
+                result: Err("No key stored for this profile.".to_string()),
+            }),
+            Some((
+                Kind::Error,
+                "ollama: No key stored for this profile.".to_string()
+            ))
+        );
 
         for quiet in [
             JobResult::Saved("dev".to_string()),
@@ -1510,6 +1544,10 @@ mod tests {
             JobResult::Tested {
                 server: "dev".to_string(),
                 outcome: Ok(Vec::new()),
+            },
+            JobResult::AiTested {
+                profile: "ollama".to_string(),
+                result: Ok("OK: SELECT 1;".to_string()),
             },
         ] {
             assert_eq!(toast_for(&quiet), None, "não devia virar balão: {quiet:?}");

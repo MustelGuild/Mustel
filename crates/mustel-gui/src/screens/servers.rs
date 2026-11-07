@@ -113,43 +113,6 @@ pub enum Context {
     QuerySelector,
 }
 
-/// Quanto tempo o check/X do `Test` fica no lugar do botão antes de voltar a `Test`.
-const TEST_FEEDBACK: std::time::Duration = std::time::Duration::from_secs(2);
-
-/// Largura mínima do botão `Test`, a mesma nos três estados (ocioso, verificando, resultado) —
-/// assim a linha `Edit · Test · Remove` não dança a cada mudança de estado.
-///
-/// É **largura mínima** (`Button::min_size`), não tamanho fixo: a altura continua sendo a natural
-/// do botão. Forçar a altura com `add_sized` deixava o `Test` mais alto que `Edit`/`Remove`.
-fn test_button_width(ui: &egui::Ui) -> f32 {
-    let font = egui::TextStyle::Button.resolve(ui.style());
-    let galley = ui
-        .painter()
-        .layout_no_wrap("Test".to_owned(), font, ui.visuals().text_color());
-    galley.size().x + 2.0 * ui.spacing().button_padding.x
-}
-
-/// Desenha um botão **com spinner**: é o `Test` enquanto a conexão é verificada.
-///
-/// O spinner vai dentro de uma moldura do tamanho do botão ocioso, para a linha não mudar de
-/// largura entre “Test”, “verificando” e o resultado.
-fn draw_spinner_button(ui: &mut egui::Ui, size: egui::Vec2) {
-    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-    let visuals = ui.style().visuals.widgets.inactive;
-    ui.painter().rect(
-        rect,
-        visuals.corner_radius,
-        visuals.weak_bg_fill,
-        visuals.bg_stroke,
-        egui::StrokeKind::Inside,
-    );
-    let inner = egui::Rect::from_center_size(
-        rect.center(),
-        egui::Vec2::splat((rect.height() * 0.55).min(rect.width() * 0.8)),
-    );
-    ui.put(inner, egui::Spinner::new().size(inner.height()));
-}
-
 /// Estado da tela de servidores.
 #[derive(Debug, Default)]
 pub struct State {
@@ -328,7 +291,7 @@ impl State {
         let servers = self.servers.clone();
         // Resultados antigos saem de cena sozinhos: o botão volta a ser `Test`.
         self.tested
-            .retain(|(_, _, at)| at.elapsed() < TEST_FEEDBACK);
+            .retain(|(_, _, at)| at.elapsed() < crate::test_button::FEEDBACK);
         // A lista ocupa a altura restante da sidebar: é o conteúdo principal dela.
         egui::ScrollArea::vertical()
             .id_salt("servers")
@@ -356,7 +319,7 @@ impl State {
                             // `Test`: spinner enquanto verifica a conexão e, por alguns segundos,
                             // check (deu certo) ou X (falhou). O texto com as bases encontradas
                             // saiu de cena: o resultado é o próprio botão.
-                            let width = test_button_width(ui);
+                            let width = crate::test_button::width(ui, "Test");
                             // A altura vem do `Edit`: forçar a altura deixava o `Test` mais alto.
                             let height = edit.rect.height();
                             let running = self.testing.iter().any(|name| name == &server.name);
@@ -366,36 +329,28 @@ impl State {
                                 .find(|(name, _, _)| name == &server.name)
                                 .map(|(_, ok, at)| (*ok, *at));
 
-                            if running {
-                                draw_spinner_button(ui, egui::vec2(width, height));
+                            let phase = if running {
+                                crate::test_button::Phase::Running
                             } else if let Some((ok, at)) = feedback
-                                && at.elapsed() < TEST_FEEDBACK
+                                && at.elapsed() < crate::test_button::FEEDBACK
                             {
-                                let icon = if ok {
-                                    crate::icons::Icon::Check
-                                } else {
-                                    crate::icons::Icon::Cross
-                                };
-                                let color = if ok {
-                                    ui.visuals().text_color()
-                                } else {
-                                    crate::theme::danger(ui)
-                                };
-                                let glyph = egui::RichText::new(icon.glyph().to_string())
-                                    .font(crate::icons::font_id(
-                                        ui.text_style_height(&egui::TextStyle::Button),
-                                    ))
-                                    .color(color);
-                                let hover = if ok { "Connected" } else { "Connection failed" };
-                                let button =
-                                    egui::Button::new(glyph).min_size(egui::vec2(width, 0.0));
-                                if ui.add(button).on_hover_text(hover).clicked() {
-                                    self.testing.push(server.name.clone());
-                                    request = Some(Request::TestConnection(server.clone()));
+                                // O check/X some sozinho quando o prazo vence.
+                                ui.ctx().request_repaint_after(
+                                    crate::test_button::FEEDBACK - at.elapsed(),
+                                );
+                                crate::test_button::Phase::Done { ok }
+                            } else {
+                                crate::test_button::Phase::Idle
+                            };
+                            let hover = match phase {
+                                crate::test_button::Phase::Done { ok: true } => "Connected",
+                                crate::test_button::Phase::Done { ok: false } => {
+                                    "Connection failed"
                                 }
-                                ui.ctx().request_repaint_after(TEST_FEEDBACK - at.elapsed());
-                            } else if ui
-                                .add(egui::Button::new("Test").min_size(egui::vec2(width, 0.0)))
+                                _ => "Test the connection",
+                            };
+                            if crate::test_button::show(ui, "Test", width, height, phase)
+                                .on_hover_text(hover)
                                 .clicked()
                             {
                                 self.testing.push(server.name.clone());
@@ -786,7 +741,7 @@ mod tests {
             egui::CentralPanel::default().show(ui, |ui| {
                 ui.horizontal(|ui| {
                     let _ = ui.button("Edit");
-                    let width = test_button_width(ui);
+                    let width = crate::test_button::width(ui, "Test");
                     let _ = ui.add(egui::Button::new("Test").min_size(egui::vec2(width, 0.0)));
                     let _ = ui.button("Remove");
                 });

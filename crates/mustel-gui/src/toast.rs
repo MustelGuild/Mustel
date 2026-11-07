@@ -5,7 +5,7 @@
 //!
 //! O ciclo é o mesmo das duas: **entra** (fade + deslize de baixo), fica **ocioso** contando o tempo
 //! e **sai** — por tempo ou pelo `X`. O tempo **pausa no hover**, para dar tempo de ler, e a barra
-//! fina embaixo mostra quanto falta (4 s; **10 s** no erro). A barra pede os próprios quadros, então
+//! fina embaixo mostra quanto falta (4 s; **6 s** no erro). A barra pede os próprios quadros, então
 //! anda mesmo com o mouse parado.
 //!
 //! Escolhas que diferem das bibliotecas, para caber aqui:
@@ -29,7 +29,7 @@ const ACTION_WIDTH: f32 = 26.0;
 /// Tempo que o toast fica na tela, sem contar o hover.
 const DURATION: f32 = 4.0;
 /// Erro merece mais tempo de leitura que um "salvo".
-const ERROR_DURATION: f32 = 10.0;
+const ERROR_DURATION: f32 = 6.0;
 /// Intervalo entre quadros enquanto há balão na tela: é o que faz a barra de tempo andar sem
 /// depender do mouse (a janela dorme quando ninguém pede repintura).
 const REFRESH: f32 = 1.0 / 30.0;
@@ -323,18 +323,18 @@ mod tests {
         }
     }
 
-    /// Erro fica **10 s** na tela: dá tempo de ler o motivo; um "salvo" continua com 4 s.
+    /// Erro fica **6 s** na tela: dá tempo de ler o motivo; um "salvo" continua com 4 s.
     /// CONTRACT: IF-263
     #[test]
-    fn an_error_toast_stays_ten_seconds() {
+    fn an_error_toast_stays_six_seconds() {
         let mut toasts = Toasts::default();
         toasts.notify(Kind::Error, "Local: Connection failed");
 
-        assert!((toasts.items[0].total - 10.0).abs() < 0.01);
+        assert!((toasts.items[0].total - 6.0).abs() < 0.01);
         toasts.items[0].tick(4.0, false);
         assert!(!toasts.items[0].closing, "quatro segundos não bastam");
-        toasts.items[0].tick(6.0, false);
-        assert!(toasts.items[0].closing, "dez segundos fecham");
+        toasts.items[0].tick(2.0, false);
+        assert!(toasts.items[0].closing, "seis segundos fecham");
     }
 
     /// O toast visível pede quadros sozinho: é o que faz a barra de tempo andar sem o mouse.

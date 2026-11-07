@@ -196,8 +196,14 @@ pub struct State {
     ai_form: Option<AiForm>,
     /// Perfil esperando o segundo toque para remover.
     ai_confirming_remove: Option<String>,
-    /// Último recado da seção de IA ("Profile saved", erro do `Test`).
+    /// Último recado da seção de IA ("Profile saved", remoção e validação do formulário).
     ai_message: Option<String>,
+    /// Perfis de IA com o `Test` **em andamento** (o botão vira spinner).
+    ai_testing: Vec<String>,
+    /// Último resultado do `Test` por perfil: (id, deu certo?, quando chegou).
+    ///
+    /// O botão mostra check ou X por alguns segundos e volta a `Test`; a falha também vira toast.
+    ai_tested: Vec<(String, bool, std::time::Instant)>,
     /// Categoria aberta no menu da esquerda.
     category: Category,
     /// Documento aberto no leitor da categoria About (índice em [`crate::about::DOCUMENTS`]).
@@ -259,12 +265,13 @@ impl State {
     /// Nada aqui é da aparência: descoberta de bases e `Test` do seletor vivem em
     /// `screens::selectors`. O método fica porque o app chama `apply` em todas as telas.
     pub fn apply(&mut self, result: &crate::request::JobResult) {
-        // O `Test` de perfil devolve o recado para a seção de IA (a lista continua na tela).
-        if let crate::request::JobResult::AiTested { result, .. } = result {
-            self.ai_message = Some(match result {
-                Ok(message) => message.clone(),
-                Err(error) => error.clone(),
-            });
+        // O `Test` de perfil é do **botão** (spinner → check/X) e, na falha, do toast; a seção não
+        // repete o texto — `ai_message` fica para o que é da lista (salvar, remover, validação).
+        if let crate::request::JobResult::AiTested { profile, result } = result {
+            self.ai_testing.retain(|id| id != profile);
+            self.ai_tested.retain(|(id, _, _)| id != profile);
+            self.ai_tested
+                .push((profile.clone(), result.is_ok(), std::time::Instant::now()));
         }
     }
 
@@ -541,10 +548,15 @@ impl State {
             ui.weak(message);
         }
 
+        // Resultados antigos saem de cena sozinhos: o botão volta a ser `Test`.
+        self.ai_tested
+            .retain(|(_, _, at)| at.elapsed() < crate::test_button::FEEDBACK);
+
         // Lista.
         let mut activate: Option<String> = None;
         let mut edit: Option<usize> = None;
         let mut remove: Option<String> = None;
+        let mut testing: Option<String> = None;
         // Cada perfil é um **cartão**: rádio (o ativo), nome, o resumo logo abaixo e as ações na
         // ponta. Antes era uma linha corrida com o resumo colado no nome — com dois perfis de nomes
         // parecidos, era difícil dizer qual linha era qual.
@@ -582,14 +594,42 @@ impl State {
                     if ui.button(label).clicked() {
                         remove = Some(profile.id.clone());
                     }
-                    if ui.button("Edit").clicked() {
+                    let edit_button = ui.button("Edit");
+                    if edit_button.clicked() {
                         edit = Some(index);
                     }
-                    if ui
-                        .button("Test")
-                        .on_hover_text("Send a tiny request")
+                    // `Test` com o mesmo desenho do cartão de servidor: spinner enquanto verifica
+                    // e, por alguns segundos, check (funcionou) ou X (falhou).
+                    let width = crate::test_button::width(ui, "Test");
+                    // A altura vem do `Edit`: forçar a altura deixava o `Test` mais alto.
+                    let height = edit_button.rect.height();
+                    let running = self.ai_testing.iter().any(|id| id == &profile.id);
+                    let feedback = self
+                        .ai_tested
+                        .iter()
+                        .find(|(id, _, _)| id == &profile.id)
+                        .map(|(_, ok, at)| (*ok, *at));
+                    let phase = if running {
+                        crate::test_button::Phase::Running
+                    } else if let Some((ok, at)) = feedback
+                        && at.elapsed() < crate::test_button::FEEDBACK
+                    {
+                        ui.ctx()
+                            .request_repaint_after(crate::test_button::FEEDBACK - at.elapsed());
+                        crate::test_button::Phase::Done { ok }
+                    } else {
+                        crate::test_button::Phase::Idle
+                    };
+                    let hover = match phase {
+                        crate::test_button::Phase::Done { ok: true } => "Profile works",
+                        crate::test_button::Phase::Done { ok: false } => "Profile failed",
+                        _ => "Send a tiny request",
+                    };
+                    if crate::test_button::show(ui, "Test", width, height, phase)
+                        .on_hover_text(hover)
                         .clicked()
                     {
+                        testing = Some(profile.id.clone());
                         request = Some(Request::TestAiProfile {
                             profile: profile.id.clone(),
                         });
@@ -619,6 +659,9 @@ impl State {
                 active: self.ai_active.clone(),
                 key: None,
             });
+        }
+        if let Some(id) = testing {
+            self.ai_testing.push(id);
         }
         if let Some(index) = edit {
             let profile = &self.ai_profiles[index];
@@ -1585,6 +1628,96 @@ mod tests {
             )),
             ..Default::default()
         }
+    }
+
+    /// Perfil de IA de teste, com um `id` conhecido.
+    fn ai_state() -> State {
+        let mut prefs = GuiPrefs::default();
+        prefs
+            .ai
+            .profiles
+            .push(mustel_core::config::model::AiProfile {
+                id: "ollama".to_string(),
+                name: "Ollama".to_string(),
+                base_url: "http://127.0.0.1:11434/v1".to_string(),
+                model: "llama3".to_string(),
+                temperature: 0.2,
+            });
+        prefs.ai.active_profile = "ollama".to_string();
+
+        let mut state = State::with_prefs(Some(&prefs));
+        state.category = Category::Ai;
+        state
+    }
+
+    /// Enquanto testa, o botão vira spinner: o rótulo `Test` sai de cena.
+    /// CONTRACT: IF-264
+    #[test]
+    fn the_ai_test_button_shows_a_spinner_while_running() {
+        let mut state = ai_state();
+        state.ai_testing.push("ollama".to_string());
+
+        let painted = painted_at(&mut state, 700.0);
+        let everything = painted
+            .iter()
+            .map(|(text, _, _)| text.clone())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(
+            !painted.iter().any(|(text, _, _)| text == "Test"),
+            "o rótulo Test saiu de cena: {everything}"
+        );
+    }
+
+    /// `Test` que passou: o botão vira **check** e nada mais é escrito na seção.
+    /// CONTRACT: IF-264
+    #[test]
+    fn a_passing_ai_test_shows_a_check() {
+        let mut state = ai_state();
+        state.apply(&crate::request::JobResult::AiTested {
+            profile: "ollama".to_string(),
+            result: Ok("OK: SELECT 1;".to_string()),
+        });
+
+        let painted = painted_at(&mut state, 700.0);
+        let check = crate::icons::Icon::Check.glyph().to_string();
+        assert!(
+            painted.iter().any(|(text, _, _)| text == &check),
+            "o botão mostra o check: {painted:?}"
+        );
+        assert!(state.ai_message.is_none(), "a seção não repete o resultado");
+        assert!(state.ai_testing.is_empty(), "o spinner saiu");
+    }
+
+    /// `Test` que falhou: o botão vira **X** e o motivo **não** fica na seção — vai para o toast.
+    /// CONTRACT: IF-264
+    #[test]
+    fn a_failed_ai_test_shows_a_cross_and_leaves_the_reason_to_the_toast() {
+        let mut state = ai_state();
+        state.ai_testing.push("ollama".to_string());
+        state.apply(&crate::request::JobResult::AiTested {
+            profile: "ollama".to_string(),
+            result: Err("No key stored for this profile.".to_string()),
+        });
+
+        let painted = painted_at(&mut state, 700.0);
+        let everything = painted
+            .iter()
+            .map(|(text, _, _)| text.clone())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let cross = crate::icons::Icon::Cross.glyph().to_string();
+        assert!(
+            painted.iter().any(|(text, _, _)| text == &cross),
+            "o botão mostra o X: {everything}"
+        );
+        assert!(
+            !everything.contains("No key stored"),
+            "o motivo saiu da seção (vai no toast): {everything}"
+        );
+        assert!(state.ai_message.is_none());
+        assert!(state.ai_testing.is_empty(), "o spinner saiu");
     }
 
     /// Em painel estreito, as ações do cartão de perfil ficam **dentro do painel**.

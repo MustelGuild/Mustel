@@ -305,11 +305,6 @@ impl State {
     /// A aba é **menu fixo + painel**: o menu ([`Category`]) não rola com o conteúdo e não depende
     /// da categoria para existir. Só o painel da direita rola, e só quando não cabe.
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Request> {
-        eprintln!(
-            "settings.ui avail={} max={:?}",
-            ui.available_width(),
-            ui.max_rect()
-        );
         // Menu de categorias: painel próprio (desenha o fundo e a divisória), como a sidebar de
         // servidores da aba Query.
         egui::Panel::left("settings_categories")
@@ -418,11 +413,6 @@ impl State {
 
     /// O painel da categoria aberta.
     fn category_ui(&mut self, ui: &mut egui::Ui) -> Outcome {
-        eprintln!(
-            "category avail={} max={:?}",
-            ui.available_width(),
-            ui.max_rect()
-        );
         let mut outcome = Outcome::default();
 
         // Cabeçalho do painel: o nome da categoria e do que ela trata — é o que confirma que o

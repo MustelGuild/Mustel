@@ -118,6 +118,21 @@ fn min_window_size(ai_open: bool) -> egui::Vec2 {
     }
 }
 
+/// Grava a seção `gui` do commit da **aparência**, preservando o que mora fora da tela.
+///
+/// A tela de Settings conhece tema, fontes, escala, paginação e perfis de IA — mas **não** os
+/// seletores (cadastro em Connections) nem as queries salvas (aba Query). Este é o único ponto que
+/// grava a seção nesse caminho; sem recompor, mudar o tema apagava os dois.
+fn save_appearance(
+    store: &ConfigStore,
+    appearance: GuiPrefs,
+    selections: &[SelectionQuery],
+    saved_queries: &[mustel_core::config::model::SavedQuery],
+) -> Result<(), mustel_core::error::CoreError> {
+    let prefs = crate::screens::compose_gui_prefs(appearance, selections, saved_queries);
+    gui_prefs::save(store, Some(prefs))
+}
+
 /// Respiro entre a sidebar e o conteúdo à direita dela.
 ///
 /// O painel desenha a própria linha divisória; sem o respiro o primeiro texto da área principal
@@ -404,18 +419,23 @@ impl App {
                 crate::theme::apply(ctx, prefs.theme);
                 self.settings.set_warning(problems.first().cloned());
 
+                // A tela de Settings **não** conhece os seletores nem as queries salvas (vivem no
+                // cadastro e na aba Query): recompor aqui é o que impede gravar a aparência de
+                // apagar os dois.
+                let selections = self.servers.selectors().selections().to_vec();
                 match ConfigStore::with_default_path() {
-                    Ok(store) => match gui_prefs::save(&store, Some(prefs)) {
-                        Ok(()) => {
-                            // A query em uso pode ter sido removida (ou renomeada) na aba Settings:
-                            // o combo da aba Query não pode continuar apontando para o nome antigo.
-                            let selections = self.servers.selectors().selections().to_vec();
-                            self.query.retain_selection_queries(&selections);
-                            self.status = "Appearance saved.".to_string();
-                            ctx.request_repaint();
+                    Ok(store) => {
+                        match save_appearance(&store, prefs, &selections, &self.saved_queries) {
+                            Ok(()) => {
+                                // A query em uso pode ter sido removida (ou renomeada) na aba Settings:
+                                // o combo da aba Query não pode continuar apontando para o nome antigo.
+                                self.query.retain_selection_queries(&selections);
+                                self.status = "Appearance saved.".to_string();
+                                ctx.request_repaint();
+                            }
+                            Err(error) => self.status = error.to_string(),
                         }
-                        Err(error) => self.status = error.to_string(),
-                    },
+                    }
                     Err(error) => self.status = error.to_string(),
                 }
             }
@@ -1482,6 +1502,65 @@ mod tests {
         assert!(
             content >= FORM,
             "sobram {content} px para o conteúdo; o formulário pede {FORM}"
+        );
+    }
+
+    /// Salvar a **aparência** preserva os seletores e as queries salvas.
+    ///
+    /// A regressão: `SaveGuiPrefs` gravava o `GuiPrefs` que veio da tela de Settings, e essa tela
+    /// não conhece `selections`/`savedQueries` — mudar o tema (ou a fonte, ou a paginação) apagava
+    /// os dois. Servidores, perfis de IA e paginação sobreviviam, então o sintoma era "só os
+    /// seletores sumiram".
+    /// CONTRACT: IF-218
+    #[test]
+    fn saving_the_appearance_keeps_the_selectors_and_saved_queries() {
+        use mustel_core::config::model::{GuiTheme, SavedQuery};
+
+        let directory = tempfile::tempdir().expect("tempdir");
+        let store = ConfigStore::new(directory.path().join("mustel.jsonc"));
+
+        let selection = SelectionQuery {
+            name: "Produção".to_string(),
+            server: "configurador".to_string(),
+            database: "configurador".to_string(),
+            sql: "select host, port, database from tenants".to_string(),
+        };
+        let saved = SavedQuery {
+            name: "Faturamento".to_string(),
+            sql: "select 1".to_string(),
+        };
+
+        // O que já estava no arquivo, como quem cadastrou os seletores antes de mexer no tema.
+        gui_prefs::save(
+            &store,
+            Some(GuiPrefs {
+                selections: vec![selection.clone()],
+                saved_queries: vec![saved.clone()],
+                ..GuiPrefs::default()
+            }),
+        )
+        .expect("grava o que já existia");
+
+        let appearance = GuiPrefs {
+            theme: GuiTheme::Light,
+            font_scale: 1.1,
+            ..GuiPrefs::default()
+        };
+        save_appearance(
+            &store,
+            appearance,
+            std::slice::from_ref(&selection),
+            std::slice::from_ref(&saved),
+        )
+        .expect("grava a aparência");
+
+        let prefs = gui_prefs::load(&store).expect("lê").expect("seção gui");
+        assert_eq!(prefs.theme, GuiTheme::Light, "a aparência mudou");
+        assert_eq!(prefs.selections, vec![selection], "os seletores continuam");
+        assert_eq!(
+            prefs.saved_queries,
+            vec![saved],
+            "as queries salvas continuam"
         );
     }
 

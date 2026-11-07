@@ -276,7 +276,8 @@ impl State {
         self.chosen.apply_to(&mut prefs);
         prefs.theme = self.theme;
         // `selections` **não** é desta tela: quem monta a seção `gui` inteira é o app, juntando a
-        // aparência (daqui) com os seletores (do cadastro em Connections) e a paginação (daqui).
+        // aparência (daqui) com os seletores (do cadastro em Connections) e as queries salvas
+        // (aba Query). Por isso o commit da aparência não pode gravar isto diretamente.
         prefs.selection_list = self.selection_list.clone();
         // A seção `ai` é desta tela: sem isto, gravar a aparência apagaria os perfis.
         prefs.ai = mustel_core::config::model::AiPrefs {

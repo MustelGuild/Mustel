@@ -5,7 +5,8 @@
 //!
 //! O ciclo é o mesmo das duas: **entra** (fade + deslize de baixo), fica **ocioso** contando o tempo
 //! e **sai** — por tempo, por clique no corpo ou no `X`. O tempo **pausa no hover**, para dar tempo
-//! de ler, e a barra fina embaixo mostra quanto falta.
+//! de ler, e a barra fina embaixo mostra quanto falta (4 s; **10 s** no erro). A barra pede os
+//! próprios quadros, então anda mesmo com o mouse parado.
 //!
 //! Escolhas que diferem das bibliotecas, para caber aqui:
 //! - ícone e cor saem de [`crate::icons`]/[`crate::theme`] (Heroicons e o par claro/escuro), não de
@@ -24,6 +25,11 @@ const CLOSE_WIDTH: f32 = 26.0;
 
 /// Tempo que o toast fica na tela, sem contar o hover.
 const DURATION: f32 = 4.0;
+/// Erro merece mais tempo de leitura que um "salvo".
+const ERROR_DURATION: f32 = 10.0;
+/// Intervalo entre quadros enquanto há balão na tela: é o que faz a barra de tempo andar sem
+/// depender do mouse (a janela dorme quando ninguém pede repintura).
+const REFRESH: f32 = 1.0 / 30.0;
 /// Duração do fade/deslize de entrada e de saída.
 const FADE: f32 = 0.18;
 /// Distância da borda inferior da janela.
@@ -49,6 +55,14 @@ pub(crate) enum Kind {
 }
 
 impl Kind {
+    /// Quanto tempo este tom fica na tela.
+    fn duration(self) -> f32 {
+        match self {
+            Kind::Error => ERROR_DURATION,
+            Kind::Success | Kind::Warning => DURATION,
+        }
+    }
+
     /// Ícone da fonte embutida.
     fn icon(self) -> Icon {
         match self {
@@ -174,12 +188,14 @@ impl Toasts {
             .iter_mut()
             .find(|toast| !toast.closing && toast.message == message)
         {
-            existing.remaining = DURATION;
-            existing.total = DURATION;
+            existing.kind = kind;
+            existing.remaining = kind.duration();
+            existing.total = kind.duration();
             return;
         }
 
         self.next_id += 1;
+        let duration = kind.duration();
         // O mais **novo** entra na frente da lista e é desenhado no rodapé; os antigos sobem.
         self.items.insert(
             0,
@@ -187,8 +203,8 @@ impl Toasts {
                 id: self.next_id,
                 message,
                 kind,
-                remaining: DURATION,
-                total: DURATION,
+                remaining: duration,
+                total: duration,
                 last_time: None,
                 closing: false,
             },
@@ -249,9 +265,13 @@ impl Toasts {
                 toast.closing = true;
             }
 
-            if !toast.closing {
-                // Sem isto o balão só sumiria quando outra coisa fizesse a janela repintar.
-                ctx.request_repaint_after(Duration::from_secs_f32(toast.remaining.max(0.0)));
+            if !toast.closing && !hovered {
+                // Um quadro a cada `REFRESH`: sem isso a janela dorme e a barra de tempo fica
+                // parada até o próximo evento (o prazo ainda vence — o relógio é de parede —,
+                // mas a barra só pularia no fim). No hover não há o que animar: a pausa é
+                // intencional, e o movimento do ponteiro acorda a janela quando ele sai.
+                let step = toast.remaining.clamp(0.0, REFRESH);
+                ctx.request_repaint_after(Duration::from_secs_f32(step));
             }
             // A saída também precisa de quadros: `closing` acabou de virar **depois** de a
             // animação ser avaliada, e o `animate_bool_with_time` só pede repintura quando ela
@@ -286,6 +306,39 @@ mod tests {
             last_time: None,
             closing: false,
         }
+    }
+
+    /// Erro fica **10 s** na tela: dá tempo de ler o motivo; um "salvo" continua com 4 s.
+    /// CONTRACT: IF-263
+    #[test]
+    fn an_error_toast_stays_ten_seconds() {
+        let mut toasts = Toasts::default();
+        toasts.notify(Kind::Error, "Local: Connection failed");
+
+        assert!((toasts.items[0].total - 10.0).abs() < 0.01);
+        toasts.items[0].tick(4.0, false);
+        assert!(!toasts.items[0].closing, "quatro segundos não bastam");
+        toasts.items[0].tick(6.0, false);
+        assert!(toasts.items[0].closing, "dez segundos fecham");
+    }
+
+    /// O toast visível pede quadros sozinho: é o que faz a barra de tempo andar sem o mouse.
+    /// CONTRACT: IF-263
+    #[test]
+    fn a_visible_toast_asks_for_frames_so_the_bar_moves() {
+        let ctx = egui::Context::default();
+        let mut toasts = Toasts::default();
+        toasts.success("Perfil salvo");
+
+        let _ = frame(&ctx, &mut toasts, 0.0);
+        // 0,5 s: o fade de entrada (0,18 s) já terminou, então não é ele quem pede repintura.
+        let output = frame(&ctx, &mut toasts, 0.5);
+
+        let delay = output.viewport_output[&egui::ViewportId::ROOT].repaint_delay;
+        assert!(
+            delay <= Duration::from_millis(50),
+            "a barra pediu repintura com atraso de {delay:?}"
+        );
     }
 
     /// O relógio corre e o toast se fecha sozinho ao esgotar.

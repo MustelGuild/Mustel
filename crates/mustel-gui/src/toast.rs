@@ -4,15 +4,17 @@
 //! é desenhado com os widgets, a fonte de ícones e as cores de estado do próprio projeto.
 //!
 //! O ciclo é o mesmo das duas: **entra** (fade + deslize de baixo), fica **ocioso** contando o tempo
-//! e **sai** — por tempo, por clique no corpo ou no `X`. O tempo **pausa no hover**, para dar tempo
-//! de ler, e a barra fina embaixo mostra quanto falta (4 s; **10 s** no erro). A barra pede os
-//! próprios quadros, então anda mesmo com o mouse parado.
+//! e **sai** — por tempo ou pelo `X`. O tempo **pausa no hover**, para dar tempo de ler, e a barra
+//! fina embaixo mostra quanto falta (4 s; **10 s** no erro). A barra pede os próprios quadros, então
+//! anda mesmo com o mouse parado.
 //!
 //! Escolhas que diferem das bibliotecas, para caber aqui:
 //! - ícone e cor saem de [`crate::icons`]/[`crate::theme`] (Heroicons e o par claro/escuro), não de
 //!   emoji;
 //! - a mensagem **repete** reinicia o relógio em vez de empilhar outra igual (o mesmo "salvo" duas
 //!   vezes não vira dois balões);
+//! - só o `X` fecha: o corpo não é botão, então dá para mirar o texto sem medo de dispensar o
+//!   recado — e o erro ganha um `Copy` (o texto em si não é selecionável);
 //! - o estado mora em [`Toasts`], no `App`, e não na memória do `egui` — é testável sem janela.
 
 use std::time::Duration;
@@ -20,8 +22,9 @@ use std::time::Duration;
 use crate::icons::{self, Icon};
 use crate::theme;
 
-/// Largura reservada para o `X`: o texto quebra linha sabendo que ele existe.
-const CLOSE_WIDTH: f32 = 26.0;
+/// Largura reservada para cada botão de ação (`Copy`, `X`): o texto quebra linha sabendo que eles
+/// existem.
+const ACTION_WIDTH: f32 = 26.0;
 
 /// Tempo que o toast fica na tela, sem contar o hover.
 const DURATION: f32 = 4.0;
@@ -30,6 +33,11 @@ const ERROR_DURATION: f32 = 10.0;
 /// Intervalo entre quadros enquanto há balão na tela: é o que faz a barra de tempo andar sem
 /// depender do mouse (a janela dorme quando ninguém pede repintura).
 const REFRESH: f32 = 1.0 / 30.0;
+/// Teto para o intervalo entre quadros no relógio do toast.
+///
+/// Uma janela sem foco pode dormir e o quadro que a acorda (um clique, por exemplo) não pode
+/// consumir o prazo inteiro — parecia que o balão fechava com o clique, em qualquer lugar.
+const MAX_STEP: f32 = 0.1;
 /// Duração do fade/deslize de entrada e de saída.
 const FADE: f32 = 0.18;
 /// Distância da borda inferior da janela.
@@ -112,8 +120,8 @@ impl Toast {
         }
     }
 
-    /// Desenha o balão — moldura, ícone, mensagem que quebra linha, `X` e barra de tempo — e
-    /// devolve a resposta do **corpo**, usada para hover e clique.
+    /// Desenha o balão — moldura, ícone, mensagem que quebra linha, ações e barra de tempo — e
+    /// devolve a resposta da **moldura**, usada para o hover.
     fn paint(&mut self, ui: &mut egui::Ui) -> egui::Response {
         let frame = egui::Frame::window(ui.style())
             .inner_margin(egui::Margin::symmetric(10, 8))
@@ -126,16 +134,27 @@ impl Toast {
                             .color(self.kind.color(ui)),
                     );
                     // `wrap()` explícito: em layout horizontal o padrão do `Label` é **estender**,
-                    // e a mensagem longa esticaria o balão sem limite. O espaço do `X` entra na
-                    // conta **antes** de medir o texto; senão o botão empurra a moldura além de
-                    // `MAX_WIDTH` (o clique também fica reservado, sem o texto por baixo).
-                    let wrap =
-                        (ui.available_width() - CLOSE_WIDTH - ui.spacing().item_spacing.x).max(1.0);
+                    // e a mensagem longa esticaria o balão sem limite. O espaço das ações entra na
+                    // conta **antes** de medir o texto; senão os botões empurram a moldura além de
+                    // `MAX_WIDTH`.
+                    let actions = if self.kind == Kind::Error { 2.0 } else { 1.0 };
+                    let reserved = actions * (ACTION_WIDTH + ui.spacing().item_spacing.x);
+                    let wrap = (ui.available_width() - reserved).max(1.0);
                     ui.scope(|ui| {
                         ui.set_max_width(wrap);
-                        ui.add(egui::Label::new(&self.message).wrap());
+                        // `selectable(false)`: o texto não vira seleção com o mouse (a cópia é o
+                        // botão ao lado do `X`); arrastar sobre o balão não abre seleção azul.
+                        ui.add(egui::Label::new(&self.message).wrap().selectable(false));
                     });
-                    if icons::button_sized(ui, Icon::Close, CLOSE_WIDTH)
+                    if self.kind == Kind::Error
+                        && icons::button_sized(ui, Icon::Copy, ACTION_WIDTH)
+                            .on_hover_text("Copy")
+                            .clicked()
+                    {
+                        ui.ctx().copy_text(self.message.clone());
+                    }
+                    // Só o `X` fecha: o corpo não é botão (um clique perdido não dispensa o recado).
+                    if icons::button_sized(ui, Icon::Close, ACTION_WIDTH)
                         .on_hover_text("Dismiss")
                         .clicked()
                     {
@@ -252,23 +271,19 @@ impl Toasts {
 
             let response = area.inner;
             let hovered = response.contains_pointer();
-            // Relógio de **parede**: entre duas repinturas a janela pode dormir muito mais que um
-            // quadro, e o `stable_dt` (curto por definição) deixaria o balão bem além dos 4 s.
+            // Relógio de **parede**, com teto por quadro: entre duas repinturas a janela pode
+            // dormir muito mais que um quadro, e o quadro do despertar não pode comer o prazo
+            // inteiro (o balão sumiria no clique que trouxe a janela de volta).
             let dt = toast
                 .last_time
-                .map_or(0.0, |last| (now - last).max(0.0) as f32);
+                .map_or(0.0, |last| (now - last).max(0.0) as f32)
+                .min(MAX_STEP);
             toast.last_time = Some(now);
             toast.tick(dt, hovered);
 
-            // Clique no corpo fecha, como nas duas bibliotecas; o `X` é a afordância visível.
-            if !toast.closing && response.interact(egui::Sense::click()).clicked() {
-                toast.closing = true;
-            }
-
             if !toast.closing && !hovered {
                 // Um quadro a cada `REFRESH`: sem isso a janela dorme e a barra de tempo fica
-                // parada até o próximo evento (o prazo ainda vence — o relógio é de parede —,
-                // mas a barra só pularia no fim). No hover não há o que animar: a pausa é
+                // parada até o próximo evento. No hover não há o que animar: a pausa é
                 // intencional, e o movimento do ponteiro acorda a janela quando ele sai.
                 let step = toast.remaining.clamp(0.0, REFRESH);
                 ctx.request_repaint_after(Duration::from_secs_f32(step));
@@ -404,20 +419,252 @@ mod tests {
         );
     }
 
-    /// Desenha um quadro no instante `time` e devolve as formas pintadas (sem as texturas, que
-    /// fazer soltar um `FullOutput` com deltas pendentes é panic do `epaint`).
-    fn frame(ctx: &egui::Context, toasts: &mut Toasts, time: f64) -> egui::FullOutput {
+    /// Desenha um quadro com os eventos dados (ponteiro, teclado).
+    fn frame_with(
+        ctx: &egui::Context,
+        toasts: &mut Toasts,
+        time: f64,
+        events: Vec<egui::Event>,
+    ) -> egui::FullOutput {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
                 egui::vec2(900.0, 700.0),
             )),
             time: Some(time),
+            events,
             ..Default::default()
         };
         let mut output = ctx.run_ui(input, |ui| toasts.show(ui.ctx()));
         output.textures_delta.clear();
         output
+    }
+
+    /// Desenha um quadro no instante `time` e devolve as formas pintadas (sem as texturas, que
+    /// fazer soltar um `FullOutput` com deltas pendentes é panic do `epaint`).
+    fn frame(ctx: &egui::Context, toasts: &mut Toasts, time: f64) -> egui::FullOutput {
+        frame_with(ctx, toasts, time, Vec::new())
+    }
+
+    /// Um clique completo (aperta e solta) na posição `pos`.
+    fn click(
+        ctx: &egui::Context,
+        toasts: &mut Toasts,
+        time: f64,
+        pos: egui::Pos2,
+    ) -> egui::FullOutput {
+        let _ = frame_with(
+            ctx,
+            toasts,
+            time,
+            vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+        frame_with(
+            ctx,
+            toasts,
+            time + 0.05,
+            vec![egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Default::default(),
+            }],
+        )
+    }
+
+    /// Onde o texto `wanted` foi pintado (posição e tamanho), para mirar um clique nele.
+    fn text_at(
+        shapes: &[egui::epaint::ClippedShape],
+        wanted: &str,
+    ) -> Option<(egui::Pos2, egui::Vec2)> {
+        fn walk(shape: &egui::Shape, wanted: &str, out: &mut Option<(egui::Pos2, egui::Vec2)>) {
+            match shape {
+                egui::Shape::Text(text) if text.galley.text() == wanted => {
+                    *out = Some((text.pos, text.galley.size()));
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, wanted, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut found = None;
+        for clipped in shapes {
+            walk(&clipped.shape, wanted, &mut found);
+        }
+        found
+    }
+
+    /// Um clique fora do balão **não** o dispensa: ele só fecha no `X`.
+    /// CONTRACT: IF-263
+    #[test]
+    fn clicking_outside_the_toast_does_not_close_it() {
+        let ctx = egui::Context::default();
+        let mut toasts = Toasts::default();
+        toasts.success("Perfil salvo");
+
+        let _ = frame(&ctx, &mut toasts, 0.0);
+        let _ = frame(&ctx, &mut toasts, 0.5);
+        let _ = click(&ctx, &mut toasts, 0.6, egui::pos2(20.0, 20.0));
+
+        assert!(
+            toasts.items.iter().all(|toast| !toast.closing),
+            "clique longe do balão não fecha"
+        );
+    }
+
+    /// Nem no corpo do balão: o corpo não é botão.
+    /// CONTRACT: IF-263
+    #[test]
+    fn clicking_the_body_does_not_close_it() {
+        let ctx = egui::Context::default();
+        let mut toasts = Toasts::default();
+        toasts.success("Perfil salvo");
+
+        let _ = frame(&ctx, &mut toasts, 0.0);
+        let output = frame(&ctx, &mut toasts, 0.5);
+        let (pos, size) = text_at(&output.shapes, "Perfil salvo").expect("a mensagem foi pintada");
+        let _ = click(&ctx, &mut toasts, 0.6, pos + size / 2.0);
+
+        assert!(
+            toasts.items.iter().all(|toast| !toast.closing),
+            "clique no corpo não fecha"
+        );
+    }
+
+    /// O `X` fecha — é a única forma de dispensar pelo mouse.
+    /// CONTRACT: IF-263
+    #[test]
+    fn clicking_the_close_button_closes_it() {
+        let ctx = egui::Context::default();
+        let mut toasts = Toasts::default();
+        toasts.success("Perfil salvo");
+
+        let _ = frame(&ctx, &mut toasts, 0.0);
+        let output = frame(&ctx, &mut toasts, 0.5);
+        let close = Icon::Close.glyph().to_string();
+        let (pos, size) = text_at(&output.shapes, &close).expect("o X foi pintado");
+        let _ = click(&ctx, &mut toasts, 0.6, pos + size / 2.0);
+
+        assert!(toasts.items.iter().any(|toast| toast.closing), "o X fecha");
+    }
+
+    /// O erro ganha um `Copy` ao lado do `X`: põe a mensagem na área de transferência e **não**
+    /// fecha o balão.
+    /// CONTRACT: IF-263
+    #[test]
+    fn the_copy_button_copies_the_error_and_keeps_the_toast() {
+        let ctx = egui::Context::default();
+        let mut toasts = Toasts::default();
+        let message = "Local: Connection failed";
+        toasts.notify(Kind::Error, message);
+
+        let _ = frame(&ctx, &mut toasts, 0.0);
+        let output = frame(&ctx, &mut toasts, 0.5);
+        let copy = Icon::Copy.glyph().to_string();
+        let (pos, size) = text_at(&output.shapes, &copy).expect("o Copy foi pintado");
+        let output = click(&ctx, &mut toasts, 0.6, pos + size / 2.0);
+
+        assert!(
+            output.platform_output.commands.iter().any(|command| {
+                matches!(command, egui::OutputCommand::CopyText(text) if text == message)
+            }),
+            "copiou o erro: {:?}",
+            output.platform_output.commands
+        );
+        assert!(
+            toasts.items.iter().all(|toast| !toast.closing),
+            "copiar não fecha"
+        );
+    }
+
+    /// Só o erro oferece o `Copy`: sucesso e aviso não têm o que copiar.
+    /// CONTRACT: IF-263
+    #[test]
+    fn only_errors_offer_the_copy_button() {
+        let ctx = egui::Context::default();
+        let mut toasts = Toasts::default();
+        toasts.success("Perfil salvo");
+
+        let _ = frame(&ctx, &mut toasts, 0.0);
+        let output = frame(&ctx, &mut toasts, 0.5);
+        let copy = Icon::Copy.glyph().to_string();
+
+        assert!(
+            text_at(&output.shapes, &copy).is_none(),
+            "sem Copy num toast de sucesso"
+        );
+    }
+
+    /// O texto do balão **não** pode ser selecionado com o mouse: arrastar sobre a mensagem não
+    /// deixa seleção (nem manda o texto para a seleção primária). A cópia é o botão.
+    /// CONTRACT: IF-263
+    #[test]
+    fn the_message_cannot_be_selected_with_the_mouse() {
+        let ctx = egui::Context::default();
+        let mut toasts = Toasts::default();
+        let message = "Local: Connection failed";
+        toasts.notify(Kind::Error, message);
+
+        let _ = frame(&ctx, &mut toasts, 0.0);
+        let output = frame(&ctx, &mut toasts, 0.5);
+        let (pos, size) = text_at(&output.shapes, message).expect("a mensagem foi pintada");
+        let start = pos + egui::vec2(2.0, size.y / 2.0);
+        let end = pos + egui::vec2(size.x - 2.0, size.y / 2.0);
+
+        let _ = frame_with(
+            &ctx,
+            &mut toasts,
+            0.6,
+            vec![
+                egui::Event::PointerMoved(start),
+                egui::Event::PointerButton {
+                    pos: start,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+        let _ = frame_with(
+            &ctx,
+            &mut toasts,
+            0.65,
+            vec![egui::Event::PointerMoved(end)],
+        );
+        let output = frame_with(
+            &ctx,
+            &mut toasts,
+            0.7,
+            vec![egui::Event::PointerButton {
+                pos: end,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Default::default(),
+            }],
+        );
+
+        assert!(
+            !output.platform_output.commands.iter().any(|command| {
+                matches!(
+                    command,
+                    egui::OutputCommand::TextSelectionSettled(_) | egui::OutputCommand::CopyText(_)
+                )
+            }),
+            "nada foi selecionado: {:?}",
+            output.platform_output.commands
+        );
     }
 
     /// O quadro em que o prazo vence pede repintura **imediata** — sem isso o fade de saída não
@@ -431,7 +678,11 @@ mod tests {
         toasts.success("Perfil salvo");
 
         let _ = frame(&ctx, &mut toasts, 0.0);
-        let output = frame(&ctx, &mut toasts, 4.5);
+        // O fade de entrada já terminou quando o prazo vence: assim quem pede repintura no quadro
+        // final é **só** a saída, e não a animação de entrada.
+        let _ = frame(&ctx, &mut toasts, 0.3);
+        toasts.items[0].remaining = 0.05;
+        let output = frame(&ctx, &mut toasts, 0.4);
 
         assert!(
             toasts.items.iter().any(|toast| toast.closing),
@@ -466,11 +717,12 @@ mod tests {
         );
     }
 
-    /// A janela pode dormir entre repinturas: o relógio do toast é o **tempo real**, não o `dt`
-    /// do quadro (que o egui mantém curto), senão o balão passaria muito dos 4 s na tela.
+    /// A janela pode dormir entre repinturas (sem foco, por exemplo): o quadro que a acorda não
+    /// pode consumir o prazo inteiro — senão o balão fecharia no clique que trouxe a janela de
+    /// volta, e não no `X`.
     /// CONTRACT: IF-263
     #[test]
-    fn a_long_idle_gap_still_empties_the_countdown() {
+    fn a_long_idle_gap_does_not_empty_the_countdown() {
         let ctx = egui::Context::default();
         let mut toasts = Toasts::default();
         toasts.success("Perfil salvo");
@@ -479,8 +731,8 @@ mod tests {
         let _ = frame(&ctx, &mut toasts, 10.0);
 
         assert!(
-            toasts.items.iter().all(|toast| toast.closing),
-            "dez segundos de sono bastam para o prazo vencer"
+            toasts.items.iter().all(|toast| !toast.closing),
+            "a pausa da janela não vence o prazo"
         );
     }
 

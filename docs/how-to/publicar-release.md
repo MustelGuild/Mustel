@@ -83,8 +83,9 @@ virar checkout.
    `.tar.gz`, os `.sha256`, o `sbom.cdx.json` do alvo e o `THIRD-PARTY-LICENSES.md` dentro de cada
    pacote;
 4. o `SHA256SUMS`, com o hash de cada anexo, para conferir tudo de uma vez;
-5. a release no GitHub, com a tag, os dois pacotes, os dois `.sha256`, o `SHA256SUMS` e o
-   `sbom.cdx.json` da raiz.
+5. a release no GitHub, com a tag, os dois pacotes, os dois `.sha256`, o `SHA256SUMS`, o
+   `sbom.cdx.json` da raiz e os **executáveis soltos do Windows** (`mustel.exe` e
+   `mustel-gui.exe`), para quem quer só o programa sem baixar o `.zip` inteiro.
 
 Se a release já existir (reexecução), os assets são reenviados com `--clobber` em vez de falhar.
 
@@ -133,7 +134,8 @@ Na página **Releases** do repositório, a release `Mustel v<versao>` deve ter:
 
 - o `.zip` e o `.sha256` do Windows;
 - o `.tar.gz` e o `.sha256` do Linux;
-- o `SHA256SUMS`, com o hash de cada anexo;
+- os executáveis soltos do Windows: `mustel.exe` e `mustel-gui.exe`;
+- o `SHA256SUMS`, com o hash de cada anexo (pacotes, executáveis e SBOM);
 - o `sbom.cdx.json` da raiz (inventário de todos os alvos; cada pacote já leva o do seu alvo).
 
 Os nomes saem do `cargo pkgid` e do host do runner, então batem com a tag e com o `Cargo.toml` por

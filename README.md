@@ -29,7 +29,12 @@ Download the archive for your platform from the [releases page](https://github.c
 `mustel-<version>-x86_64-pc-windows-msvc.zip` or `mustel-<version>-x86_64-unknown-linux-gnu.tar.gz`,
 with the `.sha256` next to it. Extract and copy the binary to a directory on your `PATH`.
 
-Or install from crates.io (CLI **and** GUI in one binary):
+On Windows the archive also ships **`mustel-gui.exe`**, the same program built for the graphical
+subsystem: double-click it to open the window **without a console**. `mustel.exe` remains the
+command-line program — running it with no subcommand from a terminal also opens the window.
+
+Or install from crates.io (CLI **and** GUI in one binary; `cargo install` also drops the
+`mustel-gui` launcher, which is the no-console entry point on Windows):
 
 ```bash
 cargo install --locked mustel

@@ -79,8 +79,9 @@ virar checkout.
 2. o `preflight`: a tag precisa ser `v<versao>` e `<versao>` precisa ser a de
    `[workspace.package] version`;
 3. o empacotamento nas duas plataformas, com os mesmos scripts usados à mão — `publish.ps1` no
-   Windows e `publish.sh` no Linux —, gerando o `.zip` (com o `mustel.exe`), o `.tar.gz`, os
-   `.sha256`, o `sbom.cdx.json` do alvo e o `THIRD-PARTY-LICENSES.md` dentro de cada pacote;
+   Windows e `publish.sh` no Linux —, gerando o `.zip` (com o `mustel.exe` e o `mustel-gui.exe`), o
+   `.tar.gz`, os `.sha256`, o `sbom.cdx.json` do alvo e o `THIRD-PARTY-LICENSES.md` dentro de cada
+   pacote;
 4. o `SHA256SUMS`, com o hash de cada anexo, para conferir tudo de uma vez;
 5. a release no GitHub, com a tag, os dois pacotes, os dois `.sha256`, o `SHA256SUMS` e o
    `sbom.cdx.json` da raiz.

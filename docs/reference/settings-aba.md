@@ -106,6 +106,10 @@ tema para `system` e a chave sai do arquivo.
 Perfis de provedor OpenAI-compatible usados pelo painel da aba Query. A lista mostra o perfil **ativo**
 (radio), o modelo e a base; cada linha tem `Edit`, `Test` e `Remove` (em **dois** toques).
 
+As ações ficam na **ponta direita** do cartão, e o texto do perfil recebe o espaço que sobra. Quando
+a janela encolhe a ponto de o texto e os três botões não caberem na mesma linha, as ações descem e
+quebram entre si — em nenhuma largura elas saem do painel nem ficam por cima do menu de categorias.
+
 | Campo | O que é |
 |---|---|
 | `Name` | rótulo do perfil no combo |

@@ -153,6 +153,28 @@ fn theme_index(theme: GuiTheme) -> usize {
         .unwrap_or(0)
 }
 
+/// Abaixo desta largura de texto, as ações do cartão de perfil descem para a linha de baixo.
+const AI_MIN_TEXT_WIDTH: f32 = 180.0;
+
+/// Largura que Test/Edit/Remove precisam no estilo atual (escala de fonte incluída).
+///
+/// Medir em vez de fixar um número é o que mantém a decisão certa quando o usuário aumenta a fonte
+/// na aba Appearance.
+fn ai_actions_width(ui: &egui::Ui) -> f32 {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let labels = ["Test", "Edit", "Remove"];
+    let mut width = 0.0;
+
+    for label in labels {
+        let galley = ui.fonts_mut(|fonts| {
+            fonts.layout_no_wrap(label.to_owned(), font.clone(), egui::Color32::PLACEHOLDER)
+        });
+        width += galley.size().x + 2.0 * ui.spacing().button_padding.x;
+    }
+
+    width + (labels.len() as f32 - 1.0) * ui.spacing().item_spacing.x
+}
+
 /// Estado da aba Settings.
 #[derive(Debug, Default)]
 pub struct State {
@@ -283,6 +305,11 @@ impl State {
     /// A aba é **menu fixo + painel**: o menu ([`Category`]) não rola com o conteúdo e não depende
     /// da categoria para existir. Só o painel da direita rola, e só quando não cabe.
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Request> {
+        eprintln!(
+            "settings.ui avail={} max={:?}",
+            ui.available_width(),
+            ui.max_rect()
+        );
         // Menu de categorias: painel próprio (desenha o fundo e a divisória), como a sidebar de
         // servidores da aba Query.
         egui::Panel::left("settings_categories")
@@ -391,6 +418,11 @@ impl State {
 
     /// O painel da categoria aberta.
     fn category_ui(&mut self, ui: &mut egui::Ui) -> Outcome {
+        eprintln!(
+            "category avail={} max={:?}",
+            ui.available_width(),
+            ui.max_rect()
+        );
         let mut outcome = Outcome::default();
 
         // Cabeçalho do painel: o nome da categoria e do que ela trata — é o que confirma que o
@@ -528,7 +560,15 @@ impl State {
         for (index, profile) in self.ai_profiles.iter().enumerate() {
             let active = profile.id == self.ai_active;
             egui::Frame::group(ui.style()).show(ui, |ui| {
-                ui.horizontal(|ui| {
+                // Duas arrumações, escolhidas pelo espaço: com painel largo, as ações vão para a
+                // **ponta** (direita) e o texto quebra no que sobra — `Sides::shrink_left` desenha a
+                // direita primeiro, com largura natural. Sem espaço para as duas coisas, o texto fica
+                // na primeira linha e as ações descem e **quebram** entre si. A arrumação antiga
+                // (texto e `right_to_left` na mesma linha, sem reservar a direita) jogava
+                // Test/Edit/Remove para fora do painel ao encolher a janela.
+                let stacked = ui.available_width() < ai_actions_width(ui) + AI_MIN_TEXT_WIDTH;
+
+                let mut text = |ui: &mut egui::Ui| {
                     if ui
                         .radio(active, "")
                         .on_hover_text("Use this profile")
@@ -540,30 +580,42 @@ impl State {
                         ui.strong(&profile.name);
                         ui.weak(format!("{} · {}", profile.model, profile.base_url));
                     });
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let confirming = self.ai_confirming_remove.as_deref() == Some(&profile.id);
-                        let label = if confirming {
-                            "Confirm remove"
-                        } else {
-                            "Remove"
-                        };
-                        if ui.button(label).clicked() {
-                            remove = Some(profile.id.clone());
-                        }
-                        if ui.button("Edit").clicked() {
-                            edit = Some(index);
-                        }
-                        if ui
-                            .button("Test")
-                            .on_hover_text("Send a tiny request")
-                            .clicked()
-                        {
-                            request = Some(Request::TestAiProfile {
-                                profile: profile.id.clone(),
-                            });
-                        }
-                    });
-                });
+                };
+                let mut actions = |ui: &mut egui::Ui| {
+                    let confirming = self.ai_confirming_remove.as_deref() == Some(&profile.id);
+                    let label = if confirming {
+                        "Confirm remove"
+                    } else {
+                        "Remove"
+                    };
+                    if ui.button(label).clicked() {
+                        remove = Some(profile.id.clone());
+                    }
+                    if ui.button("Edit").clicked() {
+                        edit = Some(index);
+                    }
+                    if ui
+                        .button("Test")
+                        .on_hover_text("Send a tiny request")
+                        .clicked()
+                    {
+                        request = Some(Request::TestAiProfile {
+                            profile: profile.id.clone(),
+                        });
+                    }
+                };
+
+                if stacked {
+                    text(ui);
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| actions(ui));
+                } else {
+                    egui::Sides::new()
+                        .spacing(8.0)
+                        .shrink_left()
+                        .wrap()
+                        .show(ui, text, actions);
+                }
             });
         }
 
@@ -1541,6 +1593,138 @@ mod tests {
                 egui::vec2(width, height),
             )),
             ..Default::default()
+        }
+    }
+
+    /// Em painel estreito, as ações do cartão de perfil ficam **dentro do painel**.
+    ///
+    /// O bug: o texto e o `right_to_left` dos botões dividiam a mesma linha sem reservar a direita —
+    /// a 360 px o `Test` começava em x≈202, à esquerda do painel (x=236), por cima do menu de
+    /// categorias, e era recortado. Acontece em compositores que ignoram o tamanho mínimo da janela
+    /// (tiling no Wayland).
+    ///
+    /// A 360 px o painel tem 124 px e os três botões somam ~143: não cabem nem numa linha própria —
+    /// por isso, sem espaço, eles descem e quebram entre si.
+    #[test]
+    fn the_profile_actions_fit_a_narrow_panel() {
+        let mut prefs = GuiPrefs::default();
+        prefs
+            .ai
+            .profiles
+            .push(mustel_core::config::model::AiProfile {
+                id: "longo".to_string(),
+                name: "Perfil com nome comprido".to_string(),
+                base_url: "https://api.example.com/v1/um/caminho/bem/comprido/que/nao/acaba"
+                    .to_string(),
+                model: "modelo-com-nome-comprido".to_string(),
+                temperature: 0.2,
+            });
+        prefs.ai.active_profile = "longo".to_string();
+
+        let mut state = State::with_prefs(Some(&prefs));
+        state.category = Category::Ai;
+
+        let width = 360.0;
+        let narrow = painted_at(&mut state, width);
+
+        let panel_left = CATEGORY_WIDTH + f32::from(CONTENT_GAP);
+        for action in ["Test", "Edit", "Remove"] {
+            let (_, rect, clip) = narrow
+                .iter()
+                .find(|(text, _, _)| text == action)
+                .unwrap_or_else(|| panic!("o botão {action} sumiu do cartão"));
+            assert!(
+                rect.min.x >= panel_left,
+                "o botão {action} invadiu o menu (x={} < {panel_left})",
+                rect.min.x
+            );
+            assert!(
+                rect.max.x <= width,
+                "o botão {action} saiu da janela (max.x={})",
+                rect.max.x
+            );
+            assert!(
+                clip.width() > 0.0 && clip.contains_rect(*rect),
+                "o botão {action} foi recortado (rect={rect:?}, clipe={clip:?})"
+            );
+        }
+        for (text, rect, clip) in &narrow {
+            assert!(
+                rect.max.x <= width,
+                "'{text}' passou da borda da janela (max.x={})",
+                rect.max.x
+            );
+            assert!(
+                clip.contains_rect(*rect),
+                "'{text}' foi recortado (rect={rect:?}, clipe={clip:?})"
+            );
+        }
+
+        // Com espaço, o desenho aprovado continua: as ações na **ponta** direita do cartão.
+        let wide = painted_at(&mut state, 700.0);
+        let (_, remove, clip) = wide
+            .iter()
+            .find(|(text, _, _)| text == "Remove")
+            .expect("o botão Remove está no cartão largo");
+        assert!(
+            remove.max.x > 600.0,
+            "com espaço, as ações ficam na ponta (Remove termina em {})",
+            remove.max.x
+        );
+        assert!(
+            clip.contains_rect(*remove),
+            "o Remove do cartão largo foi recortado (clipe={clip:?})"
+        );
+    }
+
+    /// Desenha a aba uma vez na largura pedida e devolve o que foi pintado.
+    fn painted_at(state: &mut State, width: f32) -> Vec<(String, egui::Rect, egui::Rect)> {
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(screen(width, 700.0), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let _ = state.ui(ui);
+            });
+        });
+        output.textures_delta.clear();
+
+        let mut painted = Vec::new();
+        collect_rects(&output.shapes, &mut painted);
+        painted
+    }
+
+    /// Junta `(texto, retângulo, clipe)` de todo `Shape::Text`, descendo nos grupos.
+    ///
+    /// O **clipe** é o que separa "desenhado" de "visível": no layout antigo os botões existiam nas
+    /// shapes, mas com o clipe de largura zero do `with_layout` — apareciam no teste e sumiam na
+    /// janela. Foi esse detalhe que fez o primeiro teste de regressão passar no código quebrado.
+    fn collect_rects(
+        shapes: &[egui::epaint::ClippedShape],
+        out: &mut Vec<(String, egui::Rect, egui::Rect)>,
+    ) {
+        fn walk(
+            shape: &egui::Shape,
+            clip: egui::Rect,
+            out: &mut Vec<(String, egui::Rect, egui::Rect)>,
+        ) {
+            match shape {
+                egui::Shape::Text(text) => {
+                    out.push((
+                        text.galley.text().to_string(),
+                        egui::Rect::from_min_size(text.pos, text.galley.size()),
+                        clip,
+                    ));
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, clip, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for clipped in shapes {
+            walk(&clipped.shape, clipped.clip_rect, out);
         }
     }
 

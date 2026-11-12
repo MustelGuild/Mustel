@@ -186,6 +186,22 @@ try {
     Replace-Phrase 'installer/wine-test/README.md' ('packaging/mustel-' + $old + '-x86_64-pc-windows-msvc') ('packaging/mustel-' + $Version + '-x86_64-pc-windows-msvc')
 
     Write-Host ''
+    Write-Host '==> Gerando o CHANGELOG' -ForegroundColor Cyan
+    $changelog = Join-Path $root 'CHANGELOG.md'
+    $sectionPattern = '^## \[v' + $Version + '\]'
+    if ((Test-Path $changelog) -and (Select-String -Path $changelog -Pattern $sectionPattern -Quiet)) {
+        Write-Host "CHANGELOG.md já tem a seção v$Version; mantendo"
+    } else {
+        if (-not (Get-Command git-cliff -ErrorAction SilentlyContinue)) {
+            Fail "git-cliff não encontrado; instale com: cargo install git-cliff --version =2.14.2 --locked"
+        }
+        Invoke-Checked git-cliff @('--unreleased', '--tag', "v$Version", '--prepend', 'CHANGELOG.md')
+        if (-not (Select-String -Path $changelog -Pattern $sectionPattern -Quiet)) {
+            Fail "CHANGELOG.md não tem a seção v$Version"
+        }
+    }
+
+    Write-Host ''
     Write-Host '==> Regenerando o SBOM da raiz' -ForegroundColor Cyan
     if (-not (Get-Command cargo-cyclonedx -ErrorAction SilentlyContinue)) {
         Fail "cargo-cyclonedx não encontrado; instale com: cargo install cargo-cyclonedx --version =0.5.9 --locked"
@@ -204,13 +220,14 @@ try {
     }
 
     Write-Host ''
-    Write-Host '==> Incluindo docs e SBOM no commit do bump' -ForegroundColor Cyan
+    Write-Host '==> Incluindo docs, CHANGELOG e SBOM no commit do bump' -ForegroundColor Cyan
     $paths = @(
         'docs/contrato-de-interface.md',
         'docs/tutorials/primeiros-passos.md',
         'docs/how-to/publicar-release.md',
         'installer/mustel.iss',
         'installer/wine-test/README.md',
+        'CHANGELOG.md',
         'sbom.cdx.json'
     )
     Invoke-Checked git (@('add', '--') + $paths)

@@ -177,6 +177,22 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      # As notas da release vêm do CHANGELOG.md, gerado no branch de release antes do squash.
+      # Sem a seção da tag, a release falha em vez de sair sem notas.
+      - name: gerar as notas da release
+        run: |
+          set -eu
+          version="${RELEASE_TAG#v}"
+          awk -v ver="$version" '
+            index($0, "## [v" ver "]") == 1 || index($0, "## [" ver "]") == 1 { found = 1; next }
+            found && substr($0, 1, 3) == "## " { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error::CHANGELOG.md não tem a seção v$version"
+            exit 1
+          fi
+          cat release-notes.md
       # O hash de cada arquivo vai na release de duas formas: os `.sha256` que os scripts já geram
       # (um por pacote) e este `SHA256SUMS` único sobre todos os anexos, para quem quer conferir
       # tudo de uma vez com `sha256sum -c`.
@@ -203,7 +219,8 @@ jobs:
           ls -l dist
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" dist/* --clobber
+            gh release edit "$RELEASE_TAG" --notes-file release-notes.md
           else
             gh release create "$RELEASE_TAG" dist/* --verify-tag \
-              --title "Mustel ${RELEASE_TAG#v}" --generate-notes
+              --title "Mustel ${RELEASE_TAG#v}" --notes-file release-notes.md
           fi

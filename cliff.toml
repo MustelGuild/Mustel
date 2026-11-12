@@ -1,0 +1,74 @@
+# Configuração do git-cliff para o Mustel.
+#
+# O CHANGELOG é gerado a partir dos commits e separa Features, Bug fixes,
+# Segurança, Documentação e Outras mudanças. A versão e a data vêm da tag
+# passada com `--tag` (ex.: v1.2.0).
+
+[changelog]
+header = """
+# Changelog
+
+Todas as mudanças relevantes do Mustel são registradas aqui. As seções separam
+**Features**, **Bug fixes** e as demais mudanças.
+
+"""
+body = """
+{% if version %}\
+## [{{ version }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group in ["Features", "Bug fixes", "Segurança", "Documentação", "Outras mudanças"] %}\
+{% set items = commits | filter(attribute="group", value=group) %}\
+{% if items | length > 0 %}\
+### {{ group }}
+{% for commit in items %}\
+- {{ commit.message | split(pat="\n") | first | trim }}
+{% endfor %}\
+{% endif %}\
+{% endfor %}
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = false
+filter_unconventional = false
+split_commits = false
+commit_parsers = [
+  { message = "^Bump ", skip = true },
+  { message = "^Release v", skip = true },
+  { message = "^Sobe a versão", skip = true },
+  { message = "^Merge ", skip = true },
+  { message = "^Revert ", skip = true },
+  { message = "^Atualiza SBOM", skip = true },
+  { message = "^Adiciona plano", skip = true },
+  { message = "^Adiciona scripts", group = "Outras mudanças" },
+  { message = "^Permite preparar", group = "Outras mudanças" },
+  { message = "^Anexa executáveis", group = "Features" },
+  { message = "^Test de conexão", group = "Features" },
+  { message = "^Gravar", group = "Bug fixes" },
+  { message = "^Remove referências a planos", group = "Documentação" },
+  { message = "^Remove referências a tarefas", group = "Documentação" },
+  { message = "^Corrige o aviso de licença", group = "Documentação" },
+  { message = "^Corrige a afirmação", group = "Documentação" },
+  { message = "^Endurece", group = "Segurança" },
+  { message = "^Restringe", group = "Segurança" },
+  { message = "^Documenta", group = "Documentação" },
+  { message = "^Adiciona", group = "Features" },
+  { message = "^Permite", group = "Features" },
+  { message = "^Torna o modo somente leitura", group = "Features" },
+  { message = "^Atualização automática", group = "Features" },
+  { message = "^Redesenha", group = "Features" },
+  { message = "^Unifica", group = "Features" },
+  { message = "^Empacota", group = "Features" },
+  { message = "^Corrige", group = "Bug fixes" },
+  { message = "^Oculta", group = "Bug fixes" },
+  { message = "^Seleciona", group = "Bug fixes" },
+  { message = "^Fecha", group = "Bug fixes" },
+  { message = "^Trunca", group = "Bug fixes" },
+  { message = "^Encontra", group = "Bug fixes" },
+  { message = "^Mínimo", group = "Bug fixes" },
+  { message = "^Erro", group = "Bug fixes" },
+  { message = ".*", group = "Outras mudanças" },
+]

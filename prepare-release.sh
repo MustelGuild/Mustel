@@ -213,6 +213,18 @@ replace_phrase 'installer/wine-test/README.md' \
     "$(printf 'packaging/mustel-%s-x86_64-pc-windows-msvc' "$version")"
 
 echo
+echo '==> Gerando o CHANGELOG'
+if [ -f CHANGELOG.md ] && grep -q "^## \[v$version\]" CHANGELOG.md; then
+    echo "CHANGELOG.md já tem a seção v$version; mantendo"
+else
+    command -v git-cliff >/dev/null 2>&1 || fail \
+        "git-cliff não encontrado; instale com: cargo install git-cliff --version =2.14.2 --locked"
+    git-cliff --unreleased --tag "v$version" --prepend CHANGELOG.md
+    grep -q "^## \[v$version\]" CHANGELOG.md || fail \
+        "CHANGELOG.md não tem a seção v$version"
+fi
+
+echo
 echo '==> Regenerando o SBOM da raiz'
 command -v cargo-cyclonedx >/dev/null 2>&1 || fail \
     "cargo-cyclonedx não encontrado; instale com: cargo install cargo-cyclonedx --version =0.5.9 --locked"
@@ -224,10 +236,10 @@ grep -q "\"version\": \"$version\"" sbom.cdx.json || fail \
     "o SBOM da raiz não contém a versão $version"
 
 echo
-echo '==> Incluindo docs e SBOM no commit do bump'
+echo '==> Incluindo docs, CHANGELOG e SBOM no commit do bump'
 git add -- docs/contrato-de-interface.md docs/tutorials/primeiros-passos.md \
     docs/how-to/publicar-release.md installer/mustel.iss \
-    installer/wine-test/README.md sbom.cdx.json
+    installer/wine-test/README.md CHANGELOG.md sbom.cdx.json
 if ! git diff --cached --quiet; then
     git commit --amend --no-edit
 else

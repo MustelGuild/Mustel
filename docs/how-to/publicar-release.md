@@ -12,6 +12,8 @@ Não há winget.
 # Ferramenta do incremento de versão: é um SUBCOMANDO do cargo, então vive no PATH (não é
 # dependência do projeto). Versão pinada para o release ser reprodutível entre máquinas.
 cargo install cargo-release --version =1.1.7 --locked
+# Gerador do CHANGELOG (Features/Bug fixes) a partir dos commits.
+cargo install git-cliff --version =2.14.2 --locked
 cargo login                   # token do crates.io, uma vez por máquina
 ```
 
@@ -63,13 +65,14 @@ preparam o bump numa branch `release/v<versão>`, **sem criar a tag**:
 ./prepare-release.ps1 1.2.0
 ```
 
-Eles criam a branch, rodam `cargo release` com `--no-tag`, atualizam a documentação e o
-`sbom.cdx.json`, rodam `fmt`/`clippy`/testes e, com confirmação, empurram a branch e abrem o PR.
-Eles partem do **branch atual** e abrem o PR contra `main`; se você estiver num branch de feature,
-os commits dele entram no PR. Para um PR só do bump, rode a partir de `main`.
-Use `--no-push` (`-NoPush`) para parar antes do push/PR e `--skip-tests` (`-SkipTests`) para pular
-o `cargo test`. Os dois scripts precisam estar **commitados** antes da execução: o `cargo release`
-recusa árvore suja, inclusive arquivo não rastreado. A tag fica para depois do merge, no `main`:
+Eles criam a branch, rodam `cargo release` com `--no-tag`, atualizam a documentação, o
+`CHANGELOG.md` e o `sbom.cdx.json`, rodam `fmt`/`clippy`/testes e, com confirmação, empurram a
+branch e abrem o PR. Eles partem do **branch atual** e abrem o PR contra `main`; se você estiver
+num branch de feature, os commits dele entram no PR. Para um PR só do bump, rode a partir de
+`main`. Use `--no-push` (`-NoPush`) para parar antes do push/PR e `--skip-tests` (`-SkipTests`)
+para pular o `cargo test`. Os dois scripts precisam estar **commitados** antes da execução: o
+`cargo release` recusa árvore suja, inclusive arquivo não rastreado. A tag fica para depois do
+merge, no `main`:
 
 ```bash
 git switch main
@@ -77,6 +80,11 @@ git pull --ff-only
 git tag -a v<versao> -m "Mustel <versao>"
 git push origin v<versao>
 ```
+
+O `CHANGELOG.md` é gerado pelo `git-cliff` a partir dos commits do branch, com seções **Features**,
+**Bug fixes**, **Segurança**, **Documentação** e **Outras mudanças**. Ele é gerado **antes** do
+merge: se o PR for squashado, os commits individuais não ficam no `main`, mas o `CHANGELOG.md`
+fica. Se a seção da versão já existir, o script a mantém em vez de gerar outra.
 
 ## 2. Conferir antes de empurrar
 
@@ -116,12 +124,15 @@ virar checkout.
    **setup** (`mustel-<versão>-x86_64-pc-windows-msvc-setup.exe`) com o Inno Setup já instalado no
    runner, e o `.sha256` ao lado;
 4. o `SHA256SUMS`, com o hash de cada anexo, para conferir tudo de uma vez;
-5. a release no GitHub, com a tag, os dois pacotes, os dois `.sha256`, o `SHA256SUMS`, o
+5. as notas da release, extraídas da seção da tag no `CHANGELOG.md` (se a seção não existir, o job
+   falha em vez de publicar sem notas);
+6. a release no GitHub, com a tag, os dois pacotes, os dois `.sha256`, o `SHA256SUMS`, o
    `sbom.cdx.json` da raiz, os **executáveis soltos do Windows** (`mustel.exe` e
    `mustel-gui.exe`), o **setup do Windows** (`mustel-...-setup.exe`) e o **executável cru do
    Linux** (`mustel`) — é esse `mustel` sem empacotamento que o updater da janela baixa.
 
-Se a release já existir (reexecução), os assets são reenviados com `--clobber` em vez de falhar.
+Se a release já existir (reexecução), os assets são reenviados com `--clobber` em vez de falhar
+e as notas são atualizadas com `gh release edit --notes-file`.
 
 ### Empacotar sem publicar
 
@@ -184,7 +195,9 @@ Na página **Releases** do repositório, a release `Mustel v<versao>` deve ter:
 - o setup do Windows: `mustel-...-setup.exe` e o `.sha256`;
 - o executável **cru** do Linux: `mustel` (é o asset que o updater da janela baixa);
 - o `SHA256SUMS`, com o hash de cada anexo (pacotes, executáveis e SBOM);
-- o `sbom.cdx.json` da raiz (inventário de todos os alvos; cada pacote já leva o do seu alvo).
+- o `sbom.cdx.json` da raiz (inventário de todos os alvos; cada pacote já leva o do seu alvo);
+- as notas **Features**, **Bug fixes**, **Segurança**, **Documentação** e **Outras mudanças** no
+  corpo da release.
 
 Os nomes saem do `cargo pkgid` e do host do runner, então batem com a tag e com o `Cargo.toml` por
 construção — o `preflight` recusou o contrário. Se faltar algum asset, reexecute o workflow para a

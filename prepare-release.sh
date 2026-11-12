@@ -256,16 +256,18 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 if [ "$skip_tests" -eq 0 ]; then
     echo
-    echo '==> cargo test (gate)'
+    echo '==> cargo test (gate; stdin em /dev/null para os testes sem terminal)'
+    # Os testes de ui_primitives exigem ausência de TTY. Redirecionar a entrada
+    # evita que herdem o terminal de quem roda o script.
     case "$(uname -s)" in
         Linux|Darwin)
             cargo test --workspace -- \
                 --skip root_help_snapshot \
                 --skip query_run_help_snapshot \
-                --skip replay_database_pgpass
+                --skip replay_database_pgpass < /dev/null
             ;;
         *)
-            cargo test --workspace
+            cargo test --workspace < /dev/null
             ;;
     esac
 fi

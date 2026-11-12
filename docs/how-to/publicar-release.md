@@ -86,6 +86,10 @@ O `CHANGELOG.md` é gerado pelo `git-cliff` a partir dos commits do branch, com 
 merge: se o PR for squashado, os commits individuais não ficam no `main`, mas o `CHANGELOG.md`
 fica. Se a seção da versão já existir, o script a mantém em vez de gerar outra.
 
+Os scripts rodam o `cargo test` com a entrada em `NUL` (`cmd /c ... < NUL`) ou `/dev/null`, para os
+testes de UI sem terminal não herdarem o console interativo de quem executa. O gate continua sendo
+o `cargo test --workspace`.
+
 ## 2. Conferir antes de empurrar
 
 ```bash

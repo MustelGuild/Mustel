@@ -250,16 +250,18 @@ try {
 
     if (-not $SkipTests) {
         Write-Host ''
-        Write-Host '==> cargo test (gate)' -ForegroundColor Cyan
+        Write-Host '==> cargo test (gate; stdin em NUL para os testes sem terminal)' -ForegroundColor Cyan
         if ($IsWindows -or $env:OS -eq 'Windows_NT') {
-            Invoke-Checked cargo @('test', '--workspace')
+            # Os testes de ui_primitives exigem ausência de TTY; NUL evita herdar o console.
+            & cmd.exe /c "cargo test --workspace < NUL"
+            if ($LASTEXITCODE -ne 0) {
+                Fail "cargo test falhou (exit $LASTEXITCODE)"
+            }
         } else {
-            Invoke-Checked cargo @(
-                'test', '--workspace', '--',
-                '--skip', 'root_help_snapshot',
-                '--skip', 'query_run_help_snapshot',
-                '--skip', 'replay_database_pgpass'
-            )
+            & sh -c "cargo test --workspace -- --skip root_help_snapshot --skip query_run_help_snapshot --skip replay_database_pgpass < /dev/null"
+            if ($LASTEXITCODE -ne 0) {
+                Fail "cargo test falhou (exit $LASTEXITCODE)"
+            }
         }
     }
 

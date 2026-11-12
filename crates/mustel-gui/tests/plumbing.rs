@@ -45,6 +45,7 @@ fn a_real_core_job_reaches_the_window_and_asks_for_a_repaint() {
     let request = QueryRunRequest {
         servers: vec![unreachable_server()],
         sql: Arc::from("SELECT 1"),
+        read_only: false,
         output_directory: output.path().to_path_buf(),
         max_parallelism: 1,
         command_timeout: std::time::Duration::from_secs(30),
@@ -97,6 +98,7 @@ fn a_cancelled_job_runs_no_database() {
     let request = QueryRunRequest {
         servers: vec![unreachable_server()],
         sql: Arc::from("SELECT 1"),
+        read_only: false,
         output_directory: output.path().to_path_buf(),
         max_parallelism: 1,
         command_timeout: std::time::Duration::from_secs(30),

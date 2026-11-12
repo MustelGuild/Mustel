@@ -7,6 +7,8 @@
 
 use clap::{Args, Parser, Subcommand};
 
+use mustel_core::activity::Area;
+
 /// Mustel — automação de tarefas de desenvolvimento (query, database, settings).
 ///
 /// **Sem subcomando** o Mustel abre a GUI quando há terminal interativo (o caso de quem digita
@@ -553,4 +555,112 @@ pub struct DbServersSetPasswordArgs {
     /// Read the password from a line on stdin.
     #[arg(long = "password-stdin", conflicts_with = "password")]
     pub password_stdin: bool,
+}
+
+impl MustelCli {
+    /// Área do produto, operação e alvo do comando — o que vai para o log de atividade.
+    ///
+    /// `None` quando o comando é a **GUI** (ou não há subcomando, que também pode abrir a janela):
+    /// a janela registra o próprio ciclo, e uma linha `gui` no log do CLI ficaria sem desfecho.
+    pub fn activity_label(&self) -> Option<(Area, &'static str, Option<String>)> {
+        let command = self.command.as_ref()?;
+
+        match command {
+            TopCommand::Query(args) => match &args.command {
+                QueryCommand::Run(run) => Some((Area::Query, "query.run", run.database.clone())),
+            },
+            TopCommand::Database(args) => match &args.command {
+                DatabaseCommand::Backup(backup) => Some((
+                    Area::Database,
+                    "database.backup",
+                    backup
+                        .database
+                        .clone()
+                        .or_else(|| backup.all.then(|| "all".to_string())),
+                )),
+                DatabaseCommand::Restore(restore) => Some((
+                    Area::Database,
+                    "database.restore",
+                    restore
+                        .database
+                        .clone()
+                        .or_else(|| restore.all.then(|| "all".to_string())),
+                )),
+                DatabaseCommand::Pgpass(pgpass) => {
+                    let op = match &pgpass.command {
+                        PgpassCommand::Add(_) => "database.pgpass.add",
+                        PgpassCommand::List => "database.pgpass.list",
+                        PgpassCommand::Remove(_) => "database.pgpass.remove",
+                    };
+                    Some((Area::Database, op, None))
+                }
+            },
+            TopCommand::Settings(args) => match &args.command {
+                SettingsCommand::DbServers(servers) => {
+                    let (op, target) = match &servers.command {
+                        DbServersCommand::Ls => ("settings.db_servers.ls", None),
+                        DbServersCommand::Add(add) => ("settings.db_servers.add", add.name.clone()),
+                        DbServersCommand::Rm(remove) => {
+                            ("settings.db_servers.rm", remove.name.clone())
+                        }
+                        DbServersCommand::Test(test) => {
+                            ("settings.db_servers.test", test.name.clone())
+                        }
+                        DbServersCommand::SetPassword(password) => {
+                            ("settings.db_servers.set_password", password.name.clone())
+                        }
+                    };
+                    Some((Area::Settings, op, target))
+                }
+            },
+            // A janela registra o próprio ciclo (`app.start`/`app.stop`).
+            TopCommand::Gui(_) => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mustel_core::activity::Area;
+
+    #[test]
+    /// CONTRACT: IF-265
+    fn the_cli_labels_name_the_area_the_operation_and_the_target() {
+        let cli = MustelCli::try_parse_from(["mustel", "query", "run", "-d", "postgres"])
+            .expect("parseia");
+        assert_eq!(
+            cli.activity_label(),
+            Some((Area::Query, "query.run", Some("postgres".to_string())))
+        );
+
+        let cli =
+            MustelCli::try_parse_from(["mustel", "database", "backup", "--all"]).expect("parseia");
+        assert_eq!(
+            cli.activity_label(),
+            Some((Area::Database, "database.backup", Some("all".to_string())))
+        );
+
+        let cli = MustelCli::try_parse_from([
+            "mustel",
+            "settings",
+            "db-servers",
+            "add",
+            "--name",
+            "Local",
+        ])
+        .expect("parseia");
+        let (area, op, target) = cli.activity_label().expect("tem rótulo");
+        assert_eq!(
+            (area, op, target.as_deref()),
+            (Area::Settings, "settings.db_servers.add", Some("Local"))
+        );
+    }
+
+    #[test]
+    fn the_window_command_is_not_logged_as_a_cli_run() {
+        let cli = MustelCli::try_parse_from(["mustel", "gui"]).expect("parseia");
+
+        assert_eq!(cli.activity_label(), None);
+    }
 }

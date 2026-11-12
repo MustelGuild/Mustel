@@ -375,14 +375,31 @@ pub struct QueryStream {
 impl QueryStream {
     /// Prepara e dispara a consulta; devolve o fluxo pronto para ser consumido.
     ///
+    /// Quando `read_only`, a conexão abre `BEGIN TRANSACTION READ ONLY` antes do `prepare`. Não há
+    /// `COMMIT`: o `Client` é largado no fim do fluxo e a conexão fecha, abortando a transação — é o
+    /// que impede a escrita mesmo quando a consulta é um `SELECT` que chama uma função de escrita.
+    ///
     /// O `prepare` (que valida a consulta e devolve as colunas) está sob o mesmo timeout de comando,
     /// como o `ExecuteReaderAsync` do legado: uma consulta que nunca responde estoura aqui.
     pub async fn open(
         settings: &ConnectionSettings,
         sql: &str,
         command_timeout: Duration,
+        read_only: bool,
     ) -> Result<Self, CoreError> {
         let client = connect(settings).await?;
+
+        if read_only {
+            match tokio::time::timeout(
+                command_timeout,
+                client.batch_execute("BEGIN TRANSACTION READ ONLY"),
+            )
+            .await
+            {
+                Ok(result) => result.map_err(map_error)?,
+                Err(_) => return Err(timeout_error(command_timeout)),
+            }
+        }
 
         let statement = match tokio::time::timeout(command_timeout, client.prepare(sql)).await {
             Ok(result) => result.map_err(map_error)?,

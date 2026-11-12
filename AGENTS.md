@@ -20,6 +20,7 @@ repositório falam pt-BR.
 | Área | O que é |
 |------|---------|
 | `crates/` | **Mustel** (Rust) — o produto ativo |
+| `installer/` | instalador do Windows (Inno Setup): `mustel.iss`, `mustel.ico`, `publish-installer.ps1` e `wine-test/` (teste local) |
 | `fixtures/` | baseline **congelado**: as capturas que o gate reexecuta |
 | `MustelPlans/` | planos de implementação **em andamento** (consolidados em `docs/` ao concluir) |
 | `docs/` | documentação do Mustel em quatro quadrantes (Diátaxis) e o manifesto `contrato-de-interface.md` |
@@ -40,7 +41,8 @@ como contrato em `fixtures/baseline/` e em `docs/contrato-de-interface.md`.
   Linux o store é o `zbus-secret-service`, D-Bus em Rust puro: não há `dbus`/`libdbus-sys` no grafo
   (decisão `B1` em `docs/explanation/decisoes.md`) — não reintroduza essa dependência achando que é
   código morto
-- Erros: `thiserror` no core, `anyhow` apenas no binário · logs: `tracing`
+- Erros: `thiserror` no core, `anyhow` apenas no binário · logs: log de atividade em JSONL
+  (`mustel_core::activity`), não `tracing`
 - GUI: `eframe`/`egui` (+ `egui_extras`), atrás da feature `gui`
 - Testes: `insta` (snapshots), `expectrl` (PTY), `tempfile`, `tokio-postgres` (integração Postgres)
 
@@ -53,6 +55,7 @@ crates/
 ├── mustel-gui/      lib egui usada pelo subcomando `gui`
 └── mustel-testkit/  fixtures do baseline + comparação de contrato (bins de captura/diagnóstico)
 legacy/              (removido em 2026-10-22; recuperável pelo histórico do Git)
+installer/           mustel.iss, mustel.ico, publish-installer.ps1, wine-test/ (teste local)
 fixtures/            baseline/ — as 47 capturas congeladas que o gate reexecuta
 docs/                contrato-de-interface.md, tutorials/, how-to/, reference/, explanation/
 ```
@@ -80,6 +83,8 @@ cargo release patch             # ensaio: mostra o bump e o commit/tag que faria
 cargo release patch --execute   # bump + commit + tag v<versao>
 # release: ./publish.ps1 / ./publish.sh empacotam à mão; .github/workflows/publish.yml roda
 # MANUALMENTE com a tag informada (Actions → Run workflow) e publica a release no GitHub
+# instalador Windows: ./installer/publish-installer.ps1 (depois do ./publish.ps1; Inno Setup 6/7
+# no Windows; o windows-latest traz o 6.7.1) gera packaging/*-setup.exe
 # CI: .github/workflows/qa-gate.yml é o QA Gate; roda por workflow_dispatch (botão na aba Actions)
 # ou chamado pelo publish; push e PR não disparam nada — nunca conte com o CI depois de um push
 ```
@@ -199,6 +204,9 @@ Regras práticas:
   opinião nem passo a passo. Deve bater com `mustel <cmd> --help`.
 - **Explicação** justifica: por que keyring e não arquivo, por que o CSV sai como sai, o que é a
   escada N1–N4. Pode ter opinião e contexto.
+- **Nenhuma referência a planos**: a documentação de produto não cita `MustelPlans/`, arquivos de
+  plano, tarefas nem numeração de plano. O porquê consolidado vive na própria `docs/`; o histórico de
+  execução é o Git.
 
 O que **não** é documentação de produto: o **manifesto de contrato**
 (`docs/contrato-de-interface.md`, uma linha por decisão com o teste que a prova) e os **planos**

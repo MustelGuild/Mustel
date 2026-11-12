@@ -27,6 +27,24 @@ pub fn write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     restrict_file(path)
 }
 
+/// Grava um arquivo **novo** com `0600` no Unix e falha se o caminho já existir.
+///
+/// `create_new` é o que impede sobrescrever um arquivo e seguir um symlink plantado: a abertura
+/// com `O_CREAT | O_EXCL` recusa o caminho que já existe.
+pub fn write_new(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    file.write_all(bytes)?;
+    file.flush()?;
+    Ok(())
+}
+
 /// Abre para *append*, criando com `0600` no Unix, e restringe um arquivo preexistente.
 pub fn open_append(path: &Path) -> std::io::Result<std::fs::File> {
     let mut options = std::fs::OpenOptions::new();
@@ -99,5 +117,31 @@ mod tests {
                 & 0o777,
             0o700
         );
+    }
+
+    /// A gravação de relatório não pode sobrescrever nem seguir um symlink.
+    #[test]
+    fn write_new_refuses_an_existing_file() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("report.log");
+        super::write_new(&path, b"primeiro").expect("cria");
+
+        let error = super::write_new(&path, b"segundo").expect_err("não sobrescreve");
+        assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read(&path).expect("lê"), b"primeiro");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_new_does_not_follow_a_symlink() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let target = root.path().join("target");
+        std::fs::write(&target, b"original").expect("target");
+        let link = root.path().join("report.log");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink");
+
+        let error = super::write_new(&link, b"adulterado").expect_err("recusa o symlink");
+        assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read(&target).expect("lê"), b"original");
     }
 }

@@ -19,9 +19,11 @@
 //! A crate inteira fica atrás da feature `gui` do binário: `--no-default-features` compila um CLI sem
 //! `egui` (verificado no T41).
 
+mod about;
 pub mod actions;
+mod activity_log;
 pub mod ai_panel;
-pub mod app;
+mod app;
 pub mod desktop;
 pub mod events;
 pub mod fonts;
@@ -39,11 +41,17 @@ pub mod smooth_scroll;
 pub mod sql_completion;
 pub mod sql_editor;
 pub mod tabs;
+mod test_button;
 pub mod theme;
+mod toast;
+mod update;
 
 pub use app::App;
 pub use events::{ChannelSink, GuiEvent};
 pub use runtime::Runtime;
+
+/// Endereço de suporte do produto (relatório de atividade e About).
+pub(crate) const SUPPORT_EMAIL: &str = "support@mustelguild.dev";
 
 /// Erro ao abrir a janela.
 #[derive(Debug, thiserror::Error)]
@@ -84,7 +92,7 @@ fn viewport() -> egui::ViewportBuilder {
     let builder = egui::ViewportBuilder::default()
         .with_inner_size([900.0, 620.0])
         .with_min_inner_size({
-            let min = crate::fonts::min_window_size(1.0);
+            let min = crate::fonts::min_window_size();
             [min.x, min.y]
         })
         .with_title("Mustel")
@@ -99,20 +107,53 @@ fn viewport() -> egui::ViewportBuilder {
 }
 
 /// Abre a janela e roda até ela ser fechada.
+///
+/// O log de atividade começa antes da janela e termina depois dela: um `app.start` sem `app.stop`
+/// é a assinatura de um fechamento abrupto. O hook de panic grava no mesmo arquivo.
 pub fn run() -> Result<(), GuiError> {
     let runtime = Runtime::new()?;
+    let log = activity_store();
+
+    if let Some(store) = &log {
+        mustel_core::activity::crash::install(store.clone());
+        let now = mustel_core::datetime::now_ms();
+        let _ = store.prune(activity_log::DAYS, now);
+        let _ = store.append(
+            &mustel_core::activity::Entry::new(
+                mustel_core::activity::Area::App,
+                "app.start",
+                mustel_core::activity::Status::Info,
+            )
+            .with_detail(format!("Mustel {}", env!("CARGO_PKG_VERSION"))),
+        );
+    }
 
     let options = eframe::NativeOptions {
         viewport: viewport(),
         ..Default::default()
     };
 
-    eframe::run_native(
+    let result = eframe::run_native(
         "Mustel",
         options,
         Box::new(move |cc| Ok(Box::new(App::new(cc, runtime)?))),
     )
-    .map_err(|error| GuiError::Window(error.to_string()))
+    .map_err(|error| GuiError::Window(error.to_string()));
+
+    if let Some(store) = &log {
+        let _ = store.append(&mustel_core::activity::Entry::new(
+            mustel_core::activity::Area::App,
+            "app.stop",
+            mustel_core::activity::Status::Info,
+        ));
+    }
+
+    result
+}
+
+/// O store do log padrão, quando o SO expõe uma pasta de estado.
+fn activity_store() -> Option<mustel_core::activity::Store> {
+    mustel_core::activity::log_dir().map(mustel_core::activity::Store::new)
 }
 
 #[cfg(test)]

@@ -40,7 +40,7 @@ certificado self-signed ou assinado por uma CA privada só é aceito depois que 
 SO. Em containers, isso significa instalar o certificado na imagem e rodar `update-ca-certificates`
 (ou o equivalente da imagem).
 
-Não há `sslRootCert`/`Root Certificate` nesta versão: um arquivo de CA por conexão é um plano
+Não há `sslRootCert`/`Root Certificate` nesta versão: um arquivo de CA por conexão é um trabalho
 separado. Também não há `trustServerCertificate`: desligar a validação não é uma opção.
 
 ## Migração dos nomes antigos

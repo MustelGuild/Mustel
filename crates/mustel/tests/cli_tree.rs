@@ -28,6 +28,7 @@ fn mustel(args: &[&str]) -> Output {
         .args(args)
         .env("MUSTEL_CONFIG_DIR", sandbox_dir().join("config"))
         .env("MUSTEL_PGPASS_FILE", sandbox_pgpass_file())
+        .env("MUSTEL_LOG_DIR", sandbox_dir().join("logs"))
         .output()
         .expect("binary must run")
 }
@@ -37,6 +38,7 @@ fn mustel_with_stdin(args: &[&str], input: &str) -> Output {
         .args(args)
         .env("MUSTEL_CONFIG_DIR", sandbox_dir().join("config"))
         .env("MUSTEL_PGPASS_FILE", sandbox_pgpass_file())
+        .env("MUSTEL_LOG_DIR", sandbox_dir().join("logs"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -57,6 +59,7 @@ fn mustel_with_env(args: &[&str], key: &str, value: &str) -> Output {
         .args(args)
         .env("MUSTEL_CONFIG_DIR", sandbox_dir().join("config"))
         .env("MUSTEL_PGPASS_FILE", sandbox_pgpass_file())
+        .env("MUSTEL_LOG_DIR", sandbox_dir().join("logs"))
         .env(key, value)
         .output()
         .expect("binary must run")
@@ -404,7 +407,8 @@ fn missing_required_argument_follows_the_oracle() {
 /// CONTRACT: IF-003
 fn version_uses_the_workspace_version() {
     let output = stdout_of(&["--version"]);
-    assert!(output.contains("mustel 1.0.0"), "got {output}");
+    let expected = format!("mustel {}", env!("CARGO_PKG_VERSION"));
+    assert!(output.contains(&expected), "got {output}");
 }
 
 #[test]

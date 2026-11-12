@@ -105,6 +105,7 @@ pub async fn run(args: QueryRunArgs, token: &CancellationToken) -> Result<i32, C
             .map(|server| settings::server_run(server, &args, stdin_password.as_deref()))
             .collect::<Result<Vec<_>, CoreError>>()?,
         sql: Arc::from(sql.as_str()),
+        read_only: false,
         output_directory: PathBuf::from(settings::output_directory(&args, &defaults)),
         max_parallelism: defaults.max_parallelism as usize,
         command_timeout: Duration::from_secs(args.command_timeout.unwrap_or(300).max(1) as u64),

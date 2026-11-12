@@ -73,16 +73,21 @@ mais longo (`another database loaded`) e para nomes um pouco maiores que o típi
 Com nomes muito longos (20 caracteres), a linha já passa de 640 px **hoje**, com qualquer fonte: é
 limite antigo do layout, não algo que a escolha de fonte cria.
 
-## Por que o mínimo da janela acompanha a escala
+## Por que o mínimo da janela é fixo
 
-Escalar a fonte sem escalar a janela apertaria o layout: 1,25x com janela de 880 px é o mesmo que
-1,0x numa janela de 704 px. Então o mínimo vira `880×560 × escala` (a 1,25x: 1100×700). Assim a
-folga relativa fica constante — o usuário nunca ganha uma janela que cabe menos coisa do que antes.
+Escalar a fonte **não** muda o mínimo da janela: ele é `880×560` em qualquer escala (mais os 360 px
+do painel da IA quando ele está aberto na aba Query). A razão é que o mínimo vem do **layout**, não
+do texto: a sidebar, o menu de categorias e o painel da IA têm largura fixa, e o conteúdo é rolável
+e responsivo (o status da barra trunca, o cartão de perfil desce as ações quando não cabem ao lado
+do texto).
+
+Antes o mínimo era `880×560 × escala` — 1100×700 a 1,25x. Isso fazia a janela restaurada "pular" de
+volta para o mínimo e impedir que o dono a encolhesse abaixo dele, mesmo com o layout aguentando
+tamanhos menores. O piso fixo deixa a janela ser redimensionada livremente até 880×560 (1240×560
+com o painel da IA aberto).
 
 O ponto de partida era 640×480; subiu para **880×560** quando a sidebar passou a ter 400 px (a
-área principal precisa de ~450 para o SQL e a tabela continuarem usáveis, e 1366×768 é o notebook
-mais apertado que o dono usa). A conta tem uma ressalva conhecida: a 125% de escala do sistema
-**com** `fontScale` 1,25 o mínimo passa de 1100×700 e pode não caber nesse 1366×768.
+área principal precisa de ~450 para o SQL e a tabela continuarem usáveis).
 
 ## O que não é feito
 

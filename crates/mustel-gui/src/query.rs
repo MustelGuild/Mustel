@@ -59,6 +59,7 @@ pub fn request_for_runs(
     runs: Vec<ServerRun>,
     sql: &str,
     output_directory: String,
+    read_only: bool,
 ) -> Result<QueryRunRequest, InputError> {
     let store =
         ConfigStore::with_default_path().map_err(|error| InputError::Config(error.to_string()))?;
@@ -68,6 +69,7 @@ pub fn request_for_runs(
     Ok(QueryRunRequest {
         servers: runs,
         sql: Arc::from(sql),
+        read_only,
         output_directory: absolute(&output_directory),
         max_parallelism: defaults.max_parallelism.max(1) as usize,
         command_timeout: Duration::from_secs(DEFAULT_COMMAND_TIMEOUT_SECONDS),
@@ -350,7 +352,7 @@ mod tests {
     fn the_request_carries_the_resolved_connection_and_no_database() {
         let run = server_run(&server(), "segredo").expect("conexão");
         let request =
-            request_for_runs(vec![run], "SELECT 1", "./results".to_string()).expect("monta");
+            request_for_runs(vec![run], "SELECT 1", "./results".to_string(), false).expect("monta");
 
         assert_eq!(request.servers.len(), 1);
         let run = &request.servers[0];
@@ -367,6 +369,15 @@ mod tests {
             "o núcleo escolhe o banco de cada alvo"
         );
         assert_eq!(request.sql.as_ref(), "SELECT 1");
+    }
+
+    #[test]
+    fn the_request_carries_the_read_only_flag() {
+        let run = server_run(&server(), "segredo").expect("conexão");
+        let request =
+            request_for_runs(vec![run], "SELECT 1", "./results".to_string(), true).expect("monta");
+
+        assert!(request.read_only);
     }
 
     #[test]

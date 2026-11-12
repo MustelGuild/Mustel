@@ -1,13 +1,19 @@
-//! Integração com a área de trabalho: abrir uma pasta no gerenciador de arquivos e abrir um arquivo
-//! no editor do sistema.
+//! Integração com a área de trabalho: abrir uma pasta no gerenciador de arquivos, abrir um arquivo
+//! no editor do sistema e compor o relatório no cliente de e-mail.
 //!
 //! Duas responsabilidades, separadas de propósito:
 //!
 //! - **decidir** o comando e os argumentos por sistema operacional ([`open_command_for`],
-//!   [`open_file_command_for`]) — funções puras, testáveis em qualquer máquina;
-//! - **executar** ([`open_directory`], [`open_file`]), que são os únicos pontos que fazem `spawn`.
+//!   [`open_file_command_for`], [`compose_email_command_for`]) — funções puras, testáveis em
+//!   qualquer máquina;
+//! - **executar** ([`open_directory`], [`open_file`], [`compose_email`]), que são os únicos pontos
+//!   que fazem `spawn`.
 //!
 //! O seletor de pastas propriamente dito vive em [`crate::picker`]; aqui só o que toca o SO.
+//!
+//! **Anexo do e-mail:** `mailto:` não anexa de forma portátil. No Linux o `xdg-email --attach`
+//! anexa de verdade; Windows/macOS recebem o parâmetro `attach=` (Thunderbird/Evolution honram;
+//! Outlook e Mail.app ignoram) e o `.log` salvo é a garantia.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -91,6 +97,145 @@ pub fn open_file_command_for(os: TargetOs, file: &Path) -> (String, Vec<String>)
 pub fn open_file(file: &Path) -> std::io::Result<()> {
     let (program, args) = open_file_command_for(TargetOs::current(), file);
     Command::new(program).args(args).spawn().map(|_| ())
+}
+
+/// Programa e argumentos para compor o relatório no cliente de e-mail.
+///
+/// Função pura. O **corpo** e o **assunto** vão crus para o `xdg-email` (Linux) e percent-encoded
+/// dentro da URL `mailto:` (Windows/macOS). O anexo é melhor esforço: `xdg-email --attach` no
+/// Linux; nos outros, o parâmetro `attach=` da URL, que só alguns clientes honram.
+///
+/// Nunca há shell: tudo é `Command::new(program).args(...)`.
+pub fn compose_email_command_for(
+    os: TargetOs,
+    to: &str,
+    subject: &str,
+    body: &str,
+    attachment: Option<&Path>,
+) -> (String, Vec<String>) {
+    match os {
+        TargetOs::Linux => {
+            let mut args = Vec::new();
+            if let Some(path) = attachment {
+                args.push("--attach".to_string());
+                args.push(path.to_string_lossy().to_string());
+            }
+            args.push("--subject".to_string());
+            args.push(subject.to_string());
+            args.push("--body".to_string());
+            args.push(body.to_string());
+            args.push(to.to_string());
+
+            ("xdg-email".to_string(), args)
+        }
+        // `FileProtocolHandler` entrega a URL ao aplicativo padrão sem `cmd /c start` (shell).
+        TargetOs::Windows => (
+            "rundll32.exe".to_string(),
+            vec![
+                "url.dll,FileProtocolHandler".to_string(),
+                mailto_url(to, subject, body, attachment),
+            ],
+        ),
+        TargetOs::MacOs => (
+            "open".to_string(),
+            vec![mailto_url(to, subject, body, attachment)],
+        ),
+    }
+}
+
+/// Abre o cliente de e-mail com o relatório.
+///
+/// No Linux, se o `xdg-email` (xdg-utils) não existir, cai no `xdg-open` com a URL `mailto:` — o
+/// anexo, nesse caso, fica só no arquivo salvo.
+pub fn compose_email(
+    to: &str,
+    subject: &str,
+    body: &str,
+    attachment: Option<&Path>,
+) -> std::io::Result<()> {
+    let os = TargetOs::current();
+    let (program, args) = compose_email_command_for(os, to, subject, body, attachment);
+
+    match Command::new(&program).args(&args).spawn() {
+        Ok(_) => Ok(()),
+        Err(_error) if os == TargetOs::Linux && program == "xdg-email" => {
+            let url = mailto_url(to, subject, body, attachment);
+            Command::new("xdg-open").arg(url).spawn().map(|_| ())
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// Há um aplicativo de e-mail configurado para `mailto:`?
+///
+/// O `webbrowser` (usado pelos links `http`) **não** é o caminho para e-mail: sem um handler de
+/// `mailto:` o `xdg-open` cai no navegador, e o link de suporte abriria o Brave em vez do cliente.
+/// No Linux a resposta vem do `xdg-mime` (e do `$MAILER`, que o `xdg-email` também honra); nos
+/// demais SOs o sistema tem um cliente padrão e a tentativa é direta.
+pub fn has_email_handler() -> bool {
+    if TargetOs::current() != TargetOs::Linux {
+        return true;
+    }
+    if std::env::var_os("MAILER").is_some_and(|value| !value.is_empty()) {
+        return true;
+    }
+    match Command::new("xdg-mime")
+        .args(["query", "default", "x-scheme-handler/mailto"])
+        .output()
+    {
+        Ok(output) => mailto_handler_present(&output.stdout),
+        // Sem `xdg-mime` não dá para decidir: deixa o sistema tentar.
+        Err(_) => true,
+    }
+}
+
+/// A resposta do `xdg-mime` nomeia um handler? (vazio ou só espaços = nenhum)
+fn mailto_handler_present(stdout: &[u8]) -> bool {
+    !String::from_utf8_lossy(stdout).trim().is_empty()
+}
+
+/// A URL `mailto:` com assunto, corpo e (melhor esforço) anexo.
+pub fn mailto_url(to: &str, subject: &str, body: &str, attachment: Option<&Path>) -> String {
+    // RFC 6068: as quebras de linha do corpo vão em CRLF.
+    let body = body.replace("\r\n", "\n").replace('\n', "\r\n");
+    let mut url = format!(
+        "mailto:{}?subject={}&body={}",
+        percent_encode(to),
+        percent_encode(subject),
+        percent_encode(&body)
+    );
+
+    if let Some(path) = attachment {
+        url.push_str("&attach=");
+        url.push_str(&percent_encode(&file_url(path)));
+    }
+
+    url
+}
+
+/// Percent-encoding de um valor de query (RFC 3986).
+fn percent_encode(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(char::from(byte));
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
+}
+
+/// A URL `file://` de um caminho absoluto.
+fn file_url(path: &Path) -> String {
+    let text = path.to_string_lossy().replace('\\', "/");
+
+    if text.starts_with('/') {
+        format!("file://{text}")
+    } else {
+        format!("file:///{text}")
+    }
 }
 
 /// Resolve o caminho digitado na caixa para um caminho absoluto.///
@@ -243,5 +388,92 @@ mod tests {
         let file = dir.path().join("arquivo.txt");
         std::fs::write(&file, "x").expect("escreve");
         assert!(!can_open(&file), "arquivo com o mesmo nome não habilita");
+    }
+
+    /// A URL `mailto:` codifica assunto e corpo; as linhas do corpo vão em CRLF.
+    #[test]
+    fn the_mailto_url_encodes_the_subject_and_the_body() {
+        let url = mailto_url(
+            "support@mustelguild.dev",
+            "Mustel 1.0.0 report",
+            "linha 1\nlinha 2",
+            None,
+        );
+
+        assert!(
+            url.starts_with("mailto:support%40mustelguild.dev?subject=Mustel%201.0.0%20report"),
+            "{url}"
+        );
+        assert!(url.contains("body=linha%201%0D%0Alinha%202"), "{url}");
+        assert!(!url.contains(' '), "nenhum espaço cru: {url}");
+    }
+
+    /// O anexo vira uma URL `file://` percent-encoded dentro do `mailto:`.
+    #[test]
+    fn the_attachment_rides_as_an_encoded_file_url() {
+        let url = mailto_url(
+            "a@b.dev",
+            "s",
+            "b",
+            Some(Path::new("/tmp/mustel report.log")),
+        );
+
+        assert!(
+            url.contains("attach=file%3A%2F%2F%2Ftmp%2Fmustel%20report.log"),
+            "{url}"
+        );
+    }
+
+    /// No Linux o `xdg-email` anexa de verdade.
+    /// CONTRACT: IF-267
+    #[test]
+    fn linux_attaches_the_report_with_xdg_email() {
+        let path = Path::new("/tmp/mustel-report.log");
+        let (program, args) =
+            compose_email_command_for(TargetOs::Linux, "a@b.dev", "assunto", "corpo", Some(path));
+
+        assert_eq!(program, "xdg-email");
+        assert!(
+            args.iter().any(|arg| arg.as_str() == "--attach"),
+            "{args:?}"
+        );
+        assert!(
+            args.iter()
+                .any(|arg| arg.as_str() == "/tmp/mustel-report.log"),
+            "{args:?}"
+        );
+        assert_eq!(args.last().map(String::as_str), Some("a@b.dev"));
+    }
+
+    /// A resposta vazia do `xdg-mime` significa "nenhum cliente de e-mail configurado".
+    ///
+    /// É o que evita o link de suporte cair no navegador: sem handler, o `App` copia o endereço
+    /// em vez de chamar o `xdg-open`.
+    /// CONTRACT: IF-267
+    #[test]
+    fn the_mailto_handler_detection_reads_the_xdg_mime_reply() {
+        assert!(!mailto_handler_present(b""));
+        assert!(!mailto_handler_present(b"  \n\t"));
+        assert!(mailto_handler_present(b"org.kde.kmail2.desktop\n"));
+    }
+
+    /// No Windows a URL vai para o `FileProtocolHandler` — sem shell.
+    #[test]
+    fn windows_uses_the_protocol_handler_without_a_shell() {
+        let (program, args) =
+            compose_email_command_for(TargetOs::Windows, "a@b.dev", "s", "b", None);
+
+        assert_eq!(program, "rundll32.exe");
+        assert_eq!(args[0], "url.dll,FileProtocolHandler");
+        assert!(args[1].starts_with("mailto:a%40b.dev"), "{}", args[1]);
+    }
+
+    /// No macOS o `open` entrega a URL ao cliente padrão.
+    #[test]
+    fn macos_opens_the_default_mail_client() {
+        let (program, args) = compose_email_command_for(TargetOs::MacOs, "a@b.dev", "s", "b", None);
+
+        assert_eq!(program, "open");
+        assert!(args[0].starts_with("mailto:"), "{}", args[0]);
     }
 }

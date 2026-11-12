@@ -11,14 +11,17 @@
 //!   `ctx.request_repaint()`;
 //! - **um job por vez**: o botão `Cancel` cancela o token do job atual.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
 use mustel_core::config::model::GuiPrefs;
 use mustel_core::config::model::SelectionQuery;
 use mustel_core::config::{ConfigStore, ServerConfigEntry};
+use mustel_core::error::CoreError;
 use mustel_core::events::Status;
 use mustel_core::signal::CancellationToken;
+use mustel_core::update::Release;
 use mustel_core::usecases::{db_servers, gui_prefs, query_run};
 
 use crate::actions;
@@ -88,6 +91,8 @@ struct Running {
     label: String,
     /// Token para cancelar.
     token: CancellationToken,
+    /// Quando o job começou (a duração vai para o log de atividade).
+    started: std::time::Instant,
 }
 
 /// A aplicação.
@@ -109,13 +114,28 @@ const AI_PANEL_WIDTH: f32 = 360.0;
 /// come 360 px da área de conteúdo, e com o mínimo antigo (880) sobravam ~108 px: as linhas do
 /// formulário não cabiam e o texto caía por cima do painel. Cada painel aberto soma a própria
 /// largura ao mínimo, na mesma proporção da escala (fonte maior, janela maior).
-fn min_window_size(scale: f32, ai_open: bool) -> egui::Vec2 {
-    let base = crate::fonts::min_window_size(scale);
+fn min_window_size(ai_open: bool) -> egui::Vec2 {
+    let base = crate::fonts::min_window_size();
     if ai_open {
-        base + egui::vec2(AI_PANEL_WIDTH * scale, 0.0)
+        base + egui::vec2(AI_PANEL_WIDTH, 0.0)
     } else {
         base
     }
+}
+
+/// Grava a seção `gui` do commit da **aparência**, preservando o que mora fora da tela.
+///
+/// A tela de Settings conhece tema, fontes, escala, paginação e perfis de IA — mas **não** os
+/// seletores (cadastro em Connections) nem as queries salvas (aba Query). Este é o único ponto que
+/// grava a seção nesse caminho; sem recompor, mudar o tema apagava os dois.
+fn save_appearance(
+    store: &ConfigStore,
+    appearance: GuiPrefs,
+    selections: &[SelectionQuery],
+    saved_queries: &[mustel_core::config::model::SavedQuery],
+) -> Result<(), mustel_core::error::CoreError> {
+    let prefs = crate::screens::compose_gui_prefs(appearance, selections, saved_queries);
+    gui_prefs::save(store, Some(prefs))
 }
 
 /// Respiro entre a sidebar e o conteúdo à direita dela.
@@ -159,6 +179,14 @@ pub struct App {
     ai_profiles: Vec<mustel_core::config::model::AiProfile>,
     /// Último mínimo de janela enviado ao sistema (evita repetir o comando a cada quadro).
     min_inner: Option<egui::Vec2>,
+    /// Recados efêmeros (toasts) — o que já foi feito, sem ocupar a barra de status.
+    toasts: crate::toast::Toasts,
+    /// O log de atividade: o que rodou e o que falhou.
+    activity: crate::activity_log::Log,
+    /// Onde os relatórios da Activity são salvos (fallback privado quando não há state).
+    reports_dir: Option<PathBuf>,
+    /// O updater: release conhecida, toast sticky e download em andamento.
+    update: crate::update::State,
 }
 
 impl App {
@@ -206,9 +234,44 @@ impl App {
             .and_then(|store| mustel_core::usecases::gui_prefs::load(&store).ok())
             .flatten();
         let settings = settings_screen::State::with_prefs(prefs.as_ref());
+        // A primeira execução já nasce em somente leitura; o `ui` reaplica a cada quadro, mas o
+        // estado precisa do valor antes do primeiro desenho.
+        query.set_read_only(settings.read_only());
         crate::fonts::apply(&cc.egui_ctx, settings.chosen());
         // O tema também vale no primeiro quadro: `System` (default) deixa a decisão ao SO.
         crate::theme::apply(&cc.egui_ctx, settings.theme());
+
+        // Um erro de configuração na abertura é parte do que aconteceu: vai para o log.
+        let mut activity = crate::activity_log::Log::open();
+        if let Some(error) = &config_error {
+            activity.record(
+                mustel_core::activity::Entry::new(
+                    mustel_core::activity::Area::App,
+                    "app.config",
+                    mustel_core::activity::Status::Error,
+                )
+                .with_error(error),
+            );
+        }
+
+        // Relatórios: estado canônico ou um fallback privado; nunca o `/tmp` direto.
+        let reports_dir = crate::activity_log::reports_dir_or_fallback();
+        if let Some(dir) = &reports_dir {
+            let _ = mustel_core::activity::prune_reports(
+                dir,
+                mustel_core::activity::RETENTION_DAYS,
+                mustel_core::datetime::now_ms(),
+            );
+        }
+
+        // O helper do update deixa o resultado no ambiente da nova instância.
+        let mut toasts = crate::toast::Toasts::default();
+        for (kind, message) in startup_toasts(
+            std::env::var("MUSTEL_UPDATED_FROM").ok(),
+            std::env::var("MUSTEL_UPDATE_FAILED").ok(),
+        ) {
+            toasts.notify(kind, message);
+        }
 
         Ok(Self {
             runtime,
@@ -253,6 +316,10 @@ impl App {
                 .map(|prefs| prefs.ai.profiles.clone())
                 .unwrap_or_default(),
             min_inner: None,
+            toasts,
+            activity,
+            reports_dir,
+            update: crate::update::State::default(),
         })
     }
 
@@ -300,10 +367,7 @@ impl App {
     /// O mínimo da janela para o layout **atual**: a escala escolhida e o painel da IA, quando
     /// aberto (é o único painel que fica fora do piso de [`min_window_size`]).
     fn min_inner_size(&self) -> egui::Vec2 {
-        min_window_size(
-            self.settings.chosen().scale,
-            self.ai.open && self.screen == Screen::Query,
-        )
+        min_window_size(self.ai.open && self.screen == Screen::Query)
     }
 
     /// Mantém o mínimo da janela em dia com a escala e com os painéis abertos.
@@ -363,8 +427,8 @@ impl App {
             Request::ApplyGuiPrefs(chosen) => {
                 let problems = crate::fonts::apply(ctx, &chosen);
                 self.settings.set_warning(problems.first().cloned());
-                // O mínimo acompanha a escala e os painéis abertos: `sync_min_window_size` o
-                // reaplica no quadro seguinte (não há um segundo lugar decidindo isso).
+                // O mínimo depende dos painéis abertos (não da escala): `sync_min_window_size`
+                // o reaplica no quadro seguinte (não há um segundo lugar decidindo isso).
             }
             // A lista de **queries salvas** mudou: compõe a seção `gui` inteira e grava.
             Request::SaveSavedQueries(queries) => {
@@ -373,7 +437,9 @@ impl App {
                 match ConfigStore::with_default_path() {
                     Ok(store) => match gui_prefs::save(&store, Some(prefs)) {
                         Ok(()) => {
-                            self.status = "Saved queries saved.".to_string();
+                            // O recado é efêmero: a barra segue livre para o estado ambiente.
+                            self.toasts.success("Saved queries saved.");
+                            self.status = "Ready.".to_string();
                             ctx.request_repaint();
                         }
                         Err(error) => self.status = error.to_string(),
@@ -390,7 +456,8 @@ impl App {
                         Ok(()) => {
                             let selections = self.servers.selectors().selections().to_vec();
                             self.query.retain_selection_queries(&selections);
-                            self.status = "Selectors saved.".to_string();
+                            self.toasts.success("Selectors saved.");
+                            self.status = "Ready.".to_string();
                             ctx.request_repaint();
                         }
                         Err(error) => self.status = error.to_string(),
@@ -407,18 +474,24 @@ impl App {
                 crate::theme::apply(ctx, prefs.theme);
                 self.settings.set_warning(problems.first().cloned());
 
+                // A tela de Settings **não** conhece os seletores nem as queries salvas (vivem no
+                // cadastro e na aba Query): recompor aqui é o que impede gravar a aparência de
+                // apagar os dois.
+                let selections = self.servers.selectors().selections().to_vec();
                 match ConfigStore::with_default_path() {
-                    Ok(store) => match gui_prefs::save(&store, Some(prefs)) {
-                        Ok(()) => {
-                            // A query em uso pode ter sido removida (ou renomeada) na aba Settings:
-                            // o combo da aba Query não pode continuar apontando para o nome antigo.
-                            let selections = self.servers.selectors().selections().to_vec();
-                            self.query.retain_selection_queries(&selections);
-                            self.status = "Appearance saved.".to_string();
-                            ctx.request_repaint();
+                    Ok(store) => {
+                        match save_appearance(&store, prefs, &selections, &self.saved_queries) {
+                            Ok(()) => {
+                                // A query em uso pode ter sido removida (ou renomeada) na aba Settings:
+                                // o combo da aba Query não pode continuar apontando para o nome antigo.
+                                self.query.retain_selection_queries(&selections);
+                                self.toasts.success("Appearance saved.");
+                                self.status = "Ready.".to_string();
+                                ctx.request_repaint();
+                            }
+                            Err(error) => self.status = error.to_string(),
                         }
-                        Err(error) => self.status = error.to_string(),
-                    },
+                    }
                     Err(error) => self.status = error.to_string(),
                 }
             }
@@ -441,6 +514,39 @@ impl App {
                 let _ = token;
             }
             Request::CancelJob => self.cancel(),
+            // O check do updater roda fora da fila única: baixar o executável não pode esperar
+            // uma consulta longa terminar (nem impedir que ela rode).
+            Request::CheckForUpdates { manual } => self.check_for_updates(ctx, manual),
+            // O e-mail não passa pelo `webbrowser`: sem um handler de `mailto:` ele abriria o
+            // navegador. O caminho do projeto é o `desktop::compose_email` (`xdg-email` no Linux);
+            // sem cliente configurado, o endereço vai para a área de transferência.
+            Request::ComposeSupportEmail => {
+                if !crate::desktop::has_email_handler() {
+                    ctx.copy_text(crate::SUPPORT_EMAIL.to_string());
+                    self.toasts.notify(
+                        crate::toast::Kind::Warning,
+                        format!(
+                            "No e-mail app is configured. {} was copied.",
+                            crate::SUPPORT_EMAIL
+                        ),
+                    );
+                    return;
+                }
+                let subject = format!("Mustel {} support", crate::about::VERSION);
+                let body = format!(
+                    "Mustel {}\nSystem: {} ({})",
+                    crate::about::VERSION,
+                    std::env::consts::OS,
+                    std::env::consts::ARCH
+                );
+                match crate::desktop::compose_email(crate::SUPPORT_EMAIL, &subject, &body, None) {
+                    Ok(()) => self.status = "Opening the e-mail app...".to_string(),
+                    Err(error) => self.toasts.error(format!(
+                        "Could not open the e-mail app: {error}. The address is {}.",
+                        crate::SUPPORT_EMAIL
+                    )),
+                }
+            }
             // Perfis de IA: a tela manda a lista inteira; o app compõe a seção `gui` e grava.
             Request::SaveAiProfiles {
                 profiles,
@@ -494,6 +600,16 @@ impl App {
             }
             Request::TestAiProfile { profile } => {
                 let results = self.results.clone();
+                // O `spawn` recusa com um job em andamento e **não** emite resultado: sem esta
+                // saída, o botão ficaria girando para sempre.
+                if let Some(running) = &self.running {
+                    let _ = results.send(JobResult::AiTested {
+                        profile,
+                        result: Err(format!("Already running: {}.", running.label)),
+                    });
+                    ctx.request_repaint();
+                    return;
+                }
                 let entry = self
                     .ai_profiles
                     .iter()
@@ -671,24 +787,38 @@ impl App {
             }
             Request::TestConnection(server) => {
                 let name = server.name.clone();
+                let results = self.results.clone();
+                // Mesma saída do `TestAiProfile`: o `spawn` recusa e nenhum resultado voltaria.
+                if let Some(running) = &self.running {
+                    let _ = results.send(JobResult::Tested {
+                        server: name,
+                        outcome: Err(format!("Already running: {}.", running.label)),
+                    });
+                    ctx.request_repaint();
+                    return;
+                }
                 let password = match query::stored_password(&name) {
                     Ok(password) => password,
                     Err(error) => {
-                        self.status = error.to_string();
+                        // Sem senha não há como testar — mas o cartão já marcou o `Test` como em
+                        // andamento: fecha o spinner com o erro em vez de deixá-lo girando.
+                        let _ = results.send(JobResult::Tested {
+                            server: name,
+                            outcome: Err(error.to_string()),
+                        });
                         return;
                     }
                 };
-                let results = self.results.clone();
                 self.status = format!("Testing connection to {name}...");
                 self.spawn("test connection", ctx, move |_token| async move {
-                    let result = match db_servers::test_connection(&server, &password).await {
-                        Ok(report) => JobResult::Tested {
-                            server: name,
-                            databases: report.databases,
-                        },
-                        Err(error) => JobResult::Failed(error.to_string()),
+                    let outcome = match db_servers::test_connection(&server, &password).await {
+                        Ok(report) => Ok(report.databases),
+                        Err(error) => Err(error.to_string()),
                     };
-                    let _ = results.send(result);
+                    let _ = results.send(JobResult::Tested {
+                        server: name,
+                        outcome,
+                    });
                 });
             }
             Request::DiscoverDatabases { server } => {
@@ -817,6 +947,7 @@ impl App {
                 targets,
                 sql,
                 output_directory,
+                read_only,
             } => {
                 // A entrada é montada fora do runtime: se faltar senha, a tela avisa na hora.
                 //
@@ -845,7 +976,8 @@ impl App {
                     }
                 }
 
-                let request = match query::request_for_runs(runs, &sql, output_directory) {
+                let request = match query::request_for_runs(runs, &sql, output_directory, read_only)
+                {
                     Ok(request) => request,
                     Err(error) => {
                         self.status = error.to_string();
@@ -899,6 +1031,7 @@ impl App {
         self.running = Some(Running {
             label: label.to_string(),
             token,
+            started: std::time::Instant::now(),
         });
     }
 
@@ -908,6 +1041,419 @@ impl App {
             running.token.cancel();
             self.status = "Cancel requested.".to_string();
         }
+    }
+
+    /// Dispara um job **fora da fila única** e devolve o token dele.
+    ///
+    /// O updater não pode competir com uma consulta (nem desligar o `Running` dela): ele tem o
+    /// próprio token e o próprio ciclo de vida. O `JoinHandle` é observado por uma segunda tarefa
+    /// — um panic no job vira `UpdateFailed`, em vez de deixar o toast girando para sempre.
+    fn spawn_background<F, Fut>(&mut self, ctx: &egui::Context, job: F) -> CancellationToken
+    where
+        F: FnOnce(CancellationToken) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let context = ctx.clone();
+        let (token, handle) = self.runtime.spawn(move |token| async move {
+            job(token).await;
+            context.request_repaint();
+        });
+
+        let results = self.results.clone();
+        let context = ctx.clone();
+        self.runtime.spawn(move |_token| async move {
+            if let Err(error) = handle.await {
+                let _ = results.send(JobResult::UpdateFailed(format!(
+                    "The update task failed: {error}"
+                )));
+                context.request_repaint();
+            }
+        });
+
+        token
+    }
+
+    /// Consulta o GitHub em busca de uma release mais nova.
+    ///
+    /// O check automático respeita o estado local (um por dia UTC, backoff de 1 h depois de uma
+    /// falha); o manual do About ignora os dois — quem clicou quer uma resposta agora.
+    fn check_for_updates(&mut self, ctx: &egui::Context, manual: bool) {
+        if self.update.checking || self.update.downloading {
+            return;
+        }
+
+        let now = mustel_core::datetime::now_ms();
+        let today = mustel_core::datetime::day_key(now);
+        let path = mustel_core::update::state::default_path();
+
+        if !manual {
+            let state = path
+                .as_deref()
+                .map(mustel_core::update::UpdateState::load)
+                .unwrap_or_default();
+            if !state.should_check(&today, now) {
+                return;
+            }
+        }
+
+        let url = match crate::update::check_url() {
+            Ok(url) => url,
+            Err(error) => {
+                if manual {
+                    self.toasts.error(error);
+                }
+                return;
+            }
+        };
+
+        self.update.checking = true;
+        if manual {
+            self.status = "Checking for updates...".to_string();
+        }
+
+        let results = self.results.clone();
+        self.spawn_background(ctx, move |_token| async move {
+            let result = match mustel_core::update::ReqwestTransport::new() {
+                Ok(transport) => mustel_core::update::check_current(&transport, &url)
+                    .await
+                    .map_err(|error| error.to_string()),
+                Err(error) => Err(error.to_string()),
+            };
+
+            // O estado é gravado mesmo quando o check não achou nada: é o que impede a janela de
+            // consultar o GitHub a cada abertura no mesmo dia.
+            if let Some(path) = path.as_deref() {
+                let mut state = mustel_core::update::UpdateState::load(path);
+                match &result {
+                    Ok(_) => state.record_success(&today, now),
+                    Err(_) => state.record_failure(now),
+                }
+                let _ = state.save(path);
+            }
+
+            let _ = results.send(JobResult::UpdateChecked { manual, result });
+        });
+    }
+
+    /// O check terminou: decide o toast e registra o que aconteceu.
+    fn handle_update_checked(&mut self, manual: bool, result: Result<Option<Release>, String>) {
+        self.update.checking = false;
+        if manual {
+            self.status = "Ready.".to_string();
+        }
+
+        match result {
+            Ok(Some(release)) => {
+                let version = release.version.to_string();
+                let now = mustel_core::datetime::now_ms();
+                let dismissed = !manual
+                    && mustel_core::update::state::default_path()
+                        .map(|path| mustel_core::update::UpdateState::load(&path))
+                        .unwrap_or_default()
+                        .dismissed_recently(&version, now);
+
+                self.log_update(
+                    "app.update.check",
+                    mustel_core::activity::Status::Ok,
+                    format!("Mustel {version} is available"),
+                    None,
+                );
+                self.update.release = Some(release);
+
+                // Fechado há menos de 7 dias: o check automático fica quieto, mas guarda a release
+                // (o botão do About ainda pode instalar).
+                if dismissed {
+                    return;
+                }
+
+                let message = format!("Mustel {version} is available.");
+                match self.update.toast {
+                    Some(id) => {
+                        self.toasts
+                            .replace(id, crate::toast::Kind::Info, message, Some("Update"))
+                    }
+                    None => {
+                        let id =
+                            self.toasts
+                                .sticky(crate::toast::Kind::Info, message, Some("Update"));
+                        self.update.toast = Some(id);
+                    }
+                }
+                self.ctx.request_repaint();
+            }
+            Ok(None) => {
+                self.update.release = None;
+                if let Some(id) = self.update.toast.take() {
+                    self.toasts.dismiss(id);
+                }
+                self.log_update(
+                    "app.update.check",
+                    mustel_core::activity::Status::Info,
+                    format!("up to date ({})", crate::about::VERSION),
+                    None,
+                );
+                if manual {
+                    self.toasts.success(format!(
+                        "You are on the latest version ({}).",
+                        crate::about::VERSION
+                    ));
+                }
+            }
+            Err(error) => {
+                self.log_update(
+                    "app.update.check",
+                    mustel_core::activity::Status::Error,
+                    "check failed",
+                    Some(error.clone()),
+                );
+                if manual {
+                    self.toasts
+                        .error(format!("Could not check for updates: {error}"));
+                }
+            }
+        }
+    }
+
+    /// Bytes do download chegaram: move a barra do toast.
+    fn handle_update_progress(&mut self, done: u64, total: Option<u64>) {
+        let Some(id) = self.update.toast else {
+            return;
+        };
+        let fraction = match total.filter(|total| *total > 0) {
+            Some(total) => (done as f32 / total as f32).clamp(0.0, 1.0),
+            None => 0.0,
+        };
+        self.toasts.set_progress(id, fraction);
+    }
+
+    /// Os payloads estão no lugar e o helper foi disparado: a janela fecha para o exe ser trocado.
+    fn handle_update_downloaded(&mut self, version: String) {
+        self.update.downloading = false;
+        self.update.cancel = None;
+        if let Some(id) = self.update.toast {
+            self.toasts.replace(
+                id,
+                crate::toast::Kind::Info,
+                format!("Updating to Mustel {version}. The app will restart."),
+                None,
+            );
+            self.toasts.set_progress(id, 1.0);
+        }
+        self.status = "Restarting...".to_string();
+        self.log_update(
+            "app.update.apply",
+            mustel_core::activity::Status::Ok,
+            format!("installing Mustel {version}"),
+            None,
+        );
+        self.ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+
+    /// A pasta do executável não é gravável: o update ficou salvo para instalar à mão.
+    fn handle_update_manual(&mut self, dir: std::path::PathBuf) {
+        self.update.downloading = false;
+        self.update.cancel = None;
+        self.update.release = None;
+        if let Some(id) = self.update.toast.take() {
+            self.toasts.dismiss(id);
+        }
+        self.status = "Ready.".to_string();
+        let message = format!(
+            "The app folder is read-only. The update was saved to {}; install it manually.",
+            dir.display()
+        );
+        self.toasts.notify(crate::toast::Kind::Warning, message);
+        self.log_update(
+            "app.update.apply",
+            mustel_core::activity::Status::Info,
+            format!("saved to {}", dir.display()),
+            None,
+        );
+    }
+
+    /// O usuário fechou o toast durante o download (ou o job foi cancelado).
+    fn handle_update_cancelled(&mut self) {
+        self.update.downloading = false;
+        self.update.cancel = None;
+        self.update.release = None;
+        if let Some(id) = self.update.toast.take() {
+            self.toasts.dismiss(id);
+        }
+        self.status = "Update cancelled.".to_string();
+        self.log_update(
+            "app.update.download",
+            mustel_core::activity::Status::Cancelled,
+            "cancelled by the user",
+            None,
+        );
+    }
+
+    /// O download ou a aplicação falhou: o toast vira um erro com `Retry`.
+    fn handle_update_failed(&mut self, error: String) {
+        self.update.checking = false;
+        self.update.downloading = false;
+        self.update.cancel = None;
+        self.status = format!("Update failed: {error}");
+        self.log_update(
+            "app.update.apply",
+            mustel_core::activity::Status::Error,
+            "update failed",
+            Some(error.clone()),
+        );
+
+        let message = format!("Update failed: {error}");
+        match self.update.toast {
+            Some(id) => self
+                .toasts
+                .replace(id, crate::toast::Kind::Error, message, Some("Retry")),
+            None => self.toasts.error(message),
+        }
+        self.ctx.request_repaint();
+    }
+
+    /// O botão `Update` (ou `Retry`) do toast: baixa e aplica a release conhecida.
+    fn start_update(&mut self, ctx: &egui::Context) {
+        if self.update.downloading {
+            return;
+        }
+
+        let Some(release) = self.update.release.clone() else {
+            // Sem release em mãos (o toast é de antes de um check manual): consulta de novo.
+            self.check_for_updates(ctx, true);
+            return;
+        };
+
+        let Ok(current) = std::env::current_exe() else {
+            self.toasts
+                .error("Update failed: could not find this executable.");
+            return;
+        };
+        let targets = match crate::update::targets(&release, &current) {
+            Ok(targets) => targets,
+            Err(error) => {
+                self.toasts.error(format!("Update failed: {error}"));
+                return;
+            }
+        };
+
+        // Pasta somente leitura (instalação do sistema): o download fica no diretório de estado.
+        let fallback = match current.parent() {
+            Some(dir) if !crate::update::writable(dir) => {
+                match crate::update::fallback_dir(&release.version.to_string()) {
+                    Ok(path) => Some(path),
+                    Err(error) => {
+                        self.toasts.error(format!("Update failed: {error}"));
+                        return;
+                    }
+                }
+            }
+            _ => None,
+        };
+
+        let version = release.version.to_string();
+        let message = format!("Downloading Mustel {version}...");
+        let id = match self.update.toast {
+            Some(id) => {
+                self.toasts
+                    .replace(id, crate::toast::Kind::Info, message, None);
+                id
+            }
+            None => self.toasts.sticky(crate::toast::Kind::Info, message, None),
+        };
+        self.toasts.set_progress(id, 0.0);
+        self.update.toast = Some(id);
+        self.update.downloading = true;
+        self.status = format!("Downloading Mustel {version}...");
+        self.log_update(
+            "app.update.download",
+            mustel_core::activity::Status::Info,
+            format!("downloading Mustel {version}"),
+            None,
+        );
+
+        let results = self.results.clone();
+        let progress_results = results.clone();
+        let context = ctx.clone();
+        let progress_context = context.clone();
+        let token = self.spawn_background(ctx, move |token| async move {
+            let result = crate::update::install(
+                &release,
+                &targets,
+                &current,
+                fallback.as_deref(),
+                &token,
+                move |done, total| {
+                    let _ = progress_results.send(JobResult::UpdateProgress { done, total });
+                    progress_context.request_repaint();
+                },
+            )
+            .await;
+
+            let job = match result {
+                Ok(crate::update::Installed::Started) => JobResult::UpdateDownloaded { version },
+                Ok(crate::update::Installed::Manual(dir)) => JobResult::UpdateManual { dir },
+                Err(CoreError::Cancelled) => JobResult::UpdateCancelled,
+                Err(error) => JobResult::UpdateFailed(error.to_string()),
+            };
+            let _ = results.send(job);
+            context.request_repaint();
+        });
+        self.update.cancel = Some(token);
+    }
+
+    /// O que o usuário fez com um toast neste quadro.
+    fn handle_toast_event(&mut self, event: crate::toast::ToastEvent, ctx: &egui::Context) {
+        use crate::toast::ToastEvent;
+
+        let id = match event {
+            ToastEvent::Action(id) | ToastEvent::Closed(id) => id,
+        };
+        if Some(id) != self.update.toast {
+            return;
+        }
+
+        match event {
+            ToastEvent::Action(_) => self.start_update(ctx),
+            ToastEvent::Closed(_) => {
+                let was_downloading = self.update.downloading;
+                if let Some(token) = self.update.cancel.take() {
+                    token.cancel();
+                }
+                self.update.downloading = false;
+                self.update.toast = None;
+
+                // Fechar o aviso de uma versão a deixa quieta por 7 dias; fechar **durante** o
+                // download é cancelamento, não dispensa.
+                if !was_downloading
+                    && let Some(release) = &self.update.release
+                    && let Some(path) = mustel_core::update::state::default_path()
+                {
+                    let mut state = mustel_core::update::UpdateState::load(&path);
+                    state.dismiss(
+                        &release.version.to_string(),
+                        mustel_core::datetime::now_ms(),
+                    );
+                    let _ = state.save(&path);
+                }
+            }
+        }
+    }
+
+    /// Registra uma entrada do updater no log de atividade.
+    fn log_update(
+        &mut self,
+        op: &str,
+        status: mustel_core::activity::Status,
+        detail: impl Into<String>,
+        error: Option<String>,
+    ) {
+        let mut entry =
+            mustel_core::activity::Entry::new(mustel_core::activity::Area::App, op, status)
+                .with_detail(detail);
+        if let Some(error) = error {
+            entry = entry.with_error(error);
+        }
+        self.activity.record(entry);
     }
 
     /// Aplica o que chegou dos canais.
@@ -964,9 +1510,17 @@ impl App {
 
         // Resultados dos jobs.
         while let Ok(result) = self.results_rx.try_recv() {
-            // A descoberta de bancos roda fora da fila única do app: ela não pode desligar o
-            // "Running" de uma consulta que continua em andamento.
-            if !matches!(result, JobResult::Databases { .. }) {
+            // A descoberta de bancos e o updater rodam fora da fila única do app: eles não podem
+            // desligar o "Running" de uma consulta que continua em andamento.
+            let background = is_background(&result);
+            let duration_ms = if background {
+                None
+            } else {
+                self.running
+                    .as_ref()
+                    .map(|running| running.started.elapsed().as_millis() as u64)
+            };
+            if !background {
                 self.running = None;
             }
             self.servers.apply(&result);
@@ -1000,21 +1554,27 @@ impl App {
                 JobResult::Saved(name) => format!("Server '{name}' saved."),
                 JobResult::Removed(name) => format!("Server '{name}' removed."),
                 JobResult::PasswordSaved(name) => format!("Password saved for '{name}'."),
-                JobResult::Tested { server, databases } => {
-                    format!("'{server}' connected: {} database(s)", databases.len())
-                }
+                // O resultado de um `Test` é do botão (spinner → check/X) e, na falha, do balão;
+                // a barra não repete a lista de bases, a resposta da IA nem o motivo.
+                JobResult::Tested { .. } | JobResult::AiTested { .. } => "Ready.".to_string(),
                 JobResult::QueryDone { total_rows, .. } => {
+                    // A contagem final é recado de ação concluída; a barra volta ao repouso.
                     format!("Query finished: {total_rows} row(s).")
                 }
                 JobResult::QueryWithoutDatabases => {
                     "No accessible databases found across selected servers.".to_string()
                 }
-                JobResult::Ddl { .. } | JobResult::SqlGenerated { .. } => self.status.clone(),
                 JobResult::AiProfilesSaved => "AI profiles saved.".to_string(),
-                JobResult::AiTested { result, .. } => match result {
-                    Ok(message) => format!("AI profile works: {message}"),
-                    Err(error) => format!("AI profile failed: {error}"),
-                },
+                // O updater escreve o próprio recado (toast) e o próprio estado: a barra não
+                // repete o progresso byte a byte.
+                JobResult::Ddl { .. }
+                | JobResult::SqlGenerated { .. }
+                | JobResult::UpdateChecked { .. }
+                | JobResult::UpdateProgress { .. }
+                | JobResult::UpdateDownloaded { .. }
+                | JobResult::UpdateManual { .. }
+                | JobResult::UpdateCancelled => self.status.clone(),
+                JobResult::UpdateFailed(error) => format!("Update failed: {error}"),
                 JobResult::Schema {
                     server,
                     database,
@@ -1083,6 +1643,43 @@ impl App {
                 JobResult::Failed(error) => error.clone(),
             };
 
+            // Quem merece balão é decidido em um só lugar (e testado); o status acima continua
+            // sendo o estado ambiente. Sucesso não ocupa a barra — ela volta ao repouso —, mas
+            // aviso e erro continuam explicados nela.
+            if let Some((kind, message)) = toast_for(&result) {
+                self.toasts.notify(kind, message);
+                if kind == crate::toast::Kind::Success {
+                    self.status = "Ready.".to_string();
+                }
+            }
+
+            // O log de atividade recebe **todos** os resultados (o toast só recebe os que merecem
+            // atenção): é dele que a aba Activity e o relatório vivem.
+            if let Some(entry) =
+                crate::activity_log::entry_for(&result, &self.ai_profiles, duration_ms)
+            {
+                self.activity.record(entry);
+            }
+
+            // O updater tem estado próprio (toast sticky, progresso e release conhecida): os
+            // eventos dele não passam pelo `toast_for` nem pelo `entry_for`.
+            match &result {
+                JobResult::UpdateChecked { manual, result } => {
+                    let (manual, result) = (*manual, result.clone());
+                    self.handle_update_checked(manual, result);
+                }
+                JobResult::UpdateProgress { done, total } => {
+                    self.handle_update_progress(*done, *total);
+                }
+                JobResult::UpdateDownloaded { version } => {
+                    self.handle_update_downloaded(version.clone());
+                }
+                JobResult::UpdateManual { dir } => self.handle_update_manual(dir.clone()),
+                JobResult::UpdateCancelled => self.handle_update_cancelled(),
+                JobResult::UpdateFailed(error) => self.handle_update_failed(error.clone()),
+                _ => {}
+            }
+
             // Um `Save` com senha encadeia o pedido de guardar no cofre, na mesma ordem do CLI.
             if matches!(result, JobResult::Saved(_))
                 && let Some(password) = self.servers.take_pending_password()
@@ -1128,6 +1725,15 @@ impl eframe::App for App {
         // Antes de desenhar: o mínimo da janela depende da escala e dos painéis abertos.
         self.sync_min_window_size(&ctx);
 
+        // O check automático roda uma vez por sessão (e, no máximo, uma vez por dia UTC). Em debug
+        // fica desligado para não substituir o binário de desenvolvimento.
+        if !self.update.checked_once {
+            self.update.checked_once = true;
+            if !cfg!(debug_assertions) {
+                self.check_for_updates(&ctx, false);
+            }
+        }
+
         // `CentralPanel` (e não `Frame::central_panel`): o painel **ocupa** toda a área restante e
         // pinta o fundo dela. Com o `Frame` ele encolhia até o tamanho do conteúdo, e o resto da
         // janela ficava com o fundo cru do `eframe` — a área escura abaixo do conteúdo.
@@ -1147,7 +1753,11 @@ impl eframe::App for App {
                     self.screen = screen;
                 }
                 ui.separator();
-                ui.label(&self.status);
+                // A barra é **uma linha**: um status comprido ("Could not list the databases…") não
+                // pode alargar o layout. Antes ele esticava a linha além da janela, o `max_rect`
+                // do conteúdo ia junto — e o que estava alinhado à direita (as ações do cartão de
+                // perfil) ficava fora da tela. Truncar mantém a barra dentro da largura.
+                ui.add(egui::Label::new(&self.status).truncate());
                 if let Some(running) = &self.running {
                     ui.spinner();
                     ui.label(format!("[{}]", running.label));
@@ -1293,11 +1903,20 @@ impl eframe::App for App {
                             // edita, então mexer lá vale no quadro seguinte.
                             let page_size = crate::screens::query::page_size(&self.gui_prefs());
                             self.query.set_page_size(page_size);
+                            self.query.set_read_only(self.settings.read_only());
                             // O dono da lista é o app: a tela só desenha e devolve o pedido.
                             self.query.set_saved_queries(self.saved_queries.clone());
                             self.query.ui(ui, &servers, schema, &self.reference)
                         }
-                        Screen::Settings => self.settings.ui(ui),
+                        Screen::Settings => {
+                            let mut activity = crate::screens::activity::Context {
+                                log: &mut self.activity,
+                                servers: &servers,
+                                profiles: &self.ai_profiles,
+                                reports_dir: self.reports_dir.as_deref(),
+                            };
+                            self.settings.ui(ui, &mut activity)
+                        }
                     }
                 });
             request = main.inner.or(request);
@@ -1309,6 +1928,12 @@ impl eframe::App for App {
             // O conteúdo fica no topo; o resto do painel é fundo, não área morta de outro widget.
             ui.allocate_space(ui.available_size());
         });
+
+        // Toasts por cima de tudo — inclusive dos painéis e do conteúdo.
+        let toast_events = self.toasts.show(&ctx);
+        for event in toast_events {
+            self.handle_toast_event(event, &ctx);
+        }
     }
 }
 
@@ -1363,6 +1988,89 @@ fn reopen_handles(
     (reopen_sidebar, reopen_ai)
 }
 
+/// Os recados de abertura do updater, lidos das envs que o helper deixa na nova instância.
+///
+/// Separado do `App::new` para a mensagem ser testável sem uma janela: é o único retorno que o
+/// usuário vê do restart (o resto do update aconteceu no processo anterior).
+fn startup_toasts(
+    updated_from: Option<String>,
+    update_failed: Option<String>,
+) -> Vec<(crate::toast::Kind, String)> {
+    let mut toasts = Vec::new();
+    if let Some(previous) = updated_from {
+        toasts.push((
+            crate::toast::Kind::Success,
+            format!("Updated to {} (from {previous}).", crate::about::VERSION),
+        ));
+    }
+    if let Some(error) = update_failed {
+        toasts.push((
+            crate::toast::Kind::Error,
+            format!("The update could not be applied: {error}"),
+        ));
+    }
+    toasts
+}
+
+/// O resultado veio de um job que roda **fora** da fila única do app?
+///
+/// A descoberta de bancos e o updater têm vida própria: não podem desligar o `Running` de uma
+/// consulta em andamento nem herdar a duração dela.
+fn is_background(result: &JobResult) -> bool {
+    matches!(
+        result,
+        JobResult::Databases { .. }
+            | JobResult::UpdateChecked { .. }
+            | JobResult::UpdateProgress { .. }
+            | JobResult::UpdateDownloaded { .. }
+            | JobResult::UpdateManual { .. }
+            | JobResult::UpdateCancelled
+            | JobResult::UpdateFailed(_)
+    )
+}
+
+/// O balão que um resultado de job merece — ou `None` quando a tela já mostra o recado.
+///
+/// A regra é uma só: **não duplicar** o que o usuário vê sozinho. Servidor salvo/removido e senha
+/// guardada têm retorno na área principal; o `Test` que **passa** vira check no botão. O que sobra
+/// é o que não tem texto na tela — inclusive a falha do `Test` (de conexão ou de perfil de IA), que
+/// o botão só marca com X.
+fn toast_for(result: &JobResult) -> Option<(crate::toast::Kind, String)> {
+    use crate::toast::Kind;
+
+    match result {
+        JobResult::AiProfilesSaved => Some((Kind::Success, "AI profiles saved.".to_string())),
+        JobResult::QueryDone { total_rows, .. } => Some((
+            Kind::Success,
+            format!("Query finished: {total_rows} row(s)."),
+        )),
+        JobResult::QueryWithoutDatabases => Some((
+            Kind::Warning,
+            "No accessible databases found across selected servers.".to_string(),
+        )),
+        JobResult::Tested {
+            server,
+            outcome: Err(error),
+        } => Some((
+            Kind::Error,
+            // O erro do núcleo já vem com o embrulho (`Connection failed:`/`Authentication
+            // failed:`); só falta dizer **de qual** servidor — o balão pode aparecer com o
+            // usuário em outra aba.
+            format!("{server}: {error}"),
+        )),
+        JobResult::AiTested {
+            profile,
+            result: Err(error),
+        } => Some((
+            Kind::Error,
+            // O job carrega o `id` do perfil; é ele que identifica o cartão no balão.
+            format!("{profile}: {error}"),
+        )),
+        JobResult::Failed(error) => Some((Kind::Error, error.clone())),
+        _ => None,
+    }
+}
+
 /// Abre o cadastro do caminho padrão e roda `action`; erro de configuração vira `JobResult::Failed`.
 fn with_store(action: impl FnOnce(&ConfigStore) -> JobResult) -> JobResult {
     match ConfigStore::with_default_path() {
@@ -1374,6 +2082,107 @@ fn with_store(action: impl FnOnce(&ConfigStore) -> JobResult) -> JobResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// O helper deixa o resultado do restart no ambiente, e é isso que a nova instância mostra.
+    ///
+    /// O sucesso nomeia a versão nova (a embutida neste binário) e a de origem; a falha traz o
+    /// motivo do helper; sem nenhuma das duas, a janela abre sem recado.
+    /// CONTRACT: IF-270
+    #[test]
+    fn the_helper_environment_becomes_the_startup_toast() {
+        let updated = startup_toasts(Some("1.0.0".to_string()), None);
+        assert_eq!(updated.len(), 1);
+        assert_eq!(updated[0].0, crate::toast::Kind::Success);
+        assert_eq!(
+            updated[0].1,
+            format!("Updated to {} (from 1.0.0).", crate::about::VERSION)
+        );
+
+        let failed = startup_toasts(None, Some("could not replace mustel".to_string()));
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].0, crate::toast::Kind::Error);
+        assert_eq!(
+            failed[0].1,
+            "The update could not be applied: could not replace mustel"
+        );
+
+        assert!(startup_toasts(None, None).is_empty());
+    }
+
+    /// Só vira balão o resultado que o usuário não vê sozinho — e a falha do `Test` é um deles.
+    ///
+    /// Servidor salvo/removido e senha guardada já têm retorno na área principal; o `Test` que
+    /// passa vira check no botão. Já a falha do `Test` (de conexão ou de perfil de IA) não escreve
+    /// mais nada na tela: o motivo chega pelo toast.
+    /// CONTRACT: IF-263
+    #[test]
+    fn only_the_results_without_their_own_visible_message_get_a_toast() {
+        use crate::toast::Kind;
+
+        assert_eq!(
+            toast_for(&JobResult::QueryDone {
+                consolidated: None,
+                log: std::path::PathBuf::from("run.log"),
+                servers: 1,
+                successes: 1,
+                failures: 0,
+                total_rows: 42,
+            }),
+            Some((Kind::Success, "Query finished: 42 row(s).".to_string()))
+        );
+        assert_eq!(
+            toast_for(&JobResult::AiProfilesSaved),
+            Some((Kind::Success, "AI profiles saved.".to_string()))
+        );
+        assert_eq!(
+            toast_for(&JobResult::QueryWithoutDatabases),
+            Some((
+                Kind::Warning,
+                "No accessible databases found across selected servers.".to_string()
+            ))
+        );
+        assert_eq!(
+            toast_for(&JobResult::Failed("boom".to_string())),
+            Some((Kind::Error, "boom".to_string()))
+        );
+        assert_eq!(
+            toast_for(&JobResult::Tested {
+                server: "Local".to_string(),
+                outcome: Err("Connection failed: connection refused".to_string()),
+            }),
+            Some((
+                Kind::Error,
+                "Local: Connection failed: connection refused".to_string()
+            ))
+        );
+        assert_eq!(
+            toast_for(&JobResult::AiTested {
+                profile: "ollama".to_string(),
+                result: Err("No key stored for this profile.".to_string()),
+            }),
+            Some((
+                Kind::Error,
+                "ollama: No key stored for this profile.".to_string()
+            ))
+        );
+
+        for quiet in [
+            JobResult::Saved("dev".to_string()),
+            JobResult::Removed("dev".to_string()),
+            JobResult::PasswordSaved("dev".to_string()),
+            // O `Test` que passa já vira check no cartão.
+            JobResult::Tested {
+                server: "dev".to_string(),
+                outcome: Ok(Vec::new()),
+            },
+            JobResult::AiTested {
+                profile: "ollama".to_string(),
+                result: Ok("OK: SELECT 1;".to_string()),
+            },
+        ] {
+            assert_eq!(toast_for(&quiet), None, "não devia virar balão: {quiet:?}");
+        }
+    }
 
     /// O que a linha de alças pintou: textos com a posição, altura consumida e o que foi clicado.
     struct Painted {
@@ -1443,32 +2252,26 @@ mod tests {
         found[0]
     }
 
-    /// O mínimo da janela **cresce com o painel da IA**: sem ele, sobrava uma tira de conteúdo.
+    /// O mínimo da janela **cresce com o painel da IA**, e não com a escala da fonte.
     ///
-    /// O piso de `fonts` (880 a 1,0) supõe a sidebar aberta e o painel fechado. Com o painel
-    /// aberto, 360 px saem da área de conteúdo: 880 + 360 = 1240 a 1,0. Abrir o painel numa janela
-    /// de 900 deixava ~120 px para o formulário — as linhas não cabiam e o texto caía sobre o
-    /// painel.
+    /// O piso de `fonts` (880) supõe a sidebar aberta e o painel fechado. Com o painel aberto,
+    /// 360 px saem da área de conteúdo: 880 + 360 = 1240. Abrir o painel numa janela de 900
+    /// deixava ~120 px para o formulário — as linhas não cabiam e o texto caía sobre o painel.
     #[test]
     fn the_minimum_window_grows_with_the_ai_panel() {
-        let base = crate::fonts::min_window_size(1.0);
+        let base = crate::fonts::min_window_size();
         assert_eq!(
-            min_window_size(1.0, false),
+            min_window_size(false),
             base,
             "sem o painel, o piso de sempre"
         );
         assert_eq!(
-            min_window_size(1.0, true),
+            min_window_size(true),
             egui::vec2(base.x + AI_PANEL_WIDTH, base.y),
             "com o painel, some a largura dele"
         );
-        // A escala continua valendo para os dois lados (fonte maior, janela maior).
-        assert_eq!(
-            min_window_size(1.25, true),
-            egui::vec2((base.x + AI_PANEL_WIDTH) * 1.25, base.y * 1.25)
-        );
         // A altura não muda: o painel é uma coluna, não ocupa altura a mais.
-        assert_eq!(min_window_size(1.0, true).y, min_window_size(1.0, false).y);
+        assert_eq!(min_window_size(true).y, min_window_size(false).y);
     }
 
     /// A conta do `min_window_size` deixa a área de conteúdo com o que o formulário pede.
@@ -1481,12 +2284,71 @@ mod tests {
     #[test]
     fn the_minimum_leaves_room_for_the_form() {
         const FORM: f32 = 450.0;
-        let window = min_window_size(1.0, true).x;
+        let window = min_window_size(true).x;
         let left = SIDEBAR_WIDTH + f32::from(CONTENT_GAP);
         let content = window - left - AI_PANEL_WIDTH;
         assert!(
             content >= FORM,
             "sobram {content} px para o conteúdo; o formulário pede {FORM}"
+        );
+    }
+
+    /// Salvar a **aparência** preserva os seletores e as queries salvas.
+    ///
+    /// A regressão: `SaveGuiPrefs` gravava o `GuiPrefs` que veio da tela de Settings, e essa tela
+    /// não conhece `selections`/`savedQueries` — mudar o tema (ou a fonte, ou a paginação) apagava
+    /// os dois. Servidores, perfis de IA e paginação sobreviviam, então o sintoma era "só os
+    /// seletores sumiram".
+    /// CONTRACT: IF-218
+    #[test]
+    fn saving_the_appearance_keeps_the_selectors_and_saved_queries() {
+        use mustel_core::config::model::{GuiTheme, SavedQuery};
+
+        let directory = tempfile::tempdir().expect("tempdir");
+        let store = ConfigStore::new(directory.path().join("mustel.jsonc"));
+
+        let selection = SelectionQuery {
+            name: "Produção".to_string(),
+            server: "configurador".to_string(),
+            database: "configurador".to_string(),
+            sql: "select host, port, database from tenants".to_string(),
+        };
+        let saved = SavedQuery {
+            name: "Faturamento".to_string(),
+            sql: "select 1".to_string(),
+        };
+
+        // O que já estava no arquivo, como quem cadastrou os seletores antes de mexer no tema.
+        gui_prefs::save(
+            &store,
+            Some(GuiPrefs {
+                selections: vec![selection.clone()],
+                saved_queries: vec![saved.clone()],
+                ..GuiPrefs::default()
+            }),
+        )
+        .expect("grava o que já existia");
+
+        let appearance = GuiPrefs {
+            theme: GuiTheme::Light,
+            font_scale: 1.1,
+            ..GuiPrefs::default()
+        };
+        save_appearance(
+            &store,
+            appearance,
+            std::slice::from_ref(&selection),
+            std::slice::from_ref(&saved),
+        )
+        .expect("grava a aparência");
+
+        let prefs = gui_prefs::load(&store).expect("lê").expect("seção gui");
+        assert_eq!(prefs.theme, GuiTheme::Light, "a aparência mudou");
+        assert_eq!(prefs.selections, vec![selection], "os seletores continuam");
+        assert_eq!(
+            prefs.saved_queries,
+            vec![saved],
+            "as queries salvas continuam"
         );
     }
 

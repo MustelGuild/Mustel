@@ -41,6 +41,10 @@ só é a origem da maior parte da documentação ruim.
 | | | | [Decisões de engenharia](explanation/decisoes.md) |
 | | | | [Diferenças deliberadas](explanation/diferencas-deliberadas.md) |
 | | | | [Ajustes de segurança](explanation/seguranca.md) |
+| | | [Log de atividade](reference/activity-log.md) | [Por que o log é assim](explanation/log-e-privacidade.md) |
+| | [Atualizar o Mustel](how-to/atualizar.md) | [Atualização](reference/updates.md) | [Por que a atualização é assim](explanation/atualizacao.md) |
+| | [Instalar no Windows](how-to/instalar-no-windows.md) | [Instalador do Windows](reference/instalador-windows.md) | |
+| | | | [Auditoria de segurança (2026-11-08)](explanation/auditoria-de-seguranca.md) |
 
 ## A bússola
 
@@ -57,8 +61,9 @@ Na prática: um tutorial ensina; um how-to resolve; a referência descreve; a ex
 
 ## O que havia aqui antes
 
-Os 11 documentos anteriores eram do produto .NET (e de um plano de GUI em Electron que nunca existiu
-no Mustel). Antes de removê-los, cada um foi minerado — esta tabela registra o destino de cada um.
+Os 11 documentos anteriores eram do produto .NET (e de um documento de GUI em Electron que nunca
+existiu no Mustel). Antes de removê-los, cada um foi minerado — esta tabela registra o destino de
+cada um.
 
 | Documento antigo | Destino |
 |---|---|
@@ -68,13 +73,8 @@ no Mustel). Antes de removê-los, cada um foi minerado — esta tabela registra 
 | `rust-postgres-spike.md` | [Explicação: por que `tokio-postgres`](explanation/por-que-tokio-postgres.md) |
 | `pt-BR/FEATURE_SPECIFICATION.md`, `en/FEATURE_SPECIFICATION.md` | Descartados: descrevem features dos grupos não migrados (`file`, `claude`, `opencode`, `winget`) e o blob DPAPI |
 | `pt-BR/ARCHITECTURE.md`, `en/ARCHITECTURE.md` | Descartados: arquitetura .NET (DI, `System.CommandLine`); a do Mustel está no `AGENTS.md` |
-| `pt-BR/GUI_REFACTORING_PLAN.md`, `en/GUI_REFACTORING_PLAN.md` | Descartados: plano de GUI em Electron/Angular, abandonado em favor do egui (D5) |
+| `pt-BR/GUI_REFACTORING_PLAN.md`, `en/GUI_REFACTORING_PLAN.md` | Descartados: documento de GUI em Electron/Angular, abandonado em favor do egui (D5) |
 | `pt-BR/SESSION_SUMMARY_2025-03-17.md` | Descartado: diário de sessão, sem valor de contrato |
 
 O contrato vigente não está aqui: está em [`contrato-de-interface.md`](contrato-de-interface.md) e é
 verificado por `cargo test --workspace`.
-
-Os **planos** de `MustelPlans/` têm o mesmo destino, com uma diferença: o que eles documentam vira
-página aqui antes de o plano ser removido. As decisões dos planos de migração, autocomplete e seleção
-de bases estão consolidadas em [Decisões de engenharia](explanation/decisoes.md). `MustelPlans/`
-guarda apenas trabalho que ainda não foi executado.

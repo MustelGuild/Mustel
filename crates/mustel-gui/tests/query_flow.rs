@@ -81,6 +81,7 @@ fn the_query_screen_path_produces_a_csv_that_reloads_into_table_rows() {
         vec![run],
         "SELECT 1 AS valor",
         output.path().display().to_string(),
+        false,
     )
     .expect("monta a entrada");
 

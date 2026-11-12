@@ -35,6 +35,16 @@ pub enum Request {
     TestConnection(ServerConfigEntry),
     /// Cancela o job em andamento.
     CancelJob,
+    /// Consulta o GitHub em busca de uma versão nova (botão do About).
+    CheckForUpdates {
+        /// Mostra o resultado na tela mesmo que o check automático esteja silencioso.
+        manual: bool,
+    },
+    /// Pede ao app para abrir o cliente de e-mail do suporte (About).
+    ///
+    /// Não vira `mailto:` no `webbrowser`: sem um handler configurado o navegador abriria no lugar
+    /// do cliente. O app usa o `desktop::compose_email` e, sem cliente, copia o endereço.
+    ComposeSupportEmail,
     /// Abre/fecha o painel de conversa com a IA (aba Query).
     ToggleAiPanel,
     /// Vai para a aba Settings (o painel da IA pede quando falta configuração).
@@ -146,6 +156,8 @@ pub enum Request {
         sql: String,
         /// Diretório base da saída.
         output_directory: String,
+        /// Executa em `BEGIN TRANSACTION READ ONLY` (modo somente leitura da aba Settings).
+        read_only: bool,
     },
 }
 
@@ -179,12 +191,16 @@ pub enum JobResult {
     Removed(String),
     /// A senha foi guardada.
     PasswordSaved(String),
-    /// O teste de conexão passou.
+    /// O teste de conexão terminou.
+    ///
+    /// Carrega o **resultado** (e não só o sucesso) porque o botão do cartão precisa marcar o
+    /// servidor certo com check ou X: a falha antes vinha como `Failed`, genérico, sem dizer qual
+    /// servidor era.
     Tested {
         /// Servidor testado.
         server: String,
-        /// Bancos encontrados.
-        databases: Vec<String>,
+        /// Deu certo? Os bancos encontrados, ou a mensagem do erro.
+        outcome: Result<Vec<String>, String>,
     },
     /// A consulta terminou; os caminhos vêm do núcleo.
     QueryDone {
@@ -256,4 +272,32 @@ pub enum JobResult {
     },
     /// O job falhou, com a mensagem pronta do núcleo.
     Failed(String),
+    /// A consulta de update terminou.
+    UpdateChecked {
+        /// Foi o botão do About?
+        manual: bool,
+        /// A release nova, ou o erro.
+        result: Result<Option<mustel_core::update::Release>, String>,
+    },
+    /// Progresso do download do update.
+    UpdateProgress {
+        /// Bytes baixados.
+        done: u64,
+        /// Total conhecido.
+        total: Option<u64>,
+    },
+    /// O helper foi disparado; o app vai reiniciar.
+    UpdateDownloaded {
+        /// Versão que está sendo aplicada.
+        version: String,
+    },
+    /// A pasta do executável não é gravável: o arquivo ficou para instalar à mão.
+    UpdateManual {
+        /// Onde os arquivos foram salvos.
+        dir: std::path::PathBuf,
+    },
+    /// O usuário cancelou o download.
+    UpdateCancelled,
+    /// O update falhou (download, helper ou tarefa).
+    UpdateFailed(String),
 }

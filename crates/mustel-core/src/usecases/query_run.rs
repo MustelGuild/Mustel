@@ -33,6 +33,8 @@ pub struct QueryRunRequest {
     pub servers: Vec<ServerRun>,
     /// Consulta já resolvida (`-c`/`-i`) e desescapada.
     pub sql: Arc<str>,
+    /// Executa a consulta em `BEGIN TRANSACTION READ ONLY` (modo somente leitura da janela).
+    pub read_only: bool,
     /// Diretório base da saída: o timestamp da execução é criado dentro dele.
     pub output_directory: PathBuf,
     /// `maxParallelism` dos defaults: quantos **servidores** rodam ao mesmo tempo.
@@ -90,6 +92,7 @@ pub async fn run(
     let execution = ExecutionRequest {
         servers: plans,
         sql: Arc::clone(&request.sql),
+        read_only: request.read_only,
         directory,
         timestamp,
         max_parallelism: request.max_parallelism.max(1),
@@ -141,6 +144,7 @@ mod tests {
         QueryRunRequest {
             servers,
             sql: Arc::from("SELECT 1"),
+            read_only: false,
             output_directory: output.to_path_buf(),
             max_parallelism: 4,
             command_timeout: Duration::from_secs(300),

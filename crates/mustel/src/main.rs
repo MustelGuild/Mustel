@@ -4,36 +4,116 @@
 //! biblioteca (`mustel::commands`). A árvore de comandos e as primitivas de UI vivem na lib para
 //! serem testáveis sem processo.
 
+use std::time::Instant;
+
 use clap::Parser;
 
 use mustel::cli::MustelCli;
 use mustel::commands;
 use mustel::exit;
+use mustel_core::activity::{Area, Entry, Status as ActivityStatus, Store};
 use mustel_core::error::{CoreError, exit_code};
 use mustel_core::signal::{cancellation_token, spawn_ctrl_c_listener};
 
 #[tokio::main]
 async fn main() {
+    // Modo oculto do updater: troca os executáveis e relança o app. Fica **antes** do clap (e do
+    // log de atividade) para o helper não aparecer na árvore de comandos nem escrever uma
+    // execução que não houve.
+    if let Some(code) = mustel_core::update::apply_from_args(std::env::args_os().skip(1)) {
+        std::process::exit(code);
+    }
+
     warn_if_password_is_on_the_command_line();
+
+    let log = activity_store();
+    if let Some(store) = &log {
+        mustel_core::activity::crash::install(store.clone());
+        let _ = store.prune(
+            mustel_core::activity::RETENTION_DAYS,
+            mustel_core::datetime::now_ms(),
+        );
+    }
 
     let parsed = match MustelCli::try_parse() {
         Ok(parsed) => parsed,
-        Err(error) => std::process::exit(handle_parse_error(&error)),
+        Err(error) => {
+            log_parse_error(&log, &error);
+            std::process::exit(handle_parse_error(&error));
+        }
     };
+
+    // O rótulo é lido antes de `dispatch` consumir o CLI.
+    let label = parsed.activity_label();
+    let started = Instant::now();
 
     let token = cancellation_token();
     // Ctrl+C cancela o token; quem observa o token é o caso de uso em execução.
     let _listener = spawn_ctrl_c_listener(token.clone());
 
-    let code = tokio::select! {
-        result = commands::dispatch(parsed, &token) => match result {
-            Ok(code) => code,
-            Err(error) => exit::report_error(&error),
-        },
-        () = token.cancelled() => exit::report_error(&CoreError::Cancelled),
+    let result = tokio::select! {
+        result = commands::dispatch(parsed, &token) => result,
+        () = token.cancelled() => Err(CoreError::Cancelled),
     };
 
+    let status = match &result {
+        Ok(_) => ActivityStatus::Ok,
+        Err(CoreError::Cancelled) => ActivityStatus::Cancelled,
+        Err(_) => ActivityStatus::Error,
+    };
+    let error = match &result {
+        Err(error) => Some(error.to_string()),
+        Ok(_) => None,
+    };
+    let code = match result {
+        Ok(code) => code,
+        Err(error) => exit::report_error(&error),
+    };
+
+    if let Some((area, op, target)) = label {
+        let mut entry =
+            Entry::new(area, op, status).with_duration_ms(started.elapsed().as_millis() as u64);
+        if let Some(target) = target {
+            entry = entry.with_target(target);
+        }
+        if let Some(error) = error {
+            entry = entry.with_error(error);
+        }
+        log_entry(&log, entry);
+    }
+
     std::process::exit(code);
+}
+
+/// O store do log padrão, quando o SO expõe uma pasta de estado.
+fn activity_store() -> Option<Store> {
+    mustel_core::activity::log_dir().map(Store::new)
+}
+
+/// Grava uma entrada; falhar no log **não** pode derrubar o comando.
+fn log_entry(store: &Option<Store>, entry: Entry) {
+    if let Some(store) = store {
+        let _ = store.append(&entry);
+    }
+}
+
+/// Erro de linha de comando também entra no log (menos `--help`/`--version`).
+fn log_parse_error(store: &Option<Store>, error: &clap::Error) {
+    use clap::error::ErrorKind;
+
+    if matches!(
+        error.kind(),
+        ErrorKind::DisplayHelp
+            | ErrorKind::DisplayVersion
+            | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+    ) {
+        return;
+    }
+
+    log_entry(
+        store,
+        Entry::new(Area::App, "cli.parse", ActivityStatus::Error).with_error(error.to_string()),
+    );
 }
 
 /// `-W` deixa a senha visível em `ps` e no histórico do shell; avisa quando há terminal.

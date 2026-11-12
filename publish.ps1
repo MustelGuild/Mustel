@@ -46,11 +46,18 @@ try {
     $binary = Join-Path $root "target\release\$exe"
     if (-not (Test-Path $binary)) { throw "binário não encontrado: $binary (rode sem -NoBuild)" }
 
+    # Janela sem console: mesmo código, subsistema gráfico do Windows. Sem ele, o duplo clique no
+    # `mustel.exe` abre um terminal atrás da janela (o `mustel.exe` é um programa de console).
+    $guiExe = if ($IsWindows -or $env:OS -eq 'Windows_NT') { 'mustel-gui.exe' } else { 'mustel-gui' }
+    $guiBinary = Join-Path $root "target\release\$guiExe"
+    if (-not (Test-Path $guiBinary)) { throw "binário gráfico não encontrado: $guiBinary (rode sem -NoBuild)" }
+
     $stage = Join-Path $root "packaging\mustel-$version-$triple"
     if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
     New-Item -ItemType Directory -Path $stage -Force | Out-Null
 
     Copy-Item $binary $stage
+    Copy-Item $guiBinary $stage
     Copy-Item (Join-Path $root 'mustel.example.jsonc') $stage
     Copy-Item (Join-Path $root 'LICENSE') $stage
     Copy-Item (Join-Path $root 'crates\mustel-gui\assets\fonts\FiraCode-OFL.txt') $stage
@@ -80,7 +87,9 @@ try {
     $readme = @"
 Mustel $version ($triple)
 
-1. Copie o binário '$exe' para um diretório no PATH.
+1. Para a **janela**, dê duplo clique em '$guiExe' — ele não abre janela de console.
+   Para o **terminal**, copie '$exe' para um diretório no PATH; sem subcomando num terminal
+   ele também abre a janela.
 2. Copie 'mustel.example.jsonc' para o diretório de configuração e ajuste:
    Windows:     %APPDATA%\Mustel\mustel.jsonc
    Linux/macOS: `$XDG_CONFIG_HOME/Mustel/mustel.jsonc (ou ~/.config/Mustel/mustel.jsonc)

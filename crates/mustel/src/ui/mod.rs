@@ -25,7 +25,15 @@ pub fn is_interactive() -> bool {
 
 /// Garante modo interativo, ou devolve erro claro dizendo o que fazer.
 pub fn ensure_interactive(action: &str) -> Result<(), CoreError> {
-    if is_interactive() {
+    ensure_interactive_with(is_interactive(), action)
+}
+
+/// A regra de [`ensure_interactive`] com a resposta já decidida.
+///
+/// A decisão é injetada para o teste não depender do TTY de quem roda a suíte: num terminal
+/// interativo o processo de teste **tem** terminal, e os dois lados precisam ser cobertos.
+fn ensure_interactive_with(interactive: bool, action: &str) -> Result<(), CoreError> {
+    if interactive {
         Ok(())
     } else {
         Err(CoreError::InvalidState(format!(
@@ -39,15 +47,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_process_has_no_tty() {
-        assert!(!is_interactive(), "a suíte roda sem terminal");
-    }
-
-    #[test]
     fn ensure_interactive_explains_what_to_do() {
-        let error = ensure_interactive("a password prompt").expect_err("must fail");
+        let error = ensure_interactive_with(false, "a password prompt").expect_err("must fail");
         let message = error.to_string();
         assert!(message.contains("interactive terminal"), "{message}");
         assert!(message.contains("command-line argument"), "{message}");
+    }
+
+    /// Com terminal, a mesma ação é aceita — a decisão vem do parâmetro, não do TTY da suíte.
+    #[test]
+    fn an_interactive_terminal_accepts_the_action() {
+        ensure_interactive_with(true, "a password prompt").expect("interactive accepts");
     }
 }

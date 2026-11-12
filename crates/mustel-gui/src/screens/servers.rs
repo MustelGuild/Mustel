@@ -126,6 +126,13 @@ pub struct State {
     message: Option<String>,
     /// Erro do último pedido.
     error: Option<String>,
+    /// Servidores com o `Test` de conexão **em andamento** (o botão vira spinner).
+    testing: Vec<String>,
+    /// Último resultado do `Test` por servidor: (servidor, deu certo?, quando chegou).
+    ///
+    /// O botão mostra check ou X por alguns segundos e volta a `Test` — é o retorno visual do
+    /// teste, no lugar do texto com as bases encontradas.
+    tested: Vec<(String, bool, std::time::Instant)>,
     /// Senha a guardar depois que o servidor for gravado (o `Save` manda os dois pedidos).
     pending_password: Option<String>,
     /// Qual cadastro a aba está mostrando.
@@ -186,7 +193,13 @@ impl State {
             | JobResult::Selection { .. }
             | JobResult::SelectionFailed { .. }
             | JobResult::QueryDone { .. }
-            | JobResult::QueryWithoutDatabases => {}
+            | JobResult::QueryWithoutDatabases
+            | JobResult::UpdateChecked { .. }
+            | JobResult::UpdateProgress { .. }
+            | JobResult::UpdateDownloaded { .. }
+            | JobResult::UpdateManual { .. }
+            | JobResult::UpdateCancelled
+            | JobResult::UpdateFailed(_) => {}
             JobResult::Servers(servers) => {
                 self.servers = servers.clone();
                 self.error = None;
@@ -206,12 +219,14 @@ impl State {
                 self.message = Some(format!("Password saved for '{name}'."));
                 self.error = None;
             }
-            JobResult::Tested { server, databases } => {
-                self.message = Some(if databases.is_empty() {
-                    format!("'{server}' connected, no accessible databases.")
-                } else {
-                    format!("'{server}' connected: {}", databases.join(", "))
-                });
+            JobResult::Tested { server, outcome } => {
+                self.testing.retain(|name| name != server);
+                self.tested.retain(|(name, _, _)| name != server);
+                self.tested
+                    .push((server.clone(), outcome.is_ok(), std::time::Instant::now()));
+                // O resultado é do **cartão** (check ou X); o motivo da falha vai para o toast, e
+                // a área principal não repete o texto vermelho. Nada de listar as bases aqui
+                // (era o texto antigo).
                 self.error = None;
             }
             JobResult::Failed(error) => {
@@ -280,6 +295,9 @@ impl State {
 
         ui.separator();
         let servers = self.servers.clone();
+        // Resultados antigos saem de cena sozinhos: o botão volta a ser `Test`.
+        self.tested
+            .retain(|(_, _, at)| at.elapsed() < crate::test_button::FEEDBACK);
         // A lista ocupa a altura restante da sidebar: é o conteúdo principal dela.
         egui::ScrollArea::vertical()
             .id_salt("servers")
@@ -298,11 +316,50 @@ impl State {
                         ui.label(&server.name);
                         ui.weak(format!("{}:{}", server.host, server.port));
                         ui.horizontal(|ui| {
-                            if ui.button("Edit").clicked() {
+                            let edit = ui.button("Edit");
+                            if edit.clicked() {
                                 self.form = Some(Form::edit(&server));
                                 self.confirming_remove = None;
                             }
-                            if ui.button("Test").clicked() {
+
+                            // `Test`: spinner enquanto verifica a conexão e, por alguns segundos,
+                            // check (deu certo) ou X (falhou). O texto com as bases encontradas
+                            // saiu de cena: o resultado é o próprio botão.
+                            let width = crate::test_button::width(ui, "Test");
+                            // A altura vem do `Edit`: forçar a altura deixava o `Test` mais alto.
+                            let height = edit.rect.height();
+                            let running = self.testing.iter().any(|name| name == &server.name);
+                            let feedback = self
+                                .tested
+                                .iter()
+                                .find(|(name, _, _)| name == &server.name)
+                                .map(|(_, ok, at)| (*ok, *at));
+
+                            let phase = if running {
+                                crate::test_button::Phase::Running
+                            } else if let Some((ok, at)) = feedback
+                                && at.elapsed() < crate::test_button::FEEDBACK
+                            {
+                                // O check/X some sozinho quando o prazo vence.
+                                ui.ctx().request_repaint_after(
+                                    crate::test_button::FEEDBACK - at.elapsed(),
+                                );
+                                crate::test_button::Phase::Done { ok }
+                            } else {
+                                crate::test_button::Phase::Idle
+                            };
+                            let hover = match phase {
+                                crate::test_button::Phase::Done { ok: true } => "Connected",
+                                crate::test_button::Phase::Done { ok: false } => {
+                                    "Connection failed"
+                                }
+                                _ => "Test the connection",
+                            };
+                            if crate::test_button::show(ui, "Test", width, height, phase)
+                                .on_hover_text(hover)
+                                .clicked()
+                            {
+                                self.testing.push(server.name.clone());
                                 request = Some(Request::TestConnection(server.clone()));
                             }
 
@@ -663,5 +720,209 @@ mod tests {
         }]);
 
         assert_eq!(state.servers().len(), 1);
+    }
+
+    /// Os rótulos `Edit`, `Test` e `Remove` ficam na **mesma linha**.
+    ///
+    /// A regressão que originou isto: forçar o tamanho com `add_sized`/`interact_size.y` deixava o
+    /// `Test` com a moldura mais alta que os vizinhos (o `Button` usa o layout de átomos; a altura
+    /// natural não é `interact_size`). Agora só a **largura** é mínima (`Button::min_size`), e a
+    /// altura vem do layout normal.
+    ///
+    /// Limite deste teste: o `Response` reporta a mesma altura nos dois códigos — a diferença era
+    /// na moldura pintada, que só se confere na janela. Aqui fica presa a linha do texto.
+    /// CONTRACT: IF-262
+    #[test]
+    fn the_test_label_sits_on_the_same_line_as_edit_and_remove() {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(900.0, 700.0),
+            )),
+            ..Default::default()
+        };
+
+        let mut output = ctx.run_ui(input, |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let _ = ui.button("Edit");
+                    let width = crate::test_button::width(ui, "Test");
+                    let _ = ui.add(egui::Button::new("Test").min_size(egui::vec2(width, 0.0)));
+                    let _ = ui.button("Remove");
+                });
+            });
+        });
+        output.textures_delta.clear();
+
+        let mut texts = Vec::new();
+        collect_text_positions(&output.shapes, &mut texts);
+        let y_of = |label: &str| {
+            texts
+                .iter()
+                .find(|(text, _)| text == label)
+                .map(|(_, position)| position.y)
+                .unwrap_or_else(|| panic!("o rótulo {label} não foi pintado: {texts:?}"))
+        };
+
+        let (edit, test, remove) = (y_of("Edit"), y_of("Test"), y_of("Remove"));
+        assert!(
+            (edit - test).abs() < 0.5,
+            "o Test desalinhou do Edit (edit={edit}, test={test})"
+        );
+        assert!(
+            (remove - test).abs() < 0.5,
+            "o Test desalinhou do Remove (remove={remove}, test={test})"
+        );
+    }
+
+    /// Junta o texto e a posição de todo `Shape::Text`, descendo nos grupos.
+    fn collect_text_positions(
+        shapes: &[egui::epaint::ClippedShape],
+        out: &mut Vec<(String, egui::Pos2)>,
+    ) {
+        fn walk(shape: &egui::Shape, out: &mut Vec<(String, egui::Pos2)>) {
+            match shape {
+                egui::Shape::Text(text) => {
+                    out.push((text.galley.text().to_string(), text.pos));
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for clipped in shapes {
+            walk(&clipped.shape, out);
+        }
+    }
+
+    /// O que a tela pintou (textos), num quadro de 900×700.
+    fn painted(state: &mut State) -> Vec<String> {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(900.0, 700.0),
+            )),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                // O app desenha a sidebar num painel próprio; a tela sozinha só faz a área
+                // principal.
+                egui::Panel::left("test_sidebar")
+                    .exact_size(320.0)
+                    .show(ui, |ui| {
+                        let _ = state.sidebar_ui(ui);
+                    });
+                let _ = state.ui(ui);
+            });
+        });
+        output.textures_delta.clear();
+
+        let mut texts = Vec::new();
+        collect_text(&output.shapes, &mut texts);
+        texts
+    }
+
+    /// Junta o texto de todo `Shape::Text`, descendo nos grupos.
+    fn collect_text(shapes: &[egui::epaint::ClippedShape], out: &mut Vec<String>) {
+        fn walk(shape: &egui::Shape, out: &mut Vec<String>) {
+            match shape {
+                egui::Shape::Text(text) => out.push(text.galley.text().to_string()),
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for clipped in shapes {
+            walk(&clipped.shape, out);
+        }
+    }
+
+    /// `Test` que passou: o botão vira **check** e a lista de bases não aparece em texto.
+    /// CONTRACT: IF-262
+    #[test]
+    fn a_successful_test_shows_a_check_and_no_database_list() {
+        let mut state = State::new(vec![ServerConfigEntry {
+            name: "Local".to_string(),
+            ..ServerConfigEntry::default()
+        }]);
+        state.testing.push("Local".to_string());
+        state.apply(&crate::request::JobResult::Tested {
+            server: "Local".to_string(),
+            outcome: Ok(vec!["mustel_test".to_string(), "postgres".to_string()]),
+        });
+
+        let painted = painted(&mut state);
+        let everything = painted.join("\n");
+        let check = crate::icons::Icon::Check.glyph().to_string();
+        assert!(
+            painted.iter().any(|text| text == &check),
+            "o botão mostra o check: {everything}"
+        );
+        assert!(
+            !everything.contains("mustel_test"),
+            "sem lista de bases: {everything}"
+        );
+        assert!(
+            !everything.contains("database(s)"),
+            "sem a contagem de bases: {everything}"
+        );
+        assert!(state.testing.is_empty(), "o spinner saiu");
+    }
+
+    /// `Test` que falhou: o botão vira **X** e o motivo **não** fica na área principal — vai para
+    /// o toast (é o mesmo recado, sem o texto vermelho ocupando a tela).
+    /// CONTRACT: IF-262
+    #[test]
+    fn a_failed_test_shows_a_cross_and_leaves_the_reason_to_the_toast() {
+        let mut state = State::new(vec![ServerConfigEntry {
+            name: "Local".to_string(),
+            ..ServerConfigEntry::default()
+        }]);
+        state.testing.push("Local".to_string());
+        state.apply(&crate::request::JobResult::Tested {
+            server: "Local".to_string(),
+            outcome: Err("password authentication failed".to_string()),
+        });
+
+        let painted = painted(&mut state);
+        let everything = painted.join("\n");
+        let cross = crate::icons::Icon::Cross.glyph().to_string();
+        assert!(
+            painted.iter().any(|text| text == &cross),
+            "o botão mostra o X: {everything}"
+        );
+        assert!(
+            !everything.contains("password authentication failed"),
+            "o motivo saiu da área principal (vai no toast): {everything}"
+        );
+        assert!(state.testing.is_empty(), "o spinner saiu");
+    }
+
+    /// Enquanto verifica, o botão vira spinner: o rótulo `Test` sai de cena.
+    /// CONTRACT: IF-262
+    #[test]
+    fn the_test_button_shows_a_spinner_while_running() {
+        let mut state = State::new(vec![ServerConfigEntry {
+            name: "Local".to_string(),
+            ..ServerConfigEntry::default()
+        }]);
+        state.testing.push("Local".to_string());
+
+        let painted = painted(&mut state);
+        assert!(
+            !painted.iter().any(|text| text == "Test"),
+            "sem o rótulo durante o teste: {painted:?}"
+        );
     }
 }

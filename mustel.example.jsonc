@@ -66,6 +66,9 @@
     "editorFont": "Fira Code",
     // Uniform text scale, 0.80 to 1.25 (default 1.0).
     "fontScale": 1.1,
+    // Read-only is the default. Set false to allow destructive queries in the Query tab.
+    // The CLI is not affected.
+    "readOnlyQueries": false,
     // Database list pagination in the Query tab (off by default).
     "selectionList": { "paginate": false, "pageSize": 50 },
     // Saved selection queries: [{ "name", "server", "database", "sql" }].

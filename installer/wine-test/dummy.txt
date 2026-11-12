@@ -1,0 +1,1 @@
+este arquivo prova que o setup gerado pelo ISCC sob Wine instalou de verdade

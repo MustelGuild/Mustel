@@ -25,11 +25,23 @@ uma janela (`mustel gui`), sobre o **mesmo núcleo**.
 
 ## Instalação
 
-Baixe o arquivo da sua plataforma na [página de releases](https://github.com/MustelGuild/Mustel/releases):
-`mustel-<versão>-x86_64-pc-windows-msvc.zip` ou `mustel-<versão>-x86_64-unknown-linux-gnu.tar.gz`,
-com o `.sha256` ao lado. Extraia e copie o binário para um diretório do seu `PATH`.
+Baixe da [página de releases](https://github.com/MustelGuild/Mustel/releases):
 
-Ou instale pelo crates.io (CLI **e** GUI num único binário):
+- **Windows (recomendado):** `mustel-<versão>-x86_64-pc-windows-msvc-setup.exe`. Instala só para o
+  seu usuário (sem administrador), cria o atalho no Menu Iniciar para `mustel-gui.exe`, adiciona
+  `mustel` ao `PATH` (opcional) e traz um desinstalador que preserva configuração, logs e
+  credenciais. Veja o [guia de instalação no Windows](docs/how-to/instalar-no-windows.md).
+- **Windows (portátil):** `mustel-<versão>-x86_64-pc-windows-msvc.zip`; extraia e copie os
+  binários para uma pasta gravável.
+- **Linux:** `mustel-<versão>-x86_64-unknown-linux-gnu.tar.gz`.
+
+Os `.sha256` ficam ao lado dos assets. No Windows o pacote portátil traz também o
+**`mustel-gui.exe`**, o mesmo programa compilado para o subsistema gráfico: dê duplo clique nele
+para abrir a janela **sem console**. O `mustel.exe` continua sendo o programa de terminal — rodá-lo
+sem subcomando num terminal também abre a janela.
+
+Ou instale pelo crates.io (CLI **e** GUI num único binário; o `cargo install` também instala o
+lançador `mustel-gui`, que é a entrada sem console no Windows):
 
 ```bash
 cargo install --locked mustel

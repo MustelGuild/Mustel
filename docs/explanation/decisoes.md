@@ -1,8 +1,7 @@
 # Decisões de engenharia
 
-> **Por que esta página existe.** Até 2026-10-24 as decisões moravam nos planos de `MustelPlans/`,
-> misturadas com as tarefas. As tarefas viraram código, os planos foram removidos e o **porquê**
-> ficou — aqui.
+> **Por que esta página existe.** As decisões de engenharia ficam aqui, separadas do código: o
+> **porquê** de cada escolha, sem o registro de execução que a produziu.
 
 Uma decisão não vira código: ela explica **por que** o código é assim. Quem for mudar um
 comportamento começa por aqui — se a decisão que justifica aquele comportamento não existir mais,
@@ -10,10 +9,10 @@ então a mudança precisa de uma decisão nova, não de um "ajuste".
 
 ## Como ler um ID de decisão
 
-O repositório conviveu com **três numerações independentes**, uma por plano. O mesmo número quer
-dizer coisas diferentes em cada uma: `D6` é "keyring" na migração e "formato da linha" na seleção
-de bases. O número sozinho **não** resolve nada — use o texto ao lado dele e a tabela de resolução
-abaixo.
+O repositório conviveu com **três numerações independentes**, cada uma de uma família de decisões. O
+mesmo número quer dizer coisas diferentes em cada uma: `D6` é "keyring" na migração e "formato da
+linha" na seleção de bases. O número sozinho **não** resolve nada — use o texto ao lado dele e a
+tabela de resolução abaixo.
 
 Depois da consolidação entraram mais três famílias, com letra própria para não colidir com `D*`:
 `A*` (aparência: tema e fontes), `S*` (queries salvas) e `B*` (build e dependências de sistema); o
@@ -66,9 +65,9 @@ código implementa e que o número representa:
 | `D8` | Escada de fidelidade | N1 superfície, N2 comportamento/artefatos, N3 interativo (obrigatórios); N4 formatação (não) | Paridade testável sem perseguir byte-match de `--help`/ANSI — detalhe em [Escada de fidelidade](escada-de-fidelidade.md) |
 | `D9` | Integração CLI ↔ GUI | Núcleo compartilhado + eventos, ambos em processo; **binário único** `mustel` com `gui` (`eframe` atrás da feature `gui`) | Preferência do usuário; crates separados deixam dois binários como uma linha de `[[bin]]` |
 | `D10` | Nome/paths do produto | Binário `mustel`; config `mustel.jsonc` no diretório do SO | Consistência com o rename |
-| `D11` | Crates principais | `clap`, `tokio`, `inquire`, `indicatif`, `tabled`, `csv`, `chardetng`+`encoding_rs`, `globset`+`walkdir`, `serde`+`jsonc-parser`, `dirs`, `tracing`, `thiserror`/`anyhow`, `keyring`, `tokio-util`, `eframe`/`egui` | Equivalentes diretos das dependências anteriores |
+| `D11` | Crates principais | `clap`, `tokio`, `inquire`, `indicatif`, `tabled`, `csv`, `chardetng`+`encoding_rs`, `globset`+`walkdir`, `serde`+`jsonc-parser`, `dirs`, `thiserror`/`anyhow`, `keyring`, `tokio-util`, `eframe`/`egui` | Equivalentes diretos das dependências anteriores; **sem `tracing`**: o log é o arquivo de atividade em [`activity-log.md`](../reference/activity-log.md) |
 | `D12` | Driver Postgres | **`tokio-postgres`** (`sqlx` descartado) | `Row`/`Column`/`Type` para mapear tipos arbitrários em CSV; `sqlx` empurra para tipos conhecidos em compilação, e `query run` executa SQL livre — detalhe em [Por que `tokio-postgres`](por-que-tokio-postgres.md) |
-| `D13` | Convenções do repositório | CLI em **inglês**; plano/docs/conversa em **pt-BR**; commits em inglês | Regra vigente no `AGENTS.md` |
+| `D13` | Convenções do repositório | CLI em **inglês**; docs/conversa em **pt-BR**; commits em inglês | Regra vigente no `AGENTS.md` |
 | `D14` | Mutações de Git | Exigem autorização explícita do dono | Guard rails do `AGENTS.md` |
 | `D15` | Versão inicial | `1.0.0`; tags `v1.x.y` dirigem o release. O incremento é do **`cargo-release`** (`A6`), não manual | Mustel é software novo |
 | `D16` | Oráculo | Binário .NET em `legacy/` é a fonte de verdade; baseline versionado em `fixtures/baseline/` | Onde docs e código divergem, vale o **código observado** |
@@ -85,6 +84,7 @@ código implementa e que o número representa:
 | `D27` | Workflow empacota **e publica a release** | **Substituído em 2026-10-28** por `D29` e **reintroduzido em 2026-11-04** por `D30`: o `publish.yml` empacota (Windows e Linux) e cria a release | O dono quer o release a partir da tag, sem empacotar à mão |
 | `D29` | Release manual | **Substituída em 2026-11-04** por `D30`: a release nasce do workflow a partir da tag; o `cargo publish` continua manual porque é irreversível | Decisão do dono em 2026-10-28, revista em 2026-11-04 — o release saiu do "manual por falta de CI" para "CI a partir da tag" |
 | `D30` | Release manual a partir da tag | `.github/workflows/publish.yml` dispara **só** por `workflow_dispatch`, com a tag informada no `input` (push de tag não aciona nada), chama o QA Gate (`qa-gate.yml`, `workflow_call`, no ref da tag) e confere tag × `[workspace.package] version`; empacota com os mesmos `publish.ps1`/`publish.sh` e cria ou atualiza a release com os `.zip`/`.tar.gz`, os `.sha256`, o `SHA256SUMS` e o `sbom.cdx.json` | Decisão do dono em 2026-11-04: o pipeline é automático, mas o **disparo é manual** — a tag não publica sozinha; a conferência que o `release-build.yml` antigo fazia volta a ser automática, sem duplicar o empacotamento |
+| `D31` | Instalador Windows | **Inno Setup** no release, instalação **por usuário** em `%LOCALAPPDATA%\Programs\Mustel`, os dois `.exe`, atalho no Menu Iniciar para `mustel-gui.exe`, `PATH` opcional, desinstalador preserva os dados; o setup é um asset de distribuição, não do updater; teste local via Wine em `installer/wine-test` | Decisão do dono em 2026-11-07: instalar sem admin e manter o updater in-place; o Mustel é open source sem fins lucrativos e a JRSoftware não solicita licença do Inno Setup para uso não comercial; a licença também permite uso comercial (compra solicitada, não exigida); o release usa o 6.7.1 do runner |
 
 ## Autocomplete do editor (`D1`–`D20`)
 
@@ -134,7 +134,7 @@ código implementa e que o número representa:
 ## Aparência da janela (`A1`–`A7`)
 
 Numeração própria desta feature (`A`, de aparência), aberta em 2026-10-24 com o tema da janela. Não
-reutiliza a numeração dos planos antigos — é uma quarta família, nascida depois da consolidação.
+reutiliza numerações anteriores — é uma quarta família, nascida depois da consolidação.
 
 | ID | Tema | Decisão | Por quê |
 |---|---|---|---|
@@ -152,7 +152,7 @@ contrato é `IF-243`.
 ## Queries salvas (`S1`–`S5`)
 
 Numeração própria desta feature, aberta em 2026-10-24. É a **segunda família de aparência/produto**
-depois da `A` (tema), e não reutiliza as numerações dos planos antigos.
+depois da `A` (tema), e não reutiliza numerações anteriores.
 
 | ID | Tema | Decisão | Por quê |
 |---|---|---|---|
@@ -184,9 +184,8 @@ então uma sessão com GNOME Keyring/KWallet segue sendo necessária ([Credencia
 
 ## O que não veio para cá
 
-- **Tarefas** (`T1`–`T48` e afins): viraram código; o registro de execução vive no histórico do Git.
-- **Questões abertas** (`Q1`–`Q12`): todas fechadas; a resposta de cada uma é a origem registrada na
-  tabela da migração.
+- **Execução e discussão** que produziram as decisões: viraram código; o registro vive no histórico do
+  Git.
 - **`DIV1`–`DIV18`**: continuam em [Diferenças deliberadas](diferencas-deliberadas.md), junto com a
   lista branca de resíduos do nome antigo e as observações do binário anterior.
 - **Contrato do CLI**: não é decisão, é superfície verificada — vive em

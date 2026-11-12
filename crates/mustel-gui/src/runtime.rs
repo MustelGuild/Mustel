@@ -56,9 +56,18 @@ impl Runtime {
 
 impl Drop for Runtime {
     /// Derruba o runtime ao fechar a janela, esperando os jobs em andamento.
+    ///
+    /// Quando a janela é aberta pelo subcomando `gui`, este `Runtime` é derrubado **de dentro**
+    /// do runtime do CLI (o `#[tokio::main]`): o shutdown normal bloqueia e o tokio entra em
+    /// pânico ("Cannot drop a runtime in a context where blocking is not allowed"). Nesse caso o
+    /// shutdown é o de fundo — as threads terminam sozinhas e o processo já está saindo.
     fn drop(&mut self) {
         if let Some(runtime) = self.runtime.take() {
-            runtime.shutdown_timeout(std::time::Duration::from_millis(500));
+            if tokio::runtime::Handle::try_current().is_ok() {
+                runtime.shutdown_background();
+            } else {
+                runtime.shutdown_timeout(std::time::Duration::from_millis(500));
+            }
         }
     }
 }
@@ -86,5 +95,24 @@ mod tests {
         let runtime = Runtime::new().expect("cria o runtime");
 
         assert_eq!(runtime.block_on(async { 2 + 2 }), 4);
+    }
+
+    /// Fechar a janela do subcomando `gui` derruba este runtime **de dentro** do runtime do CLI.
+    ///
+    /// O shutdown normal bloqueia e o tokio entra em pânico nesse contexto; o `Drop` precisa
+    /// reconhecer o caso e usar o shutdown de fundo. É o caminho de todo fechamento da janela —
+    /// inclusive o do reinício depois do update.
+    /// CONTRACT: IF-270
+    #[test]
+    fn dropping_the_runtime_inside_another_runtime_does_not_panic() {
+        let outer = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime externo");
+
+        outer.block_on(async {
+            let inner = Runtime::new().expect("runtime da janela");
+            drop(inner);
+        });
     }
 }

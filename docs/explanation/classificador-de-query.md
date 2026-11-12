@@ -57,6 +57,26 @@ a descrição mostra a operação real: um `DELETE` escondido em CTE ou `EXPLAIN
 `DELETE`, não como `SELECT`/`WITH`/`EXPLAIN`. Isso é uma mudança N4, registrada em
 [diferenças deliberadas](diferencas-deliberadas.md).
 
+## Modo somente leitura (aba Settings)
+
+O checkbox **`Only run read-only queries`** grava `gui.readOnlyQueries` e vem **marcado por padrão**
+na primeira execução; desmarcar grava `false`. Com ele ligado, a classificação continua a mesma, mas
+a decisão muda:
+
+- consulta **destrutiva**: em vez do modal com `Run anyway`, a janela abre
+  **`READ-ONLY MODE: QUERY NOT RUN`** e não executa;
+- consulta **segura**: executa normalmente, com `BEGIN TRANSACTION READ ONLY` na conexão de cada
+  banco. O servidor recusa escrita com SQLSTATE `25006`.
+
+O `BEGIN READ ONLY` é a segunda camada: ele pega o que o classificador não vê. `SELECT ... FOR
+UPDATE` e `nextval()` são `Safe` para o `analyzer` (o legado não os tratava como escrita), mas o
+PostgreSQL os recusa na transação read-only. O mesmo vale para uma função que escreve em tabela.
+
+O que esta camada **não** bloqueia: `COPY ... TO STDOUT` (é leitura), escrita em tabela temporária,
+`pg_notify`/advisory locks, funções `SECURITY DEFINER` e `dblink` para outro servidor. Bloquear
+`COPY` exige uma whitelist no cliente (fase seguinte). O modo também é **só da janela**: o CLI não
+o lê.
+
 ## Testes
 
 `crates/mustel-core/src/query/analyzer.rs` cobre os 21 casos do legado, os três bypasses

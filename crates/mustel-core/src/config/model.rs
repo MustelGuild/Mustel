@@ -38,6 +38,9 @@ impl Default for UserConfig {
 /// Escala de fonte padrão (1.0 = tamanhos do egui).
 pub const DEFAULT_FONT_SCALE: f32 = 1.0;
 
+/// Modo somente leitura ligado por padrão na primeira execução.
+pub const DEFAULT_READ_ONLY_QUERIES: bool = true;
+
 /// Faixa aceita para a escala de fonte da janela.
 ///
 /// O teto não é estético: é medido. Com nomes típicos, a linha mais larga da tela de consulta ocupa
@@ -71,7 +74,7 @@ impl GuiTheme {
     }
 }
 
-/// Preferências de aparência da janela.
+/// Preferências da janela (aparência, lista de bases, IA e modo somente leitura).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct GuiPrefs {
@@ -105,6 +108,13 @@ pub struct GuiPrefs {
     /// mexe, como o resto de `gui`.
     #[serde(skip_serializing_if = "SelectionListPrefs::is_default")]
     pub selection_list: SelectionListPrefs,
+    /// Modo somente leitura das consultas da aba **Query**.
+    ///
+    /// Ausente = **ligado** (o padrão da primeira execução). A chave só aparece no arquivo quando o
+    /// dono desliga o modo (`false`), como o resto de `gui`. A execução da consulta abre
+    /// `BEGIN TRANSACTION READ ONLY`.
+    #[serde(skip_serializing_if = "is_true")]
+    pub read_only_queries: bool,
     /// Integração com a IA que escreve SQL (painel da aba **Query**).
     ///
     /// Ausente do arquivo enquanto não houver perfil: quem não usa a IA não vê o `mustel.jsonc`
@@ -200,6 +210,11 @@ fn is_default_ai_temperature(value: &f32) -> bool {
     (*value - DEFAULT_AI_TEMPERATURE).abs() < f32::EPSILON
 }
 
+/// `true` quando o boolean é `true` (é o que omite a chave do arquivo no padrão).
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
 /// Paginação da lista de bases (aba **Query**).
 ///
 /// Desligada por padrão: com os filtros da tela, a lista completa é utilizável, e paginar sem
@@ -255,6 +270,7 @@ impl Default for GuiPrefs {
             selections: Vec::new(),
             saved_queries: Vec::new(),
             selection_list: SelectionListPrefs::default(),
+            read_only_queries: DEFAULT_READ_ONLY_QUERIES,
             ai: AiPrefs::default(),
         }
     }
@@ -526,6 +542,7 @@ mod tests {
                 selections: Vec::new(),
                 saved_queries: Vec::new(),
                 selection_list: Default::default(),
+                read_only_queries: false,
                 ai: Default::default(),
             }),
             ..UserConfig::default()
@@ -540,6 +557,10 @@ mod tests {
         assert_eq!(gui.interface_font.as_deref(), Some("Segoe UI"));
         assert_eq!(gui.editor_font.as_deref(), Some("Fira Code"));
         assert!((gui.font_scale - 1.15).abs() < f32::EPSILON);
+        assert!(
+            !gui.read_only_queries,
+            "o opt-out do modo somente leitura sobrevive"
+        );
     }
 
     /// Sem a chave `theme`, o tema é `System` — o comportamento de antes da preferência existir.
@@ -586,6 +607,46 @@ mod tests {
             !json.contains("theme"),
             "System não vai para o arquivo: {json}"
         );
+    }
+
+    /// O default é **ligado**: a primeira execução já nasce em somente leitura.
+    #[test]
+    fn the_default_read_only_is_on() {
+        assert_eq!(
+            GuiPrefs::default().read_only_queries,
+            DEFAULT_READ_ONLY_QUERIES,
+            "o default usa a constante"
+        );
+    }
+
+    /// Desligar o modo é a exceção: `false` sobrevive à ida e volta do arquivo.
+    #[test]
+    fn the_read_only_preference_round_trips() {
+        let prefs = GuiPrefs {
+            read_only_queries: false,
+            ..GuiPrefs::default()
+        };
+        let json = serde_json::to_string(&prefs).expect("serializes");
+        assert!(json.contains("\"readOnlyQueries\":false"), "{json}");
+
+        let parsed: GuiPrefs = serde_json::from_str(&json).expect("deserializes");
+        assert!(!parsed.read_only_queries);
+    }
+
+    /// O default (ligado) não escreve a chave: quem nunca desligou não vê o arquivo mudar.
+    #[test]
+    fn the_default_read_only_stays_out_of_the_file() {
+        let json = serde_json::to_string(&GuiPrefs::default()).expect("serializes");
+        assert!(!json.contains("readOnlyQueries"), "{json}");
+    }
+
+    /// Um arquivo antigo (sem a chave) lê como **ligado**, o novo default.
+    #[test]
+    fn a_config_without_the_read_only_key_reads_as_true() {
+        let json = r#"{ "servers": [], "gui": { "fontScale": 1.1 } }"#;
+        let config: UserConfig = serde_json::from_str(json).expect("deserializes");
+
+        assert!(config.gui.expect("a seção existe").read_only_queries);
     }
 
     /// Sem a chave `savedQueries`, a lista começa vazia.

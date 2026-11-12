@@ -8,14 +8,22 @@ repository.workspace = true
 authors.workspace = true
 description = "Mustel — CLI de automação (query, database, settings) e interface gráfica"
 
+# A janela sem console do Windows. Fica no mesmo pacote para reusar a feature `gui`; o
+# `windows_subsystem` do arquivo só vale no Windows (no Linux o binário é um lançador comum e não
+# entra no pacote).
+[[bin]]
+name = "mustel-gui"
+path = "src/bin/mustel-gui.rs"
+required-features = ["gui"]
+
 [lints]
 workspace = true
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-mustel-core = { path = "../mustel-core", version = "1.0.0" }
+mustel-core = { path = "../mustel-core", version = "1.1.0" }
 # O frontend gráfico entra por feature: `--no-default-features` produz um CLI sem `egui`.
-mustel-gui = { path = "../mustel-gui", version = "1.0.0", optional = true }
+mustel-gui = { path = "../mustel-gui", version = "1.1.0", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 inquire = "0.9"
 indicatif = "0.18"

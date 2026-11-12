@@ -215,6 +215,7 @@ async fn the_query_stream_hands_the_rows_one_by_one() {
         &settings,
         "SELECT n AS id, 'texto ' || n AS texto FROM generate_series(1, 500) AS n",
         Duration::from_secs(30),
+        false,
     )
     .await
     .expect("abre a consulta");
@@ -245,6 +246,7 @@ async fn the_command_timeout_fires_on_a_slow_read() {
         &settings,
         "SELECT pg_sleep(3)",
         Duration::from_secs(1),
+        false,
     )
     .await
     {
@@ -255,6 +257,66 @@ async fn the_command_timeout_fires_on_a_slow_read() {
     assert!(
         matches!(error, mustel_core::error::CoreError::Timeout(_)),
         "erro de timeout, não de Postgres: {error:?}"
+    );
+}
+
+#[tokio::test]
+/// CONTRACT: IF-271
+async fn a_read_only_stream_rejects_a_write_with_sqlstate_25006() {
+    let Some(settings) = settings() else {
+        eprintln!("skipped: set MUSTEL_PG_TEST_URL");
+        return;
+    };
+
+    // Nome único para o teste nunca colidir com uma tabela real; a escrita é recusada antes de
+    // criar qualquer coisa.
+    let table = format!("mustel_read_only_blocked_{}", std::process::id());
+    let sql = format!("CREATE TABLE {table} (id int)");
+
+    let error = match mustel_core::postgres::client::QueryStream::open(
+        &settings,
+        &sql,
+        Duration::from_secs(30),
+        true,
+    )
+    .await
+    {
+        Err(error) => error,
+        Ok(mut stream) => stream
+            .next_row()
+            .await
+            .expect_err("a escrita precisa ser recusada"),
+    };
+
+    let mustel_core::error::CoreError::Postgres { sqlstate, message } = error else {
+        panic!("a recusa precisa ser erro de Postgres: {error:?}");
+    };
+    assert_eq!(sqlstate.as_deref(), Some("25006"), "{message}");
+}
+
+#[tokio::test]
+async fn a_read_only_stream_still_reads() {
+    let Some(settings) = settings() else {
+        eprintln!("skipped: set MUSTEL_PG_TEST_URL");
+        return;
+    };
+
+    let mut stream = mustel_core::postgres::client::QueryStream::open(
+        &settings,
+        "SELECT 1 AS one",
+        Duration::from_secs(30),
+        true,
+    )
+    .await
+    .expect("abre a consulta read-only");
+
+    assert_eq!(
+        stream.next_row().await.expect("lê a linha"),
+        Some(vec!["1".to_string()])
+    );
+    assert!(
+        stream.next_row().await.expect("fim").is_none(),
+        "a transação read-only não muda o resultado"
     );
 }
 
@@ -274,6 +336,7 @@ async fn run_two_servers(settings: &ConnectionSettings, max_parallelism: usize) 
             })
             .collect(),
         sql: Arc::from("SELECT pg_sleep(2)"),
+        read_only: false,
         directory: directory.path().to_path_buf(),
         timestamp: "ts".to_string(),
         max_parallelism,

@@ -26,7 +26,12 @@ pub struct Progress {
 impl Progress {
     /// Cria um spinner com mensagem (oculto fora de terminal).
     pub fn spinner(message: &str) -> Self {
-        let bar = if is_interactive() {
+        Self::spinner_with(message, is_interactive())
+    }
+
+    /// O spinner com a decisão de terminal já tomada (testável sem depender do TTY da suíte).
+    fn spinner_with(message: &str, interactive: bool) -> Self {
+        let bar = if interactive {
             let bar = ProgressBar::new_spinner();
             bar.set_style(
                 ProgressStyle::with_template("{spinner} {msg}").expect("static template is valid"),
@@ -43,7 +48,12 @@ impl Progress {
 
     /// Cria uma barra com total conhecido (oculta fora de terminal).
     pub fn bar(total: u64) -> Self {
-        let bar = if is_interactive() {
+        Self::bar_with(total, is_interactive())
+    }
+
+    /// A barra com a decisão de terminal já tomada.
+    fn bar_with(total: u64, interactive: bool) -> Self {
+        let bar = if interactive {
             ProgressBar::new(total)
         } else {
             ProgressBar::hidden()
@@ -263,7 +273,12 @@ impl Default for LiveTable {
 impl LiveTable {
     /// Cria a tabela vazia (oculta fora de terminal).
     pub fn new() -> Self {
-        let bar = if is_interactive() {
+        Self::new_with(is_interactive())
+    }
+
+    /// A tabela com a decisão de terminal já tomada (testável sem depender do TTY da suíte).
+    fn new_with(interactive: bool) -> Self {
+        let bar = if interactive {
             let bar = ProgressBar::new_spinner();
             bar.set_style(ProgressStyle::with_template("{msg}").expect("static template is valid"));
             bar
@@ -383,7 +398,7 @@ mod tests {
 
     #[test]
     fn progress_is_silent_outside_a_terminal() {
-        let progress = Progress::spinner("trabalhando");
+        let progress = Progress::spinner_with("trabalhando", false);
         progress.set_message("ainda");
         progress.inc(1);
         progress.finish();
@@ -395,7 +410,7 @@ mod tests {
 
     #[test]
     fn the_live_table_is_silent_outside_a_terminal_and_keeps_the_rows() {
-        let table = LiveTable::new();
+        let table = LiveTable::new_with(false);
         table.database_finished(
             "dev",
             "db",

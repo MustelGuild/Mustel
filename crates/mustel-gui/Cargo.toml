@@ -12,7 +12,7 @@ description = "Mustel GUI (egui) — frontend gráfico sobre o mustel-core"
 workspace = true
 
 [dependencies]
-mustel-core = { path = "../mustel-core", version = "1.0.0" }
+mustel-core = { path = "../mustel-core", version = "1.1.0" }
 # `glow` (OpenGL) em vez do `wgpu` padrão: o app desenha uma janela só e o backend leve
 # compila em uma fração do tempo, o que importa porque a crate entra no build do `mustel`.
 #
@@ -26,6 +26,10 @@ eframe = { version = "0.37", default-features = false, features = [
     "system_fonts",
     "x11",
     "wayland",
+    # `links` liga o `egui-winit/links` → `webbrowser`: sem ela o clique num `hyperlink_to`
+    # emite `OutputCommand::OpenUrl` e o backend **ignora** (só um warning), então os links do
+    # About (repositório, suporte, release) não abrem nada.
+    "links",
 ] }
 egui = "0.37"
 # `fontique` já vem compilada como dependência do `egui_system_font_provider` (feature `system_fonts`
@@ -42,6 +46,8 @@ iconflow = { version = "2.1", default-features = false, features = ["pack-heroic
 
 [dev-dependencies]
 tempfile = "3"
+# Só para os tipos do updater nos testes (`Release.version`).
+semver = "1"
 # Só para o teste de integração gated ler a `MUSTEL_PG_TEST_URL` com o mesmo parser do driver.
 tokio-postgres = "0.7"
 

@@ -23,7 +23,7 @@ herdam com `version.workspace = true`, então não há versão para sincronizar 
 ## 1. Incrementar a versão e criar a tag
 
 ```bash
-cargo release patch            # ensaio: mostra o plano e NÃO altera nada (dry-run é o padrão)
+cargo release patch            # ensaio: mostra o que faria e NÃO altera nada (dry-run é o padrão)
 cargo release patch --execute  # faz: bump + Cargo.lock + dependências internas + commit + tag
 ```
 
@@ -45,7 +45,38 @@ nos três crates) para:
 > `publish = false`. É rótulo da etapa, impresso antes do filtro: nenhum `cargo publish` roda (o
 > código só executa quando a lista de pacotes a publicar não está vazia).
 
-Se você rodar fora do branch `main`, ele recusa — é a guarda de `allow-branch`.
+Se você rodar o `cargo release` direto fora do branch `main`, ele recusa — é a guarda de
+`allow-branch`.
+
+### Preparar o bump para um PR (sem tag)
+
+Os scripts `prepare-release.ps1` (Windows) e `prepare-release.sh` (Linux) perguntam a versão e
+preparam o bump numa branch `release/v<versão>`, **sem criar a tag**:
+
+```bash
+./prepare-release.sh          # pergunta a versão
+./prepare-release.sh 1.2.0    # ou informe direto
+```
+
+```powershell
+./prepare-release.ps1
+./prepare-release.ps1 1.2.0
+```
+
+Eles criam a branch, rodam `cargo release` com `--no-tag`, atualizam a documentação e o
+`sbom.cdx.json`, rodam `fmt`/`clippy`/testes e, com confirmação, empurram a branch e abrem o PR.
+Eles partem do **branch atual** e abrem o PR contra `main`; se você estiver num branch de feature,
+os commits dele entram no PR. Para um PR só do bump, rode a partir de `main`.
+Use `--no-push` (`-NoPush`) para parar antes do push/PR e `--skip-tests` (`-SkipTests`) para pular
+o `cargo test`. Os dois scripts precisam estar **commitados** antes da execução: o `cargo release`
+recusa árvore suja, inclusive arquivo não rastreado. A tag fica para depois do merge, no `main`:
+
+```bash
+git switch main
+git pull --ff-only
+git tag -a v<versao> -m "Mustel <versao>"
+git push origin v<versao>
+```
 
 ## 2. Conferir antes de empurrar
 
@@ -66,7 +97,7 @@ existir no remoto, porque o `preflight` e o `gh release create --verify-tag` con
 
 ## 4. Disparar o `publish` (manual)
 
-**Actions → publish → Run workflow**, informando a **tag** no campo (ex.: `v1.0.0`). O `preflight`
+**Actions → publish → Run workflow**, informando a **tag** no campo (ex.: `v1.1.0`). O `preflight`
 confere, **antes de baixar o código**, o formato `v<versao>` e se a tag existe no remoto; depois
 faz checkout dela e exige que case com `[workspace.package] version`. Cada recusa sai como
 `::error::` dizendo o que recebeu — em particular, tag que ainda não foi empurrada não chega nem a
@@ -79,11 +110,16 @@ virar checkout.
 2. o `preflight`: a tag precisa ser `v<versao>` e `<versao>` precisa ser a de
    `[workspace.package] version`;
 3. o empacotamento nas duas plataformas, com os mesmos scripts usados à mão — `publish.ps1` no
-   Windows e `publish.sh` no Linux —, gerando o `.zip` (com o `mustel.exe`), o `.tar.gz`, os
-   `.sha256`, o `sbom.cdx.json` do alvo e o `THIRD-PARTY-LICENSES.md` dentro de cada pacote;
+   Windows e `publish.sh` no Linux —, gerando o `.zip` (com o `mustel.exe` e o `mustel-gui.exe`), o
+   `.tar.gz`, os `.sha256`, o `sbom.cdx.json` do alvo e o `THIRD-PARTY-LICENSES.md` dentro de cada
+   pacote; no Windows, depois do `publish.ps1`, o `installer/publish-installer.ps1` gera o
+   **setup** (`mustel-<versão>-x86_64-pc-windows-msvc-setup.exe`) com o Inno Setup já instalado no
+   runner, e o `.sha256` ao lado;
 4. o `SHA256SUMS`, com o hash de cada anexo, para conferir tudo de uma vez;
-5. a release no GitHub, com a tag, os dois pacotes, os dois `.sha256`, o `SHA256SUMS` e o
-   `sbom.cdx.json` da raiz.
+5. a release no GitHub, com a tag, os dois pacotes, os dois `.sha256`, o `SHA256SUMS`, o
+   `sbom.cdx.json` da raiz, os **executáveis soltos do Windows** (`mustel.exe` e
+   `mustel-gui.exe`), o **setup do Windows** (`mustel-...-setup.exe`) e o **executável cru do
+   Linux** (`mustel`) — é esse `mustel` sem empacotamento que o updater da janela baixa.
 
 Se a release já existir (reexecução), os assets são reenviados com `--clobber` em vez de falhar.
 
@@ -96,7 +132,12 @@ No Windows:
 
 ```powershell
 ./publish.ps1
+./installer/publish-installer.ps1
 ```
+
+O segundo passo precisa do **Inno Setup 6 ou 7** instalado no Windows (`ISCC.exe`; o
+`windows-latest` já traz o 6.7.1). Ele gera o setup e o `.sha256` a partir do stage que o
+`publish.ps1` deixou; se o stage não existir, o script chama o `publish.ps1` sozinho.
 
 No Linux:
 
@@ -104,10 +145,17 @@ No Linux:
 ./publish.sh
 ```
 
-Os dois geram os arquivos em `packaging/`:
+Os scripts geram os arquivos em `packaging/`:
 
 - `mustel-<versao>-x86_64-pc-windows-msvc.zip` e `.sha256`;
-- `mustel-<versao>-x86_64-unknown-linux-gnu.tar.gz` e `.sha256`.
+- `mustel-<versao>-x86_64-unknown-linux-gnu.tar.gz` e `.sha256`;
+- `mustel-<versao>-x86_64-pc-windows-msvc-setup.exe` e `.sha256` (Windows; o setup do instalador).
+
+> **Licença do Inno Setup:** o Mustel é open source sem fins lucrativos; a JRSoftware não solicita
+> licença para uso não comercial ([FAQ](https://jrsoftware.org/isorder.php)). A
+> [licença oficial](https://raw.githubusercontent.com/jrsoftware/issrc/main/license.txt) também
+> permite uso comercial (“including commercial applications”); nesse caso, a compra é solicitada,
+> não exigida. O release no `windows-latest` usa o 6.7.1 pré-instalado.
 
 Os scripts exigem o `cargo-cyclonedx` (`cargo install cargo-cyclonedx --locked`, validado com a
 0.5.9) e incluem no pacote um `sbom.cdx.json` CycloneDX 1.5, gerado a partir do `Cargo.lock` para
@@ -132,7 +180,10 @@ Na página **Releases** do repositório, a release `Mustel v<versao>` deve ter:
 
 - o `.zip` e o `.sha256` do Windows;
 - o `.tar.gz` e o `.sha256` do Linux;
-- o `SHA256SUMS`, com o hash de cada anexo;
+- os executáveis soltos do Windows: `mustel.exe` e `mustel-gui.exe`;
+- o setup do Windows: `mustel-...-setup.exe` e o `.sha256`;
+- o executável **cru** do Linux: `mustel` (é o asset que o updater da janela baixa);
+- o `SHA256SUMS`, com o hash de cada anexo (pacotes, executáveis e SBOM);
 - o `sbom.cdx.json` da raiz (inventário de todos os alvos; cada pacote já leva o do seu alvo).
 
 Os nomes saem do `cargo pkgid` e do host do runner, então batem com a tag e com o `Cargo.toml` por

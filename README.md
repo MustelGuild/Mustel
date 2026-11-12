@@ -25,11 +25,23 @@ restores databases with `pg_dump`/`pg_restore`, and keeps the server registry â€
 
 ## Installation
 
-Download the archive for your platform from the [releases page](https://github.com/MustelGuild/Mustel/releases):
-`mustel-<version>-x86_64-pc-windows-msvc.zip` or `mustel-<version>-x86_64-unknown-linux-gnu.tar.gz`,
-with the `.sha256` next to it. Extract and copy the binary to a directory on your `PATH`.
+Download from the [releases page](https://github.com/MustelGuild/Mustel/releases):
 
-Or install from crates.io (CLI **and** GUI in one binary):
+- **Windows (recommended):** `mustel-<version>-x86_64-pc-windows-msvc-setup.exe`. It installs only
+  for your user (no administrator), creates a Start Menu shortcut to `mustel-gui.exe`, optionally
+  adds `mustel` to `PATH`, and includes an uninstaller that preserves your settings, logs and
+  credentials. See the [Windows install guide](docs/how-to/instalar-no-windows.md).
+- **Windows (portable):** `mustel-<version>-x86_64-pc-windows-msvc.zip`; extract and copy the
+  binaries to a writable folder.
+- **Linux:** `mustel-<version>-x86_64-unknown-linux-gnu.tar.gz`.
+
+The `.sha256` files sit next to the assets. On Windows the portable archive also ships
+**`mustel-gui.exe`**, the same program built for the graphical subsystem: double-click it to open
+the window **without a console**. `mustel.exe` remains the command-line program â€” running it with
+no subcommand from a terminal also opens the window.
+
+Or install from crates.io (CLI **and** GUI in one binary; `cargo install` also drops the
+`mustel-gui` launcher, which is the no-console entry point on Windows):
 
 ```bash
 cargo install --locked mustel

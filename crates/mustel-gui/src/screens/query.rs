@@ -63,10 +63,22 @@ pub enum Phase {
     Done,
 }
 
+/// Que tipo de alerta a consulta destrutiva abriu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConfirmationKind {
+    /// O modo somente leitura está desligado: o usuário pode confirmar.
+    Destructive,
+    /// O modo somente leitura está ligado: a consulta não pode rodar.
+    ReadOnly,
+}
+
 /// O que a confirmação de consulta destrutiva precisa mostrar.
 ///
-/// Nasce quando a tela detecta SQL destrutivo e some quando o usuário confirma ou cancela.
+/// Nasce quando a tela detecta SQL destrutivo e some quando o usuário confirma, cancela ou fecha
+/// o alerta bloqueante.
 struct Confirmation {
+    /// O alerta confirma a execução ou apenas bloqueia no modo somente leitura.
+    kind: ConfirmationKind,
     /// Tipo detectado, para o título (`DELETE`, `UPDATE`, ...).
     description: String,
     /// Servidores que a consulta atinge.
@@ -75,8 +87,8 @@ struct Confirmation {
     databases: usize,
     /// Trecho da consulta, para o usuário reconhecer o que ia rodar.
     preview: String,
-    /// Pedido a executar se o usuário confirmar.
-    request: Request,
+    /// Pedido a executar se o usuário confirmar (`None` no alerta bloqueante).
+    request: Option<Request>,
 }
 
 /// Estado da tela de consulta.
@@ -131,8 +143,10 @@ pub struct State {
     summary: Option<String>,
     /// Erro do último pedido.
     error: Option<String>,
-    /// Consulta destrutiva esperando confirmação.
+    /// Consulta destrutiva esperando confirmação (ou bloqueada pelo modo somente leitura).
     confirmation: Option<Confirmation>,
+    /// Modo somente leitura ligado na aba Settings.
+    read_only: bool,
     /// Seletor de pastas da caixa de saída (modal do próprio app).
     picker: Picker,
     /// Animação de rolagem do formulário (o botão "ir ao fim").
@@ -221,6 +235,7 @@ impl Default for State {
             summary: None,
             error: None,
             confirmation: None,
+            read_only: false,
             picker: Picker::default(),
             form_scroll: SmoothScroll::default(),
             completion_trigger: sql_completion::Trigger::default(),
@@ -1150,19 +1165,26 @@ Selection unchanged."
             .horizontal(|ui| {
                 let targets = self.selection.targets(servers);
 
-                if ui
+                let request = if ui
                     .add_enabled(
                         !running && !targets.is_empty(),
                         egui::Button::new("Run query"),
                     )
                     .clicked()
                 {
-                    // A decisão de pedir confirmação fica numa função só, usada pelo botão e
-                    // testável sem janela.
+                    // A decisão de pedir confirmação (ou bloquear) fica numa função só, usada pelo
+                    // botão e testável sem janela.
                     self.request_run(targets)
                 } else {
                     None
+                };
+
+                if self.read_only {
+                    ui.label(egui::RichText::new("Read-only").small().weak())
+                        .on_hover_text("Settings › Query: only read-only queries run.");
                 }
+
+                request
             })
             .inner;
 
@@ -1224,6 +1246,17 @@ Selection unchanged."
     /// Aplica a paginação configurada (chamada pelo app a cada quadro).
     pub fn set_page_size(&mut self, page_size: Option<usize>) {
         self.page_size = page_size;
+    }
+
+    /// Aplica o modo somente leitura vindo da aba Settings.
+    ///
+    /// Mudar o valor descarta uma confirmação pendente: um `Run anyway` aberto antes da mudança
+    /// não pode escapar da política nova.
+    pub fn set_read_only(&mut self, read_only: bool) {
+        if self.read_only != read_only {
+            self.confirmation = None;
+        }
+        self.read_only = read_only;
     }
 
     /// O app entrega a lista de queries salvas (ele é o dono; a tela só desenha).
@@ -1804,54 +1837,77 @@ Selection unchanged."
     /// Consulta destrutiva **sempre** pede confirmação aqui — a GUI não tem o `--no-confirm` do
     /// CLI, e apagar dado por engano não tem desfazer. O que decide é o `analyzer` do núcleo, o
     /// mesmo que o CLI usa, então a classificação é a mesma dos dois lados.
+    /// Decide o que o botão `Run query` faz: executa direto, pede confirmação ou bloqueia.
+    ///
+    /// Com o modo somente leitura desligado, consulta destrutiva pede confirmação. Ligado, ela abre
+    /// um alerta bloqueante e não executa. O que decide é o `analyzer` do núcleo, o mesmo que o CLI
+    /// usa, então a classificação é a mesma dos dois lados.
     fn request_run(&mut self, targets: Vec<(String, Vec<String>)>) -> Option<Request> {
         let run = Request::RunQuery {
             targets: targets.clone(),
             sql: self.sql.clone(),
             output_directory: self.output_directory.clone(),
+            read_only: self.read_only,
         };
 
         if analyzer::analyze(&self.sql) != QueryType::Destructive {
             return Some(run);
         }
 
+        let kind = if self.read_only {
+            ConfirmationKind::ReadOnly
+        } else {
+            ConfirmationKind::Destructive
+        };
+
         self.confirmation = Some(Confirmation {
+            kind,
             description: analyzer::description(&self.sql),
             servers: targets.len(),
             // As bases são **explícitas**: o plano roda exatamente as marcadas (D15).
             databases: targets.iter().map(|(_, databases)| databases.len()).sum(),
             preview: preview_of(&self.sql),
-            request: run,
+            request: (kind == ConfirmationKind::Destructive).then_some(run),
         });
 
         None
     }
 
-    /// O popup de confirmação de consulta destrutiva.
+    /// O popup da consulta destrutiva.
     ///
-    /// Mesmo conteúdo que o CLI mostra (tipo, servidores, bancos e um trecho da consulta), com ícone
-    /// de alerta; a decisão é do usuário e o padrão seguro é **cancelar**.
+    /// Com o modo somente leitura desligado, ele confirma a execução (o padrão seguro é cancelar).
+    /// Ligado, ele apenas informa que a consulta **não pode rodar** e não oferece `Run anyway`.
     fn confirmation_modal(&mut self, ctx: &egui::Context) -> Option<Request> {
         let Some(confirmation) = &self.confirmation else {
             return None;
         };
+        let kind = confirmation.kind;
 
         let mut decision: Option<bool> = None;
         let response =
             egui::Modal::new(egui::Id::unique("destructive_query_dialog")).show(ctx, |ui| {
                 ui.set_max_width(460.0);
 
+                let (icon, title, color) = match kind {
+                    ConfirmationKind::Destructive => (
+                        crate::icons::Icon::Warning,
+                        "WARNING: DESTRUCTIVE QUERY DETECTED",
+                        crate::theme::danger(ui),
+                    ),
+                    ConfirmationKind::ReadOnly => (
+                        crate::icons::Icon::LockClosed,
+                        "READ-ONLY MODE: QUERY NOT RUN",
+                        crate::theme::danger(ui),
+                    ),
+                };
+
                 ui.horizontal(|ui| {
                     ui.label(
-                        egui::RichText::new(crate::icons::Icon::Warning.glyph().to_string())
+                        egui::RichText::new(icon.glyph().to_string())
                             .font(crate::icons::font_id(28.0))
-                            .color(crate::theme::danger(ui)),
+                            .color(color),
                     );
-                    ui.label(
-                        egui::RichText::new("WARNING: DESTRUCTIVE QUERY DETECTED")
-                            .strong()
-                            .color(crate::theme::danger(ui)),
-                    );
+                    ui.label(egui::RichText::new(title).strong().color(color));
                 });
 
                 ui.add_space(6.0);
@@ -1872,35 +1928,56 @@ Selection unchanged."
                         ui.end_row();
                     });
 
+                if kind == ConfirmationKind::ReadOnly {
+                    ui.add_space(6.0);
+                    ui.label(
+                        "Read-only mode is on, so this query cannot run. \
+                         Turn it off in Settings › Query to run destructive queries.",
+                    );
+                }
+
                 ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    // `Cancel` primeiro: o padrão seguro é não executar.
-                    if ui.button("Cancel").clicked() {
-                        decision = Some(false);
+                ui.horizontal(|ui| match kind {
+                    ConfirmationKind::Destructive => {
+                        // `Cancel` primeiro: o padrão seguro é não executar.
+                        if ui.button("Cancel").clicked() {
+                            decision = Some(false);
+                        }
+                        ui.add_space(8.0);
+                        if ui
+                            .button(
+                                egui::RichText::new("Run anyway").color(crate::theme::danger(ui)),
+                            )
+                            .clicked()
+                        {
+                            decision = Some(true);
+                        }
                     }
-                    ui.add_space(8.0);
-                    if ui
-                        .button(egui::RichText::new("Run anyway").color(crate::theme::danger(ui)))
-                        .clicked()
-                    {
-                        decision = Some(true);
+                    ConfirmationKind::ReadOnly => {
+                        if ui.button("Close").clicked() {
+                            decision = Some(false);
+                        }
                     }
                 });
             });
 
-        // Clicar fora do popup equivale a cancelar.
+        // Clicar fora do popup equivale a cancelar (ou fechar o alerta bloqueante).
         if response.backdrop_response.clicked() {
             decision = Some(false);
         }
 
         match decision {
-            Some(true) => {
-                let confirmation = self.confirmation.take()?;
-                Some(confirmation.request)
-            }
+            Some(true) => self.confirmation.take()?.request,
             Some(false) => {
                 self.confirmation = None;
-                self.error = Some("Query execution cancelled by user.".to_string());
+                self.error = Some(match kind {
+                    ConfirmationKind::Destructive => {
+                        "Query execution cancelled by user.".to_string()
+                    }
+                    ConfirmationKind::ReadOnly => {
+                        "Read-only mode: the query was not run.".to_string()
+                    }
+                });
                 None
             }
             None => None,
@@ -2304,11 +2381,12 @@ mod tests {
 
         assert!(request.is_none(), "nada roda antes de confirmar");
         let confirmation = state.confirmation.as_ref().expect("abriu a confirmação");
+        assert_eq!(confirmation.kind, ConfirmationKind::Destructive);
         assert_eq!(confirmation.servers, 1);
         assert_eq!(confirmation.databases, 1, "um banco no cadastro");
         assert_eq!(confirmation.preview, "DELETE FROM t");
         assert!(
-            matches!(confirmation.request, Request::RunQuery { .. }),
+            matches!(confirmation.request, Some(Request::RunQuery { .. })),
             "a confirmação guarda o pedido pronto para executar"
         );
     }
@@ -2322,8 +2400,73 @@ mod tests {
 
         let request = state.request_run(vec![("dev".to_string(), vec!["dev".to_string()])]);
 
-        assert!(matches!(request, Some(Request::RunQuery { .. })));
+        assert!(matches!(
+            request,
+            Some(Request::RunQuery {
+                read_only: false,
+                ..
+            })
+        ));
         assert!(state.confirmation.is_none());
+    }
+
+    #[test]
+    /// CONTRACT: IF-271
+    fn read_only_blocks_a_destructive_query_with_an_alert() {
+        let mut state = State {
+            sql: "DELETE FROM t".to_string(),
+            read_only: true,
+            ..State::default()
+        };
+
+        let request = state.request_run(vec![("dev".to_string(), vec!["dev".to_string()])]);
+
+        assert!(request.is_none(), "o alerta bloqueia antes de executar");
+        let confirmation = state.confirmation.as_ref().expect("abriu o alerta");
+        assert_eq!(confirmation.kind, ConfirmationKind::ReadOnly);
+        assert!(
+            confirmation.request.is_none(),
+            "não existe pedido para rodar no alerta bloqueante"
+        );
+        assert_eq!(confirmation.preview, "DELETE FROM t");
+    }
+
+    #[test]
+    fn read_only_runs_a_select_with_the_flag() {
+        let mut state = State {
+            sql: "SELECT 1".to_string(),
+            read_only: true,
+            ..State::default()
+        };
+
+        let request = state.request_run(vec![("dev".to_string(), vec!["dev".to_string()])]);
+
+        assert!(matches!(
+            request,
+            Some(Request::RunQuery {
+                read_only: true,
+                ..
+            })
+        ));
+        assert!(state.confirmation.is_none());
+    }
+
+    #[test]
+    fn enabling_read_only_clears_a_pending_confirmation() {
+        let mut state = State {
+            sql: "DROP TABLE t".to_string(),
+            ..State::default()
+        };
+        let _ = state.request_run(vec![("dev".to_string(), vec!["dev".to_string()])]);
+        assert!(state.confirmation.is_some());
+
+        state.set_read_only(true);
+
+        assert!(
+            state.confirmation.is_none(),
+            "o Run anyway antigo não pode sobreviver à mudança"
+        );
+        assert!(state.read_only);
     }
 
     #[test]

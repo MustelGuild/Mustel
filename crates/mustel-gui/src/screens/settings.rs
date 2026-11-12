@@ -7,8 +7,8 @@
 //! **uma vez**, na primeira vez que a aba abre, e guardada na tela.
 
 use mustel_core::config::model::{
-    GuiPrefs, GuiTheme, MAX_FONT_SCALE, MAX_PAGE_SIZE, MIN_FONT_SCALE, MIN_PAGE_SIZE,
-    SelectionListPrefs,
+    DEFAULT_READ_ONLY_QUERIES, GuiPrefs, GuiTheme, MAX_FONT_SCALE, MAX_PAGE_SIZE, MIN_FONT_SCALE,
+    MIN_PAGE_SIZE, SelectionListPrefs,
 };
 
 use crate::fonts::{self, Chosen, EMBEDDED_MONO, EMBEDDED_PROPORTIONAL};
@@ -52,20 +52,36 @@ enum Category {
     Appearance,
     /// Paginação da lista de bases (aba Query).
     DatabaseList,
+    /// Modo somente leitura das consultas.
+    Query,
     /// Perfis de IA (modelo, endpoint, chave).
     Ai,
+    /// Log de execução e erros.
+    Activity,
+    /// Versão, licença e os textos legais que acompanham o binário.
+    About,
 }
 
 impl Category {
     /// Todas, na ordem do menu.
-    const ALL: [Category; 3] = [Category::Appearance, Category::DatabaseList, Category::Ai];
+    const ALL: [Category; 6] = [
+        Category::Appearance,
+        Category::DatabaseList,
+        Category::Query,
+        Category::Ai,
+        Category::Activity,
+        Category::About,
+    ];
 
     /// Rótulo do menu (só texto: o ícone vem da fonte embutida, nunca emoji).
     fn label(self) -> &'static str {
         match self {
             Category::Appearance => "Appearance",
             Category::DatabaseList => "Database list",
+            Category::Query => "Query",
             Category::Ai => "AI profiles",
+            Category::Activity => "Activity",
+            Category::About => "About",
         }
     }
 
@@ -75,7 +91,10 @@ impl Category {
             // O sol é o ícone do tema claro: a categoria é a aparência da janela.
             Category::Appearance => crate::icons::Icon::ThemeLight,
             Category::DatabaseList => crate::icons::Icon::List,
+            Category::Query => crate::icons::Icon::LockClosed,
             Category::Ai => crate::icons::Icon::Sparkles,
+            Category::Activity => crate::icons::Icon::Magnifier,
+            Category::About => crate::icons::Icon::Info,
         }
     }
 
@@ -84,8 +103,13 @@ impl Category {
         match self {
             Category::Appearance => "Theme, fonts and text size of the window.",
             Category::DatabaseList => "How the database list in the Query tab is drawn.",
+            Category::Query => "Read-only mode for the queries run from this window.",
             Category::Ai => {
                 "Models for the AI that writes SQL in the Query tab. The key goes to the system vault."
+            }
+            Category::Activity => "What ran and what failed, kept on this computer for 30 days.",
+            Category::About => {
+                "Version, license and the legal notices that travel with this program."
             }
         }
     }
@@ -117,17 +141,38 @@ fn category_item(ui: &mut egui::Ui, category: Category, selected: bool) -> egui:
         ui.painter().rect_filled(rect, 4.0, visuals.weak_bg_fill);
     }
 
-    let job =
-        crate::icons::icon_and_text(ui, category.icon(), category.label(), egui::TextStyle::Body);
-    let galley = ui.painter().layout_job(job);
+    let text_color = visuals.fg_stroke.color;
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let galley = ui
+        .painter()
+        .layout_no_wrap(category.label().to_owned(), font, text_color);
+
+    // O ícone ocupa um **quadrado do tamanho do texto**, e o rótulo começa sempre no mesmo x. Sem
+    // isto, a largura do glifo (`Sparkles`, `Magnifier`, `Info` são mais largos que `ThemeLight`,
+    // `List` e `LockClosed`) empurrava o texto das últimas entradas para a direita.
+    let icon_size = galley.size().y;
+    let spacing = 4.0;
     let padding = egui::vec2(10.0, 0.0);
+    let center_y = rect.center().y;
+    let icon_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.left() + padding.x + icon_size / 2.0, center_y),
+        egui::Vec2::splat(icon_size),
+    );
+
+    ui.painter().text(
+        icon_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        category.icon().glyph().to_string(),
+        crate::icons::font_id(icon_size),
+        text_color,
+    );
     ui.painter().galley(
         egui::pos2(
-            rect.left() + padding.x,
-            rect.center().y - galley.size().y / 2.0,
+            icon_rect.right() + spacing,
+            center_y - galley.size().y / 2.0,
         ),
         galley,
-        visuals.fg_stroke.color,
+        text_color,
     );
 
     response
@@ -141,6 +186,28 @@ fn theme_index(theme: GuiTheme) -> usize {
         .unwrap_or(0)
 }
 
+/// Abaixo desta largura de texto, as ações do cartão de perfil descem para a linha de baixo.
+const AI_MIN_TEXT_WIDTH: f32 = 180.0;
+
+/// Largura que Test/Edit/Remove precisam no estilo atual (escala de fonte incluída).
+///
+/// Medir em vez de fixar um número é o que mantém a decisão certa quando o usuário aumenta a fonte
+/// na aba Appearance.
+fn ai_actions_width(ui: &egui::Ui) -> f32 {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let labels = ["Test", "Edit", "Remove"];
+    let mut width = 0.0;
+
+    for label in labels {
+        let galley = ui.fonts_mut(|fonts| {
+            fonts.layout_no_wrap(label.to_owned(), font.clone(), egui::Color32::PLACEHOLDER)
+        });
+        width += galley.size().x + 2.0 * ui.spacing().button_padding.x;
+    }
+
+    width + (labels.len() as f32 - 1.0) * ui.spacing().item_spacing.x
+}
+
 /// Estado da aba Settings.
 #[derive(Debug, Default)]
 pub struct State {
@@ -150,6 +217,8 @@ pub struct State {
     theme: GuiTheme,
     /// Paginação da lista de bases (aba Query).
     selection_list: SelectionListPrefs,
+    /// Modo somente leitura das consultas (aba Query).
+    read_only: bool,
     /// Famílias instaladas no sistema (`None` = ainda não carregadas).
     families: Option<Vec<String>>,
     /// Aviso do que não pôde ser aplicado (fonte ausente).
@@ -162,12 +231,22 @@ pub struct State {
     ai_form: Option<AiForm>,
     /// Perfil esperando o segundo toque para remover.
     ai_confirming_remove: Option<String>,
-    /// Último recado da seção de IA ("Profile saved", erro do `Test`).
+    /// Último recado da seção de IA ("Profile saved", remoção e validação do formulário).
     ai_message: Option<String>,
+    /// Perfis de IA com o `Test` **em andamento** (o botão vira spinner).
+    ai_testing: Vec<String>,
+    /// Último resultado do `Test` por perfil: (id, deu certo?, quando chegou).
+    ///
+    /// O botão mostra check ou X por alguns segundos e volta a `Test`; a falha também vira toast.
+    ai_tested: Vec<(String, bool, std::time::Instant)>,
     /// Categoria aberta no menu da esquerda.
     category: Category,
-    /// Recado do atalho do arquivo de configuração (arquivo ausente, editor que não abriu).
+    /// Documento aberto no leitor da categoria About (índice em [`crate::about::DOCUMENTS`]).
+    about_document: usize,
+    /// Último recado do atalho do arquivo de configuração (arquivo ausente, editor que não abriu).
     config_hint: Option<String>,
+    /// A aba **Activity**: filtro, seleção e modal do relatório.
+    activity: crate::screens::activity::State,
 }
 
 /// O formulário de um perfil de IA (nome, endpoint, modelo, temperatura e chave).
@@ -198,6 +277,9 @@ impl State {
             selection_list: prefs
                 .map(|prefs| prefs.selection_list.clone())
                 .unwrap_or_default(),
+            read_only: prefs
+                .map(|prefs| prefs.read_only_queries)
+                .unwrap_or(DEFAULT_READ_ONLY_QUERIES),
             ai_profiles: prefs
                 .map(|prefs| prefs.ai.profiles.clone())
                 .unwrap_or_default(),
@@ -218,17 +300,23 @@ impl State {
         self.theme
     }
 
+    /// O modo somente leitura em edição (a aba Query aplica a cada quadro).
+    pub fn read_only(&self) -> bool {
+        self.read_only
+    }
+
     /// Aplica o que voltou de um job.
     ///
     /// Nada aqui é da aparência: descoberta de bases e `Test` do seletor vivem em
     /// `screens::selectors`. O método fica porque o app chama `apply` em todas as telas.
     pub fn apply(&mut self, result: &crate::request::JobResult) {
-        // O `Test` de perfil devolve o recado para a seção de IA (a lista continua na tela).
-        if let crate::request::JobResult::AiTested { result, .. } = result {
-            self.ai_message = Some(match result {
-                Ok(message) => message.clone(),
-                Err(error) => error.clone(),
-            });
+        // O `Test` de perfil é do **botão** (spinner → check/X) e, na falha, do toast; a seção não
+        // repete o texto — `ai_message` fica para o que é da lista (salvar, remover, validação).
+        if let crate::request::JobResult::AiTested { profile, result } = result {
+            self.ai_testing.retain(|id| id != profile);
+            self.ai_tested.retain(|(id, _, _)| id != profile);
+            self.ai_tested
+                .push((profile.clone(), result.is_ok(), std::time::Instant::now()));
         }
     }
 
@@ -240,8 +328,10 @@ impl State {
         self.chosen.apply_to(&mut prefs);
         prefs.theme = self.theme;
         // `selections` **não** é desta tela: quem monta a seção `gui` inteira é o app, juntando a
-        // aparência (daqui) com os seletores (do cadastro em Connections) e a paginação (daqui).
+        // aparência (daqui) com os seletores (do cadastro em Connections) e as queries salvas
+        // (aba Query). Por isso o commit da aparência não pode gravar isto diretamente.
         prefs.selection_list = self.selection_list.clone();
+        prefs.read_only_queries = self.read_only;
         // A seção `ai` é desta tela: sem isto, gravar a aparência apagaria os perfis.
         prefs.ai = mustel_core::config::model::AiPrefs {
             profiles: self.ai_profiles.clone(),
@@ -268,15 +358,17 @@ impl State {
     ///
     /// A aba é **menu fixo + painel**: o menu ([`Category`]) não rola com o conteúdo e não depende
     /// da categoria para existir. Só o painel da direita rola, e só quando não cabe.
-    pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Request> {
+    pub(crate) fn ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        activity: &mut crate::screens::activity::Context<'_>,
+    ) -> Option<Request> {
         // Menu de categorias: painel próprio (desenha o fundo e a divisória), como a sidebar de
         // servidores da aba Query.
         egui::Panel::left("settings_categories")
             .exact_size(CATEGORY_WIDTH)
             .show(ui, |ui| self.categories_ui(ui));
 
-        // Painel da categoria escolhida. Barra **sólida**: a flutuante só aparece enquanto se rola e
-        // some depois; com a sólida, quem tem conteúdo abaixo vê que tem.
         let outcome = egui::Frame::NONE
             .inner_margin(egui::Margin {
                 left: CONTENT_GAP,
@@ -284,12 +376,22 @@ impl State {
             })
             .show(ui, |ui| {
                 ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
-                egui::ScrollArea::vertical()
-                    .id_salt("settings_content")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.category_ui(ui))
+                // O **About** e a **Activity** gerenciam a própria altura: o leitor da licença e a
+                // tabela virtualizada ocupam o painel inteiro e têm a própria rolagem. Envolvê-los
+                // no rolo do painel os espremeria no topo.
+                if matches!(self.category, Category::About | Category::Activity) {
+                    self.category_ui(ui, activity)
+                } else {
+                    // Painel da categoria escolhida. Barra **sólida**: a flutuante só aparece
+                    // enquanto se rola e some depois; com a sólida, quem tem conteúdo abaixo vê que
+                    // tem.
+                    egui::ScrollArea::vertical()
+                        .id_salt("settings_content")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| self.category_ui(ui, activity))
+                        .inner
+                }
             })
-            .inner
             .inner;
 
         // O pedido da categoria (chave no cofre, `Test`, gravar perfis) tem precedência: ele é de
@@ -369,7 +471,11 @@ impl State {
     }
 
     /// O painel da categoria aberta.
-    fn category_ui(&mut self, ui: &mut egui::Ui) -> Outcome {
+    fn category_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        activity: &mut crate::screens::activity::Context<'_>,
+    ) -> Outcome {
         let mut outcome = Outcome::default();
 
         // Cabeçalho do painel: o nome da categoria e do que ela trata — é o que confirma que o
@@ -383,7 +489,12 @@ impl State {
         match self.category {
             Category::Appearance => self.appearance_ui(ui, &mut outcome),
             Category::DatabaseList => self.database_list_ui(ui, &mut outcome),
+            Category::Query => self.query_ui(ui, &mut outcome),
             Category::Ai => outcome.request = self.ai_section_ui(ui),
+            Category::Activity => self.activity.ui(ui, activity),
+            Category::About => {
+                outcome.request = crate::about::ui(ui, &mut self.about_document);
+            }
         }
 
         outcome
@@ -485,6 +596,20 @@ impl State {
         outcome.changed |= self.selection_list_ui(ui);
     }
 
+    /// Categoria **Query**: modo somente leitura das consultas.
+    fn query_ui(&mut self, ui: &mut egui::Ui, outcome: &mut Outcome) {
+        if ui
+            .checkbox(&mut self.read_only, "Only run read-only queries")
+            .changed()
+        {
+            outcome.changed = true;
+        }
+
+        ui.weak(
+            "On by default. Blocks queries that write. The PostgreSQL session is opened as read-only.",
+        );
+    }
+
     /// A seção **AI**: lista de perfis, formulário e `Test`.
     ///
     /// Devolve pedidos que **não** são da seção `gui` (gravar a chave no cofre, testar o perfil);
@@ -496,17 +621,30 @@ impl State {
             ui.weak(message);
         }
 
+        // Resultados antigos saem de cena sozinhos: o botão volta a ser `Test`.
+        self.ai_tested
+            .retain(|(_, _, at)| at.elapsed() < crate::test_button::FEEDBACK);
+
         // Lista.
         let mut activate: Option<String> = None;
         let mut edit: Option<usize> = None;
         let mut remove: Option<String> = None;
+        let mut testing: Option<String> = None;
         // Cada perfil é um **cartão**: rádio (o ativo), nome, o resumo logo abaixo e as ações na
         // ponta. Antes era uma linha corrida com o resumo colado no nome — com dois perfis de nomes
         // parecidos, era difícil dizer qual linha era qual.
         for (index, profile) in self.ai_profiles.iter().enumerate() {
             let active = profile.id == self.ai_active;
             egui::Frame::group(ui.style()).show(ui, |ui| {
-                ui.horizontal(|ui| {
+                // Duas arrumações, escolhidas pelo espaço: com painel largo, as ações vão para a
+                // **ponta** (direita) e o texto quebra no que sobra — `Sides::shrink_left` desenha a
+                // direita primeiro, com largura natural. Sem espaço para as duas coisas, o texto fica
+                // na primeira linha e as ações descem e **quebram** entre si. A arrumação antiga
+                // (texto e `right_to_left` na mesma linha, sem reservar a direita) jogava
+                // Test/Edit/Remove para fora do painel ao encolher a janela.
+                let stacked = ui.available_width() < ai_actions_width(ui) + AI_MIN_TEXT_WIDTH;
+
+                let mut text = |ui: &mut egui::Ui| {
                     if ui
                         .radio(active, "")
                         .on_hover_text("Use this profile")
@@ -518,30 +656,70 @@ impl State {
                         ui.strong(&profile.name);
                         ui.weak(format!("{} · {}", profile.model, profile.base_url));
                     });
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let confirming = self.ai_confirming_remove.as_deref() == Some(&profile.id);
-                        let label = if confirming {
-                            "Confirm remove"
-                        } else {
-                            "Remove"
-                        };
-                        if ui.button(label).clicked() {
-                            remove = Some(profile.id.clone());
-                        }
-                        if ui.button("Edit").clicked() {
-                            edit = Some(index);
-                        }
-                        if ui
-                            .button("Test")
-                            .on_hover_text("Send a tiny request")
-                            .clicked()
-                        {
-                            request = Some(Request::TestAiProfile {
-                                profile: profile.id.clone(),
-                            });
-                        }
-                    });
-                });
+                };
+                let mut actions = |ui: &mut egui::Ui| {
+                    let confirming = self.ai_confirming_remove.as_deref() == Some(&profile.id);
+                    let label = if confirming {
+                        "Confirm remove"
+                    } else {
+                        "Remove"
+                    };
+                    if ui.button(label).clicked() {
+                        remove = Some(profile.id.clone());
+                    }
+                    let edit_button = ui.button("Edit");
+                    if edit_button.clicked() {
+                        edit = Some(index);
+                    }
+                    // `Test` com o mesmo desenho do cartão de servidor: spinner enquanto verifica
+                    // e, por alguns segundos, check (funcionou) ou X (falhou).
+                    let width = crate::test_button::width(ui, "Test");
+                    // A altura vem do `Edit`: forçar a altura deixava o `Test` mais alto.
+                    let height = edit_button.rect.height();
+                    let running = self.ai_testing.iter().any(|id| id == &profile.id);
+                    let feedback = self
+                        .ai_tested
+                        .iter()
+                        .find(|(id, _, _)| id == &profile.id)
+                        .map(|(_, ok, at)| (*ok, *at));
+                    let phase = if running {
+                        crate::test_button::Phase::Running
+                    } else if let Some((ok, at)) = feedback
+                        && at.elapsed() < crate::test_button::FEEDBACK
+                    {
+                        ui.ctx()
+                            .request_repaint_after(crate::test_button::FEEDBACK - at.elapsed());
+                        crate::test_button::Phase::Done { ok }
+                    } else {
+                        crate::test_button::Phase::Idle
+                    };
+                    let hover = match phase {
+                        crate::test_button::Phase::Done { ok: true } => "Profile works",
+                        crate::test_button::Phase::Done { ok: false } => "Profile failed",
+                        _ => "Send a tiny request",
+                    };
+                    if crate::test_button::show(ui, "Test", width, height, phase)
+                        .on_hover_text(hover)
+                        .clicked()
+                    {
+                        testing = Some(profile.id.clone());
+                        request = Some(Request::TestAiProfile {
+                            profile: profile.id.clone(),
+                        });
+                    }
+                };
+
+                if stacked {
+                    text(ui);
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| actions(ui));
+                } else {
+                    egui::Sides::new()
+                        .spacing(8.0)
+                        .shrink_left()
+                        .wrap()
+                        .show(ui, text, actions);
+                }
             });
         }
 
@@ -554,6 +732,9 @@ impl State {
                 active: self.ai_active.clone(),
                 key: None,
             });
+        }
+        if let Some(id) = testing {
+            self.ai_testing.push(id);
         }
         if let Some(index) = edit {
             let profile = &self.ai_profiles[index];
@@ -949,6 +1130,19 @@ fn config_open_hint(path: &std::path::Path) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// Desenha a tela com uma aba Activity vazia (as categorias dos testes não a usam).
+    fn ui_with_empty_activity(state: &mut State, ui: &mut egui::Ui) {
+        let mut log = crate::activity_log::Log::in_memory(Vec::new());
+        let reports = std::env::temp_dir();
+        let mut context = crate::screens::activity::Context {
+            log: &mut log,
+            servers: &[],
+            profiles: &[],
+            reports_dir: Some(&reports),
+        };
+        let _ = state.ui(ui, &mut context);
+    }
+
     /// Trocar a fonte emite **um** pedido, e é o de commit (grava + aplica).
     ///
     /// Era o bug relatado: `changed` e `apply_now` verdadeiros juntos, dois `if` separados e o
@@ -991,8 +1185,8 @@ mod tests {
     fn every_category_has_its_own_icon_and_label() {
         assert_eq!(
             Category::ALL.len(),
-            3,
-            "Appearance, Database list, AI profiles"
+            6,
+            "Appearance, Database list, Query, AI profiles, Activity, About"
         );
         assert_eq!(
             Category::default(),
@@ -1036,7 +1230,7 @@ mod tests {
         for _ in 0..2 {
             let mut output = ctx.run_ui(screen(900.0, 700.0), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    let _ = state.ui(ui);
+                    ui_with_empty_activity(&mut state, ui);
                 });
             });
             painted.clear();
@@ -1060,6 +1254,50 @@ mod tests {
                 .any(|(text, pos)| text == Category::Appearance.label() && pos.x > CATEGORY_WIDTH),
             "o painel começa à direita do menu: {painted:?}"
         );
+    }
+
+    /// Os rótulos do menu começam no **mesmo x**: o ícone ocupa um quadrado fixo e não empurra o
+    /// texto conforme a largura do glifo.
+    #[test]
+    fn the_category_labels_share_the_same_left_edge() {
+        let ctx = egui::Context::default();
+        let mut state = State::with_prefs(None);
+        state.families = Some(Vec::new());
+
+        let mut painted: Vec<(String, egui::Pos2)> = Vec::new();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(screen(900.0, 700.0), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui_with_empty_activity(&mut state, ui);
+                });
+            });
+            painted.clear();
+            collect_text(&output.shapes, &mut painted);
+            output.textures_delta.clear();
+        }
+
+        let lefts: Vec<(&str, f32)> = Category::ALL
+            .iter()
+            .map(|category| {
+                let x = painted
+                    .iter()
+                    .find(|(text, pos)| text == category.label() && pos.x < CATEGORY_WIDTH)
+                    .unwrap_or_else(|| {
+                        panic!("rótulo {:?} não desenhado: {painted:?}", category.label())
+                    })
+                    .1
+                    .x;
+                (category.label(), x)
+            })
+            .collect();
+
+        let first = lefts[0].1;
+        for (label, x) in &lefts {
+            assert!(
+                (x - first).abs() < 0.5,
+                "{label:?} começa em {x}, o primeiro começa em {first}: {lefts:?}"
+            );
+        }
     }
 
     /// O atalho só manda abrir quando o arquivo existe; sem ele, o rodapé explica o que fazer.
@@ -1101,7 +1339,7 @@ mod tests {
         for _ in 0..2 {
             let mut output = ctx.run_ui(screen(900.0, 700.0), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    let _ = state.ui(ui);
+                    ui_with_empty_activity(&mut state, ui);
                 });
             });
             painted.clear();
@@ -1139,7 +1377,7 @@ mod tests {
         for _ in 0..2 {
             let mut output = ctx.run_ui(screen(900.0, 700.0), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    let _ = state.ui(ui);
+                    ui_with_empty_activity(&mut state, ui);
                 });
             });
             painted.clear();
@@ -1172,7 +1410,7 @@ mod tests {
         let mut painted: Vec<(String, egui::Pos2)> = Vec::new();
         let mut output = ctx.run_ui(screen(900.0, 700.0), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                let _ = state.ui(ui);
+                ui_with_empty_activity(&mut state, ui);
             });
         });
         collect_text(&output.shapes, &mut painted);
@@ -1206,7 +1444,7 @@ mod tests {
         painted.clear();
         let mut clicked = ctx.run_ui(input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                let _ = state.ui(ui);
+                ui_with_empty_activity(&mut state, ui);
             });
         });
         collect_text(&clicked.shapes, &mut painted);
@@ -1240,6 +1478,7 @@ mod tests {
                 paginate: true,
                 page_size: 80,
             },
+            read_only_queries: false,
             ..GuiPrefs::default()
         };
 
@@ -1250,6 +1489,73 @@ mod tests {
             "a paginação gravada chega no estado"
         );
         assert_eq!(state.prefs().selection_list.page_size, 80);
+        assert!(
+            !state.prefs().read_only_queries,
+            "o opt-out gravado chega no estado"
+        );
+    }
+
+    /// Sem arquivo (primeira execução), o modo já vem ligado.
+    #[test]
+    fn a_fresh_state_starts_read_only() {
+        assert!(State::with_prefs(None).read_only());
+    }
+
+    /// `Restore defaults` é da aparência e não altera a escolha do modo.
+    #[test]
+    fn restore_defaults_keeps_the_read_only_choice() {
+        let mut state = State::with_prefs(Some(&GuiPrefs {
+            read_only_queries: false,
+            ..GuiPrefs::default()
+        }));
+
+        state.restore_defaults();
+
+        assert!(
+            !state.read_only(),
+            "o botão é da aparência e não religa a proteção que o dono desligou"
+        );
+    }
+
+    /// A categoria **Query** desenha o checkbox e o texto do modo somente leitura.
+    ///
+    /// O teste renderiza a categoria sem janela; é o que garante que o painel não ficou só na
+    /// enumeração do menu.
+    #[test]
+    fn the_query_category_draws_the_read_only_checkbox() {
+        let ctx = egui::Context::default();
+        let mut state = State::with_prefs(None);
+        state.families = Some(Vec::new());
+        state.category = Category::Query;
+        assert!(
+            state.read_only(),
+            "a primeira execução começa em somente leitura"
+        );
+
+        let mut painted: Vec<(String, egui::Pos2)> = Vec::new();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(screen(900.0, 700.0), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui_with_empty_activity(&mut state, ui);
+                });
+            });
+            painted.clear();
+            collect_text(&output.shapes, &mut painted);
+            output.textures_delta.clear();
+        }
+
+        assert!(
+            painted
+                .iter()
+                .any(|(text, _)| text.contains("Only run read-only queries")),
+            "o checkbox do modo somente leitura está no painel: {painted:?}"
+        );
+        assert!(
+            painted
+                .iter()
+                .any(|(text, _)| text.contains("Blocks queries that write")),
+            "o texto explicativo está no painel: {painted:?}"
+        );
     }
 
     /// Mexer na paginação grava a seção `gui` inteira (sem perder a fonte).
@@ -1519,6 +1825,388 @@ mod tests {
                 egui::vec2(width, height),
             )),
             ..Default::default()
+        }
+    }
+
+    /// Perfil de IA de teste, com um `id` conhecido.
+    fn ai_state() -> State {
+        let mut prefs = GuiPrefs::default();
+        prefs
+            .ai
+            .profiles
+            .push(mustel_core::config::model::AiProfile {
+                id: "ollama".to_string(),
+                name: "Ollama".to_string(),
+                base_url: "http://127.0.0.1:11434/v1".to_string(),
+                model: "llama3".to_string(),
+                temperature: 0.2,
+            });
+        prefs.ai.active_profile = "ollama".to_string();
+
+        let mut state = State::with_prefs(Some(&prefs));
+        state.category = Category::Ai;
+        state
+    }
+
+    /// Enquanto testa, o botão vira spinner: o rótulo `Test` sai de cena.
+    /// CONTRACT: IF-264
+    #[test]
+    fn the_ai_test_button_shows_a_spinner_while_running() {
+        let mut state = ai_state();
+        state.ai_testing.push("ollama".to_string());
+
+        let painted = painted_at(&mut state, 700.0);
+        let everything = painted
+            .iter()
+            .map(|(text, _, _)| text.clone())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(
+            !painted.iter().any(|(text, _, _)| text == "Test"),
+            "o rótulo Test saiu de cena: {everything}"
+        );
+    }
+
+    /// `Test` que passou: o botão vira **check** e nada mais é escrito na seção.
+    /// CONTRACT: IF-264
+    #[test]
+    fn a_passing_ai_test_shows_a_check() {
+        let mut state = ai_state();
+        state.apply(&crate::request::JobResult::AiTested {
+            profile: "ollama".to_string(),
+            result: Ok("OK: SELECT 1;".to_string()),
+        });
+
+        let painted = painted_at(&mut state, 700.0);
+        let check = crate::icons::Icon::Check.glyph().to_string();
+        assert!(
+            painted.iter().any(|(text, _, _)| text == &check),
+            "o botão mostra o check: {painted:?}"
+        );
+        assert!(state.ai_message.is_none(), "a seção não repete o resultado");
+        assert!(state.ai_testing.is_empty(), "o spinner saiu");
+    }
+
+    /// `Test` que falhou: o botão vira **X** e o motivo **não** fica na seção — vai para o toast.
+    /// CONTRACT: IF-264
+    #[test]
+    fn a_failed_ai_test_shows_a_cross_and_leaves_the_reason_to_the_toast() {
+        let mut state = ai_state();
+        state.ai_testing.push("ollama".to_string());
+        state.apply(&crate::request::JobResult::AiTested {
+            profile: "ollama".to_string(),
+            result: Err("No key stored for this profile.".to_string()),
+        });
+
+        let painted = painted_at(&mut state, 700.0);
+        let everything = painted
+            .iter()
+            .map(|(text, _, _)| text.clone())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let cross = crate::icons::Icon::Cross.glyph().to_string();
+        assert!(
+            painted.iter().any(|(text, _, _)| text == &cross),
+            "o botão mostra o X: {everything}"
+        );
+        assert!(
+            !everything.contains("No key stored"),
+            "o motivo saiu da seção (vai no toast): {everything}"
+        );
+        assert!(state.ai_message.is_none());
+        assert!(state.ai_testing.is_empty(), "o spinner saiu");
+    }
+
+    /// Em painel estreito, as ações do cartão de perfil ficam **dentro do painel**.
+    ///
+    /// O bug: o texto e o `right_to_left` dos botões dividiam a mesma linha sem reservar a direita —
+    /// a 360 px o `Test` começava em x≈202, à esquerda do painel (x=236), por cima do menu de
+    /// categorias, e era recortado. Acontece em compositores que ignoram o tamanho mínimo da janela
+    /// (tiling no Wayland).
+    ///
+    /// A 360 px o painel tem 124 px e os três botões somam ~143: não cabem nem numa linha própria —
+    /// por isso, sem espaço, eles descem e quebram entre si.
+    #[test]
+    fn the_profile_actions_fit_a_narrow_panel() {
+        let mut prefs = GuiPrefs::default();
+        prefs
+            .ai
+            .profiles
+            .push(mustel_core::config::model::AiProfile {
+                id: "longo".to_string(),
+                name: "Perfil com nome comprido".to_string(),
+                base_url: "https://api.example.com/v1/um/caminho/bem/comprido/que/nao/acaba"
+                    .to_string(),
+                model: "modelo-com-nome-comprido".to_string(),
+                temperature: 0.2,
+            });
+        prefs.ai.active_profile = "longo".to_string();
+
+        let mut state = State::with_prefs(Some(&prefs));
+        state.category = Category::Ai;
+
+        let width = 360.0;
+        let narrow = painted_at(&mut state, width);
+
+        let panel_left = CATEGORY_WIDTH + f32::from(CONTENT_GAP);
+        for action in ["Test", "Edit", "Remove"] {
+            let (_, rect, clip) = narrow
+                .iter()
+                .find(|(text, _, _)| text == action)
+                .unwrap_or_else(|| panic!("o botão {action} sumiu do cartão"));
+            assert!(
+                rect.min.x >= panel_left,
+                "o botão {action} invadiu o menu (x={} < {panel_left})",
+                rect.min.x
+            );
+            assert!(
+                rect.max.x <= width,
+                "o botão {action} saiu da janela (max.x={})",
+                rect.max.x
+            );
+            assert!(
+                clip.width() > 0.0 && clip.contains_rect(*rect),
+                "o botão {action} foi recortado (rect={rect:?}, clipe={clip:?})"
+            );
+        }
+        for (text, rect, clip) in &narrow {
+            assert!(
+                rect.max.x <= width,
+                "'{text}' passou da borda da janela (max.x={})",
+                rect.max.x
+            );
+            assert!(
+                clip.contains_rect(*rect),
+                "'{text}' foi recortado (rect={rect:?}, clipe={clip:?})"
+            );
+        }
+
+        // Com espaço, o desenho aprovado continua: as ações na **ponta** direita do cartão.
+        let wide = painted_at(&mut state, 700.0);
+        let (_, remove, clip) = wide
+            .iter()
+            .find(|(text, _, _)| text == "Remove")
+            .expect("o botão Remove está no cartão largo");
+        assert!(
+            remove.max.x > 600.0,
+            "com espaço, as ações ficam na ponta (Remove termina em {})",
+            remove.max.x
+        );
+        assert!(
+            clip.contains_rect(*remove),
+            "o Remove do cartão largo foi recortado (clipe={clip:?})"
+        );
+    }
+
+    /// A janela real **abre maximizada** e o dono a encolhe — mesmo `Context`, mesma memória.
+    ///
+    /// Os testes anteriores criavam um contexto novo por largura, e por isso não viam o que o dono
+    /// via: o estado de layout do egui sobrevive ao redimensionamento.
+    #[test]
+    fn shrinking_the_window_after_a_maximized_frame_keeps_the_actions_visible() {
+        let mut prefs = GuiPrefs::default();
+        prefs
+            .ai
+            .profiles
+            .push(mustel_core::config::model::AiProfile {
+                id: "longo".to_string(),
+                name: "Perfil com nome comprido".to_string(),
+                base_url: "https://api.example.com/v1/um/caminho/bem/comprido/que/nao/acaba"
+                    .to_string(),
+                model: "modelo-com-nome-comprido".to_string(),
+                temperature: 0.2,
+            });
+        prefs.ai.active_profile = "longo".to_string();
+
+        let mut state = State::with_prefs(Some(&prefs));
+        state.category = Category::Ai;
+
+        let ctx = egui::Context::default();
+
+        // Primeiro quadro: maximizada, como o app abre.
+        let maximized = painted_with(&ctx, &mut state, 1500.0, 900.0);
+        assert!(
+            maximized.iter().any(|(text, _, _)| text == "Remove"),
+            "maximizada, as ações existem"
+        );
+
+        // Depois, o dono encolhe a janela — sem trocar de contexto nem de estado.
+        let panel_left = CATEGORY_WIDTH + f32::from(CONTENT_GAP);
+        for width in [1100.0, 800.0, 600.0, 430.0, 360.0] {
+            let painted = painted_with(&ctx, &mut state, width, 900.0);
+
+            for action in ["Test", "Edit", "Remove"] {
+                let (_, rect, clip) = painted
+                    .iter()
+                    .find(|(text, _, _)| text == action)
+                    .unwrap_or_else(|| panic!("a {width}px o botão {action} sumiu do cartão"));
+                assert!(
+                    rect.min.x >= panel_left,
+                    "a {width}px o botão {action} invadiu o menu (x={} < {panel_left})",
+                    rect.min.x
+                );
+                assert!(
+                    rect.max.x <= width,
+                    "a {width}px o botão {action} saiu da janela (max.x={})",
+                    rect.max.x
+                );
+                assert!(
+                    clip.width() > 0.0 && clip.contains_rect(*rect),
+                    "a {width}px o botão {action} foi recortado (clipe={clip:?})"
+                );
+            }
+        }
+    }
+
+    /// A cadeia **completa do app**: barra de topo com um status longo, `Frame` com recorte e a aba
+    /// Settings, primeiro maximizada e depois encolhida no mesmo `Context`.
+    ///
+    /// Este é o teste que reproduziu o bug de verdade: com um status comprido na barra, a linha do
+    /// topo alargava o layout além da janela, e o `max_rect` do conteúdo ia junto — as ações do
+    /// cartão, alinhadas à direita, saíam da tela. Os testes que só desenhavam a aba (status curto)
+    /// passavam e escondiam o problema.
+    #[test]
+    fn a_long_status_does_not_widen_the_settings_content() {
+        let mut prefs = GuiPrefs::default();
+        prefs
+            .ai
+            .profiles
+            .push(mustel_core::config::model::AiProfile {
+                id: "longo".to_string(),
+                name: "Perfil com nome comprido".to_string(),
+                base_url: "https://api.example.com/v1/um/caminho/bem/comprido/que/nao/acaba"
+                    .to_string(),
+                model: "modelo-com-nome-comprido".to_string(),
+                temperature: 0.2,
+            });
+
+        let mut state = State::with_prefs(Some(&prefs));
+        state.category = Category::Ai;
+
+        let ctx = egui::Context::default();
+        crate::fonts::apply(&ctx, state.chosen());
+        crate::theme::apply(&ctx, state.theme());
+
+        // Maximizada primeiro; depois as larguras de quem encolhe a janela.
+        for (width, height) in [
+            (3400.0, 1400.0),
+            (1100.0, 733.0),
+            (800.0, 700.0),
+            (500.0, 700.0),
+        ] {
+            let mut output = ctx.run_ui(screen(width, height), |ui| {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.heading("Mustel");
+                        ui.separator();
+                        ui.label("Query");
+                        ui.separator();
+                        ui.add(
+                            egui::Label::new(
+                                "Could not list the databases of 'Local2': Connection failed: \
+                                 error connecting to server. Could not list the databases of \
+                                 'Local3': Connection failed: error connecting to server.",
+                            )
+                            .truncate(),
+                        );
+                    });
+                    ui.separator();
+                    egui::Frame::NONE
+                        .inner_margin(egui::Margin::ZERO)
+                        .show(ui, |ui| {
+                            ui.set_clip_rect(ui.max_rect());
+                            ui_with_empty_activity(&mut state, ui);
+                        });
+                });
+            });
+            output.textures_delta.clear();
+
+            let mut painted = Vec::new();
+            collect_rects(&output.shapes, &mut painted);
+
+            let panel_left = CATEGORY_WIDTH + f32::from(CONTENT_GAP);
+            for action in ["Test", "Edit", "Remove"] {
+                let (_, rect, clip) = painted
+                    .iter()
+                    .find(|(text, _, _)| text == action)
+                    .unwrap_or_else(|| panic!("a {width}px o botão {action} sumiu"));
+                assert!(
+                    rect.min.x >= panel_left,
+                    "a {width}px {action} invadiu o menu (x={})",
+                    rect.min.x
+                );
+                assert!(
+                    rect.max.x <= width,
+                    "a {width}px {action} saiu da janela (max.x={})",
+                    rect.max.x
+                );
+                assert!(
+                    clip.width() > 0.0 && clip.contains_rect(*rect),
+                    "a {width}px {action} foi recortado (rect={rect:?}, clipe={clip:?})"
+                );
+            }
+        }
+    }
+
+    /// Desenha a aba uma vez na largura pedida e devolve o que foi pintado.
+    fn painted_at(state: &mut State, width: f32) -> Vec<(String, egui::Rect, egui::Rect)> {
+        painted_with(&egui::Context::default(), state, width, 700.0)
+    }
+
+    /// Desenha num contexto **existente** — é o que reproduz a janela de verdade, em que
+    /// maximizar e encolher compartilham a memória do egui entre os quadros.
+    fn painted_with(
+        ctx: &egui::Context,
+        state: &mut State,
+        width: f32,
+        height: f32,
+    ) -> Vec<(String, egui::Rect, egui::Rect)> {
+        let mut output = ctx.run_ui(screen(width, height), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui_with_empty_activity(state, ui);
+            });
+        });
+        output.textures_delta.clear();
+
+        let mut painted = Vec::new();
+        collect_rects(&output.shapes, &mut painted);
+        painted
+    }
+
+    /// Junta `(texto, retângulo, clipe)` de todo `Shape::Text`, descendo nos grupos.
+    ///
+    /// O **clipe** é o que separa "desenhado" de "visível": no layout antigo os botões existiam nas
+    /// shapes, mas com o clipe de largura zero do `with_layout` — apareciam no teste e sumiam na
+    /// janela. Foi esse detalhe que fez o primeiro teste de regressão passar no código quebrado.
+    fn collect_rects(
+        shapes: &[egui::epaint::ClippedShape],
+        out: &mut Vec<(String, egui::Rect, egui::Rect)>,
+    ) {
+        fn walk(
+            shape: &egui::Shape,
+            clip: egui::Rect,
+            out: &mut Vec<(String, egui::Rect, egui::Rect)>,
+        ) {
+            match shape {
+                egui::Shape::Text(text) => {
+                    out.push((
+                        text.galley.text().to_string(),
+                        egui::Rect::from_min_size(text.pos, text.galley.size()),
+                        clip,
+                    ));
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, clip, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for clipped in shapes {
+            walk(&clipped.shape, clipped.clip_rect, out);
         }
     }
 

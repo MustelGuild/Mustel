@@ -311,7 +311,7 @@ export LIBGL_ALWAYS_SOFTWARE=1
 Xvfb :99 -screen 0 1440x900x24 >/tmp/xvfb.log 2>&1 &
 XVFB_PID=$!
 sleep 2
-"$BIN" gui >/tmp/gui.log 2>&1 &
+( cd /tmp && exec "$BIN" gui >/tmp/gui.log 2>&1 ) &
 GUI_PID=$!
 
 # --- OCR: a captura é a única prova do que a janela desenhou ----------------------------------
@@ -407,15 +407,23 @@ if [ -n "$wid" ]; then
     click_word /tmp/gui.png '^SQL$' 60 30 || fail "acha o editor SQL"
     sleep 1
     xdotool key --clearmodifiers ctrl+a 2>/dev/null
-    xdotool type --delay 20 "select 'smoke-ok' as marker from items limit 1" 2>/dev/null
+    # O resultado é `42`; o texto digitado (`6*7`) **não** contém 42 — o OCR não pode passar lendo o
+    # próprio editor (era o falso-positivo do check antigo, com `smoke-ok`).
+    xdotool type --delay 20 "select 6*7 as answer from items limit 1" 2>/dev/null
     sleep 1
     shot /tmp/gui.png
     if click_word /tmp/gui.png '^Run$'; then
-        if wait_for_text 'smoke-ok' 120; then
+        if wait_for_text '42' 120; then
             pass "consulta roda pela janela e mostra o resultado"
         else
             fail "consulta roda pela janela e mostra o resultado"
             cp /tmp/gui.png "$OUT/gui/03-sem-resultado.png"
+        fi
+        gui_csv=$(find /tmp/results -name 'consolidated_*.csv' 2>/dev/null | head -1)
+        if [ -n "$gui_csv" ] && csv_lines "$gui_csv" | grep -Fxq 'Smoke,mustel_001,42'; then
+            pass "GUI gravou o CSV da consulta"
+        else
+            fail "GUI gravou o CSV da consulta"
         fi
     else
         fail "acha o botão 'Run query'"
@@ -453,7 +461,7 @@ if [ -n "$wid" ]; then
     if click_word /tmp/gui.png '^Query'; then
         sleep 2
         shot "$OUT/gui/04-de-volta.png"
-        if ocr_text "$OUT/gui/04-de-volta.png" | grep -qi 'smoke-ok'; then
+        if ocr_text "$OUT/gui/04-de-volta.png" | grep -q '42'; then
             pass "voltar para Query preserva o resultado"
         else
             fail "voltar para Query preserva o resultado"

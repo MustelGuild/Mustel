@@ -5,6 +5,7 @@
 //! resultado é o [`App`](crate::app::App). Assim a tela é testável sem janela, e a regra continua toda
 //! no núcleo.
 
+pub mod activity;
 pub mod query;
 pub mod selectors;
 pub mod servers;

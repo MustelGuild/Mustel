@@ -120,6 +120,7 @@ mod tests {
                 selections: Vec::new(),
                 saved_queries: Vec::new(),
                 selection_list: Default::default(),
+                read_only_queries: false,
                 ai: Default::default(),
             }),
         )

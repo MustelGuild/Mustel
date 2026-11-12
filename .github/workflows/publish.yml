@@ -116,6 +116,11 @@ jobs:
         if: runner.os == 'Windows'
         run: ./publish.ps1
         shell: pwsh
+      # O instalador é Windows-only (Inno Setup já vem no runner); o job Linux não o constrói.
+      - name: empacotar o instalador (Windows)
+        if: runner.os == 'Windows'
+        run: ./installer/publish-installer.ps1
+        shell: pwsh
       - name: empacotar (Linux)
         if: runner.os == 'Linux'
         run: ./publish.sh
@@ -128,6 +133,34 @@ jobs:
             packaging/*.zip
             packaging/*.tar.gz
             packaging/*.sha256
+          if-no-files-found: error
+      # Os executáveis **soltos**, além do pacote: quem só quer o programa não precisa baixar o
+      # `.zip` (que leva licenças, SBOM e o README). Só no Windows, que é onde o `.zip` os contém.
+      - name: guardar os executáveis soltos (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: executables-windows
+          path: |
+            target/release/mustel.exe
+            target/release/mustel-gui.exe
+          if-no-files-found: error
+      # O setup é um asset separado; o `.sha256` dele é capturado pelo `packaging/*.sha256`
+      # do artefato do pacote, e o job de release já o inclui no `SHA256SUMS` via `./*.exe`.
+      - name: guardar o instalador (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installer-windows
+          path: packaging/*-setup.exe
+          if-no-files-found: error
+      # No Linux o `.tar.gz` é o pacote "completo"; o executável cru é o **asset do updater**.
+      - name: guardar o executável solto (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: executables-linux
+          path: target/release/mustel
           if-no-files-found: error
 
   release:
@@ -152,7 +185,7 @@ jobs:
           set -eu
           cp sbom.cdx.json dist/
           cd dist
-          sha256sum ./*.zip ./*.tar.gz ./sbom.cdx.json > SHA256SUMS
+          sha256sum ./*.zip ./*.tar.gz ./*.exe ./mustel ./sbom.cdx.json > SHA256SUMS
           cat SHA256SUMS
           {
             echo '### SHA256'

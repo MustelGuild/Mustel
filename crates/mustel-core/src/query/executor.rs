@@ -81,6 +81,8 @@ pub struct ExecutionRequest {
     pub servers: Vec<ServerPlan>,
     /// Consulta já resolvida (`-c`/`-i`).
     pub sql: Arc<str>,
+    /// Abre a transação `READ ONLY` na conexão de execução.
+    pub read_only: bool,
     /// Diretório da execução (`<saída>/<timestamp>`), já criado.
     pub directory: PathBuf,
     /// Timestamp da execução, que nomeia os arquivos.
@@ -364,8 +366,13 @@ async fn stream_once(
     token: &CancellationToken,
     sent_rows: &mut bool,
 ) -> Result<u64, CoreError> {
-    let mut stream =
-        QueryStream::open(&target.settings, &request.sql, request.command_timeout).await?;
+    let mut stream = QueryStream::open(
+        &target.settings,
+        &request.sql,
+        request.command_timeout,
+        request.read_only,
+    )
+    .await?;
 
     let server_name: Arc<str> = Arc::from(server.name.as_str());
     let database: Arc<str> = Arc::from(target.database.as_str());
@@ -800,6 +807,7 @@ mod tests {
                 databases: Vec::new(),
             }],
             sql: Arc::from("SELECT 1"),
+            read_only: false,
             directory: directory.path().to_path_buf(),
             timestamp: "ts".to_string(),
             max_parallelism: 4,

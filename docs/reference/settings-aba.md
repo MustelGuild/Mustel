@@ -1,13 +1,17 @@
-# Referência: aba Settings (aparência)
+# Referência: aba Settings
 
-> A aba Settings tem duas seções: **Appearance** (esta página) e **Database list**, a paginação da
-> lista de bases, descrita em [`gui.selectionList`](selecao-de-bases.md#paginação-opcional).
+> A aba Settings tem seis categorias: **Appearance** (esta página), **Database list**, a paginação
+> da lista de bases, descrita em [`gui.selectionList`](selecao-de-bases.md#paginação-opcional),
+> **Query**, o modo somente leitura (abaixo), **AI profiles**, descrita em
+> [`gerar-sql-com-ia.md`](../how-to/gerar-sql-com-ia.md), **Activity**, o log de execução e erros,
+> descrito em [`activity-log.md`](activity-log.md), e **About** (versão e textos legais; ver
+> [About](#about)).
 >
 > O cadastro de **seletores** **não** fica aqui: ele vive na aba **Connections**, na sub-aba
 > `Query Selector`, e está descrito na
 > [referência da seleção de bases](selecao-de-bases.md#o-cadastro-do-seletor).
 
-A aba **Settings** da janela guarda as preferências de aparência. Tudo o que ela edita fica na seção
+A aba **Settings** da janela guarda as preferências da janela. Tudo o que ela edita fica na seção
 `gui` do `mustel.jsonc` — o mesmo arquivo do cadastro de servidores —, então dá para versionar,
 inspecionar e editar à mão:
 
@@ -19,7 +23,9 @@ inspecionar e editar à mão:
     "theme": "dark",
     "interfaceFont": "Segoe UI",
     "editorFont": "Fira Code",
-    "fontScale": 1.1
+    "fontScale": 1.1,
+    // Read-only is the default. Set false to allow destructive queries.
+    "readOnlyQueries": false
   }
 }
 ```
@@ -64,13 +70,16 @@ alerta tem uma variante para cada fundo, com contraste medido.
 editável à mão e um `5.0` salvo por engano deixaria a janela inutilizável antes de alguém conseguir
 abrir a aba para corrigir.
 
-O **tamanho mínimo da janela cresce junto**: a 1,25x o mínimo passa de 880×560 para 1100×700. É o
-que mantém a folga do layout em qualquer escala (a conta está na
+O **tamanho mínimo da janela não muda** com a escala: é **880×560** em qualquer `fontScale` (e
+1240×560 na aba Query com o painel da IA aberto). O texto escala, mas a sidebar, o menu de
+categorias e o painel da IA têm largura fixa, e o conteúdo é rolável e responsivo — a janela
+restaurada não "pula" para um mínimo maior só porque a fonte cresceu (a conta está na
 [explicação](../explanation/fontes.md)).
 
 ## O que a aba não faz
 
-- não muda o **tamanho da janela** (só o mínimo acompanha a escala da fonte);
+- não muda o **tamanho da janela**: o mínimo é fixo (880×560, ou 1240×560 com o painel da IA
+  aberto), independente da escala da fonte;
 - não lista fontes que não estejam instaladas e não instala nada;
 - não pede nada ao banco e não depende de servidor: a aparência vale antes de qualquer conexão;
 - não tem atalho de teclado para trocar de tema: a troca é só pelo controle da aba.
@@ -99,10 +108,44 @@ gravação acontece ao soltá-lo — arrastar não escreve o arquivo a cada pixe
 **tema** é escolha concluída, então também grava e aplica no mesmo quadro; `Restore defaults` volta o
 tema para `system` e a chave sai do arquivo.
 
+## Query — modo somente leitura
+
+A categoria **Query** tem o checkbox **`Only run read-only queries`**, que vem **marcado por
+padrão** na primeira execução. Ele é gravado em `gui.readOnlyQueries`; a chave só aparece no
+arquivo quando o dono **desliga** o modo (`false`). Ligado, ele muda duas coisas:
+
+- o **`Run query`** de uma consulta que o classificador chama de destrutiva não abre o modal com
+  `Run anyway`: abre o alerta **`READ-ONLY MODE: QUERY NOT RUN`**, com os mesmos detalhes (tipo,
+  servidores, bancos e preview) e só o botão `Close`;
+- a execução das demais consultas abre `BEGIN TRANSACTION READ ONLY` na conexão de cada banco. O
+  PostgreSQL recusa `INSERT`, `UPDATE`, `DELETE`, DDL, `SELECT ... FOR UPDATE`, `nextval()` e
+  funções que escrevem em tabela com SQLSTATE `25006`.
+
+O modo vale **só para a janela**: o `mustel query run` do CLI continua com o comportamento de
+sempre. Ele também **não bloqueia `COPY ... TO STDOUT`**: `COPY TO` é leitura e o `BEGIN READ ONLY`
+não o recusa; o bloqueio de `COPY` exige a whitelist de instruções (fase seguinte). Tabela
+temporária, `pg_notify`, advisory locks, funções `SECURITY DEFINER` e `dblink` também não são
+cobertos por esta camada — o servidor é a autoridade sobre escrita em tabela, não um sandbox de
+efeitos colaterais.
+
+`Restore defaults` (Appearance) **não** altera a escolha do modo: ligar ou desligar a proteção é
+uma ação explícita na própria categoria.
+
+```jsonc
+"gui": {
+  // Read-only is the default. Set false to allow destructive queries.
+  "readOnlyQueries": false
+}
+```
+
 ## AI
 
 Perfis de provedor OpenAI-compatible usados pelo painel da aba Query. A lista mostra o perfil **ativo**
 (radio), o modelo e a base; cada linha tem `Edit`, `Test` e `Remove` (em **dois** toques).
+
+As ações ficam na **ponta direita** do cartão, e o texto do perfil recebe o espaço que sobra. Quando
+a janela encolhe a ponto de o texto e os três botões não caberem na mesma linha, as ações descem e
+quebram entre si — em nenhuma largura elas saem do painel nem ficam por cima do menu de categorias.
 
 | Campo | O que é |
 |---|---|
@@ -128,3 +171,29 @@ perfil apaga a chave dele. `Test` faz uma chamada mínima e mostra o resultado (
 ```
 
 > Azure OpenAI não é suportado: ele usa `api-key` no lugar de `Bearer` e o deployment no path.
+
+## About
+
+A última categoria é **About**: versão do binário, licença do produto (`AGPL-3.0-only`), autor e
+repositório (um **link**: o clique pede ao sistema que abra a URL no navegador), e os **textos
+legais completos** que acompanham o executável — a AGPL do Mustel, o relatório de licenças de
+terceiros (todas as crates compiladas, para todas as plataformas), os avisos curtos e a SIL OFL 1.1
+da Fira Code.
+
+Os textos vão **embutidos no binário** (`crates/mustel-gui/assets/licenses/`), então quem recebe só
+o executável consegue ler a licença sem depender dos arquivos do pacote. Um **seletor** escolhe o
+documento; o texto do escolhido ocupa **toda a altura restante do painel**, com barra de rolagem
+própria (vertical e horizontal — licença tem linha longa, e quebrar linha mudaria a altura de cada
+uma) e um botão `Copy`. O rolo é virtualizado: só as linhas visíveis são desenhadas, porque montar
+400 KB de texto a cada quadro custaria o orçamento da janela.
+
+O relatório de terceiros é **gerado**, não escrito à mão:
+
+```bash
+cargo about -L warn generate -m crates/mustel/Cargo.toml about.hbs \
+    -o crates/mustel-gui/assets/licenses/THIRD-PARTY-LICENSES.md
+```
+
+Sem `--target`: a lista é a união das plataformas, porque o mesmo texto viaja no binário do Windows
+e no do Linux. Regenere quando o `Cargo.lock` mudar; `LICENSE` e `THIRD-PARTY-NOTICES.md` são cópias
+dos arquivos da raiz, e a raiz continua sendo a fonte da verdade.

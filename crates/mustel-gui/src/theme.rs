@@ -18,6 +18,11 @@ const ALERT_LIGHT: Color32 = Color32::from_rgb(146, 105, 10);
 /// Âmbar de alerta sobre fundo escuro.
 const ALERT_DARK: Color32 = Color32::from_rgb(235, 190, 100);
 
+/// Verde de **sucesso** sobre fundo claro (contraste ≥ 4,5:1 sobre `window_fill`).
+const SUCCESS_LIGHT: Color32 = Color32::from_rgb(21, 115, 71);
+/// Verde de sucesso sobre fundo escuro.
+const SUCCESS_DARK: Color32 = Color32::from_rgb(126, 217, 160);
+
 /// Traduz a escolha do produto para a preferência do `egui`.
 pub fn preference(theme: GuiTheme) -> ThemePreference {
     match theme {
@@ -52,6 +57,11 @@ pub fn alert(ui: &Ui) -> Color32 {
     alert_for(ui.visuals())
 }
 
+/// Cor de **sucesso** (ação concluída: salvo, copiado, consulta terminada), vinda do tema.
+pub fn success(ui: &Ui) -> Color32 {
+    success_for(ui.visuals())
+}
+
 /// Núcleo de [`danger`], sem `Ui` — é o que os testes usam para os dois temas.
 pub fn danger_for(visuals: &egui::Visuals) -> Color32 {
     visuals.error_fg_color
@@ -68,6 +78,15 @@ pub fn alert_for(visuals: &egui::Visuals) -> Color32 {
         ALERT_DARK
     } else {
         ALERT_LIGHT
+    }
+}
+
+/// Núcleo de [`success`], sem `Ui` — é o que os testes usam para os dois temas.
+pub fn success_for(visuals: &egui::Visuals) -> Color32 {
+    if visuals.dark_mode {
+        SUCCESS_DARK
+    } else {
+        SUCCESS_LIGHT
     }
 }
 
@@ -150,6 +169,25 @@ mod tests {
             alert_for(&egui::Visuals::light()),
             alert_for(&egui::Visuals::dark()),
             "o âmbar tem par por tema"
+        );
+    }
+
+    /// O verde de **sucesso** é legível nos dois fundos (o toast usa `window_fill`).
+    /// CONTRACT: IF-263
+    #[test]
+    fn the_success_color_keeps_contrast_in_both_themes() {
+        for visuals in [egui::Visuals::light(), egui::Visuals::dark()] {
+            let ratio = contrast_against_background(success_for(&visuals), visuals.window_fill);
+            assert!(
+                ratio >= 4.5,
+                "tema escuro={}: contraste {ratio:.2}:1 abaixo de 4.5:1",
+                visuals.dark_mode
+            );
+        }
+        assert_ne!(
+            success_for(&egui::Visuals::light()),
+            success_for(&egui::Visuals::dark()),
+            "o verde tem par por tema"
         );
     }
 

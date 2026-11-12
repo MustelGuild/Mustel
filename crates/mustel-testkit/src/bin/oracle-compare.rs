@@ -254,6 +254,13 @@ fn run_mustel(
         .current_dir(cwd)
         .env("MUSTEL_CONFIG_DIR", config_dir)
         .env("MUSTEL_PGPASS_FILE", pgpass_file)
+        .env(
+            "MUSTEL_LOG_DIR",
+            config_dir
+                .parent()
+                .map(|parent| parent.join("logs"))
+                .unwrap_or_else(|| config_dir.join("logs")),
+        )
         .output()
         .with_context(|| format!("failed to run {} {}", binary.display(), argv.join(" ")))?;
 

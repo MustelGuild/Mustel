@@ -43,7 +43,7 @@ aviso**: quem precisa de garantia escolhe `Require`.
 binários externos que usam libpq, e o libpq não valida certificado em `prefer`/`require`. Por isso os
 dois comandos só aceitam `--ssl-mode Disable` (IF-107); `Prefer` e `Require` são recusados com exit 2.
 Para backup/restore com TLS, use `pg_dump`/`pg_restore` diretamente com `sslmode=verify-full` e
-`sslrootcert`. A correção definitiva está no plano de TLS dos binários externos.
+`sslrootcert`. A correção definitiva é tratar TLS nos binários externos.
 
 Restaram três nomes (`Disable`, `Prefer`, `Require`). `Allow`, `VerifyCA` e `VerifyFull` são recusados
 com mensagem de migração (IF-256), e um `sslMode` inválido no cadastro é erro, não `Prefer` silencioso
@@ -70,6 +70,8 @@ Ver [Classificador de query](classificador-de-query.md).
   com `0600`, e o diretório da execução com `0700` (IF-108). Os dumps do `pg_dump` também são
   restringidos: arquivo `0600`, ou árvore `0700`/`0600` no `-F d`, e o diretório novo do
   `backup --all` nasce `0700` (IF-109).
+- **Log de atividade**: no Unix, `logs/` é `0700` e cada `activity-*.jsonl` é `0600` via `private_fs`;
+  `load` e `prune` restringem arquivos existentes. No Windows, a ACL de `%LOCALAPPDATA%` é a garantia.
 - **Backup**: o nome de banco vindo do servidor (`datname`) só vira nome de arquivo se não tiver
   sintaxe de caminho. Nome hostil falha apenas aquele banco no `--all` e aborta o backup individual,
   sem escrever fora do diretório de saída (IF-063). `--strict` transforma qualquer falha do `--all`
@@ -103,7 +105,9 @@ Ver [Por que a IA escreve e o humano roda](ia.md).
 - `THIRD-PARTY-LICENSES.md` reproduz os textos completos das licenças dos componentes compilados,
   gerado pelo `cargo-about` com a mesma lista de licenças aceitas do `deny.toml` (`about.toml`). Sem
   ele, MIT/BSD/Apache-2.0 ficariam sem o aviso de copyright que exigem. `THIRD-PARTY-NOTICES.md`
-  continua sendo o resumo curto, com a fonte embutida e o MPL-2.0 do `option-ext`.
+  continua sendo o resumo curto, com a fonte embutida e o MPL-2.0 do `option-ext`. Os mesmos textos
+  viajam **embutidos no binário** e aparecem na aba Settings › **About**, para quem recebe só o
+  executável não depender dos arquivos do pacote.
 - O Dependabot acompanha as dependências, e as actions do CI são pinadas por SHA — uma tag
   re-apontada não executa código com o token do repositório.
 - **Crates não mantidos (Linux).** O `keyring` 4 traz `secret-service` → `zbus` 5, e com ele
@@ -112,6 +116,11 @@ Ver [Por que a IA escreve e o humano roda](ia.md).
   não publicarem a versão com `zbus` 6, vendorizar corrigiria só este workspace e não quem instala
   pelo crates.io, e trocar o backend por `dbus-secret-service` reintroduziria o `libdbus` que a
   decisão `B1` recusa. A escolha é aguardar o upstream, com os avisos visíveis no `cargo audit`.
+
+## Auditoria pontual
+
+O resultado da auditoria de segurança de 2026-11-08 — achados, evidências, gravidade e remediação —
+está em [Auditoria de segurança](auditoria-de-seguranca.md).
 
 ## O que foi verificado
 

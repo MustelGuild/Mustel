@@ -20,7 +20,7 @@ Confira que ele responde:
 mustel --version
 ```
 
-Você deve ver algo como `mustel 1.1.0`.
+Você deve ver algo como `mustel 1.2.0`.
 
 ---
 

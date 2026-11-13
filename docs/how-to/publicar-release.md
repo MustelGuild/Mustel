@@ -109,7 +109,7 @@ existir no remoto, porque o `preflight` e o `gh release create --verify-tag` con
 
 ## 4. Disparar o `publish` (manual)
 
-**Actions → publish → Run workflow**, informando a **tag** no campo (ex.: `v1.1.0`). O `preflight`
+**Actions → publish → Run workflow**, informando a **tag** no campo (ex.: `v1.2.0`). O `preflight`
 confere, **antes de baixar o código**, o formato `v<versao>` e se a tag existe no remoto; depois
 faz checkout dela e exige que case com `[workspace.package] version`. Cada recusa sai como
 `::error::` dizendo o que recebeu — em particular, tag que ainda não foi empurrada não chega nem a

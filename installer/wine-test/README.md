@@ -30,7 +30,7 @@ Saída: `target/wine-test/wine-test-setup.exe` (2,1 MB; ignorado pelo Git).
 Depois de ter um stage (`packaging\mustel-<versão>-<triple>` do `publish.ps1` ou um stage sintético):
 
 ```bash
-sh installer/wine-test/real.sh packaging/mustel-1.2.0-x86_64-pc-windows-msvc
+sh installer/wine-test/real.sh packaging/mustel-1.3.0-x86_64-pc-windows-msvc
 ```
 
 Ele compila o `installer/mustel.iss` real com `WineTest` (o prefixo Wine é **win32**; o release é

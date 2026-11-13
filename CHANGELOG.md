@@ -3,6 +3,9 @@
 Todas as mudanças relevantes do Mustel são registradas aqui. As seções separam
 **Features**, **Bug fixes** e as demais mudanças.
 
+## [v1.3.0] - 2026-11-13
+### Outras mudanças
+- Combo de servidor da aba Query vira lista de checkbox multi-seleção (#7)
 ## [v1.2.0] - 2026-11-12
 ### Features
 - Adiciona a aba About com os textos legais embutidos

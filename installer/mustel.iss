@@ -5,13 +5,13 @@
 ; usa installer/wine-test.
 
 #ifndef MyAppVersion
-  #define MyAppVersion "1.2.0"
+  #define MyAppVersion "1.3.0"
 #endif
 #ifndef MyAppVersion4
   #define MyAppVersion4 MyAppVersion + ".0"
 #endif
 #ifndef MyAppStage
-  #define MyAppStage "..\packaging\mustel-1.2.0-x86_64-pc-windows-msvc"
+  #define MyAppStage "..\packaging\mustel-1.3.0-x86_64-pc-windows-msvc"
 #endif
 #ifndef MyArch
   #define MyArch "x86_64-pc-windows-msvc"

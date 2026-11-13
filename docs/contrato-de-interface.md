@@ -33,7 +33,7 @@
 |----|--------|--------|---------|-----------------|-------|--------|
 | IF-001 | D9/DIV18 | A | `mustel` sem subcomando e sem TTY imprime a ajuda e sai 0 | stdout e exit de `mustel` sem argumentos | crates/mustel/tests/contract_text.rs::root_without_a_tty_prints_help_and_exits_zero | coberta |
 | IF-002 | D10 | A | a ajuda da raiz lista `query`, `database`, `settings` e `gui` | stdout de `mustel --help` | crates/mustel/tests/cli_tree.rs::root_help_lists_the_migrated_groups_and_the_gui | coberta |
-| IF-003 | D15 | A | `--version` imprime `mustel` + a versão do workspace (hoje `mustel 1.2.0`) | stdout de `mustel --version` | crates/mustel/tests/cli_tree.rs::version_uses_the_workspace_version | coberta |
+| IF-003 | D15 | A | `--version` imprime `mustel` + a versão do workspace (hoje `mustel 1.3.0`) | stdout de `mustel --version` | crates/mustel/tests/cli_tree.rs::version_uses_the_workspace_version | coberta |
 | IF-004 | N1 | A | comando desconhecido sai 1 com a mensagem em stdout | `mustel nope` | crates/mustel/tests/contract_text.rs::unknown_command_is_a_usage_error_on_stdout | coberta |
 | IF-005 | N1 | A | opção desconhecida sai 1 com a mensagem em stdout | `mustel query run --nope` | crates/mustel/tests/contract_text.rs::unknown_option_is_a_usage_error_on_stdout | coberta |
 | IF-006 | T9 | A | argumento obrigatório ausente sai 1 e escreve em stdout, não em stderr | `mustel database pgpass remove` | crates/mustel/tests/cli_tree.rs::missing_required_argument_follows_the_oracle | coberta |

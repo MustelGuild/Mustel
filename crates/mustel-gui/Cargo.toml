@@ -12,7 +12,7 @@ description = "Mustel GUI (egui) — frontend gráfico sobre o mustel-core"
 workspace = true
 
 [dependencies]
-mustel-core = { path = "../mustel-core", version = "1.2.0" }
+mustel-core = { path = "../mustel-core", version = "1.3.0" }
 # `glow` (OpenGL) em vez do `wgpu` padrão: o app desenha uma janela só e o backend leve
 # compila em uma fração do tempo, o que importa porque a crate entra no build do `mustel`.
 #

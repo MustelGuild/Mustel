@@ -62,7 +62,14 @@ responsivo. Com o painel da IA aberto na aba Query, o mínimo é 1240 × 560 (os
 Assim o mínimo cabe num 1366×768 em qualquer escala — antes, a 1,25x, ele ia a 1100×700 e a janela
 restaurada pulava para esse tamanho.
 
-O combo de **Server** mostra o total de bases de cada servidor ao lado do nome (`Local 104`,
+O combo de **Server** é uma lista com **checkbox**: marcar ou desmarcar servidores recorta a lista na
+hora e o popup **não** fecha a cada clique, então dá para escolher vários sem reabrir. A linha
+`All servers` é o checkbox mestre: com um recorte, marca todos; com todos marcados, desmarca todos
+(a lista fica vazia, e o botão diz `No servers (0)`). Nenhum servidor marcado é um estado explícito —
+não é o mesmo que "todos" — e o `⟳` e o `Query Selector` ficam apagados, porque não há escopo.
+
+O botão mostra o recorte e a contagem dele: `All servers (208)`, `Local (104)`, `2 servers (209)` ou
+`No servers (0)`. O total de bases de cada servidor aparece ao lado do nome (`Local 104`,
 `Local 2 0`) — o `0` é o sinal de que aquele servidor ainda não foi descoberto. A contagem é só de
 exibição: buscar "104" não encontra servidor nenhum, porque a busca é sobre o nome.
 
@@ -91,7 +98,7 @@ O **filtro de servidor** define o escopo de tudo o que está na sidebar:
 
 | Controle | O que faz | Escopo |
 |---|---|---|
-| `Query Selector` | escolher um seletor **aplica na hora** e substitui a seleção | o filtro: um servidor, ou todos |
+| `Query Selector` | escolher um seletor **aplica na hora** e substitui a seleção | o filtro: os servidores marcados |
 | `⟳` ao lado do filtro | lista as bases do escopo | o filtro |
 | `Select all N` | marca **o que está visível** | filtro × busca |
 | `Clear` / `Reset` | **desfaz a seleção manual**: sem seletor desmarca o visível; com seletor devolve o visível ao que a query marcou | filtro × busca |
@@ -123,6 +130,8 @@ Cada servidor guarda o nome do seletor que o marcou, e o combo mostra o que vale
 | Filtro | Seletores dos servidores | O combo mostra | Escolher aplica em |
 |---|---|---|---|
 | um servidor | o dele (ou nenhum) | o nome, ou vazio | **só naquele servidor** |
+| vários | todos com o mesmo seletor | o nome comum | **só naqueles servidores** |
+| vários | diferentes (ou algum **sem** seletor) | **vazio** | só naqueles servidores (e passa a valer para eles) |
 | todos | todos com o mesmo seletor | o nome comum | todos |
 | todos | diferentes (ou algum **sem** seletor) | **vazio** | todos (e passa a valer para todos) |
 

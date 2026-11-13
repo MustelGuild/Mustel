@@ -4,6 +4,10 @@
 //! achar o nome rolando a lista é o que dói. Aqui o botão mostra o valor atual (vazio quando nada
 //! está escolhido) e abre um popup com o campo de busca e a lista filtrada.
 //!
+//! Há dois modos de escolha: o comum, em que clicar escolhe e fecha a lista, e o de **checkbox**
+//! ([`search_combo_checkable`]), em que clicar alterna a caixa e a lista continua aberta — é o do
+//! filtro de servidor, que precisa marcar vários sem reabrir o popup.
+//!
 //! O estado do popup (aberto/fechado e texto da busca) vive na memória do `egui`, por `id`: assim
 //! quem chama não precisa carregar mais campos no próprio estado, e dois combos na mesma tela não
 //! compartilham busca.
@@ -162,7 +166,17 @@ pub fn search_combo_with_hint(
     size: Size,
     empty_hint: &str,
 ) -> Option<usize> {
-    search_combo_full(ui, id, button_text, items, enabled, size, Some(empty_hint)).selected
+    search_combo_full(
+        ui,
+        id,
+        button_text,
+        items,
+        enabled,
+        size,
+        Some(empty_hint),
+        false,
+    )
+    .selected
 }
 
 /// O combo com **ação por linha**: além do item escolhido, devolve qual botão de ação foi clicado
@@ -178,10 +192,27 @@ pub fn search_combo_actionable(
     enabled: bool,
     size: Size,
 ) -> ComboOutcome {
-    search_combo_full(ui, id, button_text, items, enabled, size, None)
+    search_combo_full(ui, id, button_text, items, enabled, size, None, false)
 }
 
-/// O corpo do combo: as duas entradas públicas só escolhem se há dica de lista vazia.
+/// O combo **com checkbox por linha**: cada clique marca/desmarca e a lista **não** fecha.
+///
+/// Devolve o índice da linha alternada neste quadro. O `selected` de cada [`Item`] é o estado
+/// **atual** da caixa; quem chama guarda o conjunto de verdade. É o combo do filtro de servidor,
+/// que precisa recortar vários de uma vez — fechar a cada clique obrigaria a reabrir a lista para
+/// cada servidor.
+pub fn search_combo_checkable(
+    ui: &mut egui::Ui,
+    id: &str,
+    button_text: &str,
+    items: &[Item<'_>],
+    enabled: bool,
+    size: Size,
+) -> Option<usize> {
+    search_combo_full(ui, id, button_text, items, enabled, size, None, true).selected
+}
+
+/// O corpo do combo: as entradas públicas só escolhem a dica de lista vazia e o modo de seleção.
 fn search_combo_full(
     ui: &mut egui::Ui,
     id: &str,
@@ -190,6 +221,7 @@ fn search_combo_full(
     enabled: bool,
     size: Size,
     empty_hint: Option<&str>,
+    checkable: bool,
 ) -> ComboOutcome {
     let state_id = egui::Id::unique(("search_combo", id));
     let mut state = ui
@@ -261,8 +293,14 @@ fn search_combo_full(
                             any = true;
                             // O detalhe vai à direita, fraco: não é parte do nome nem da busca.
                             let response = ui.horizontal(|ui| {
-                                let clicked =
-                                    ui.selectable_label(item.selected, item.text).clicked();
+                                // No modo de checkbox a linha **alterna** e a lista continua aberta;
+                                // no comum, clicar escolhe e fecha.
+                                let clicked = if checkable {
+                                    let mut checked = item.selected;
+                                    ui.checkbox(&mut checked, item.text).changed()
+                                } else {
+                                    ui.selectable_label(item.selected, item.text).clicked()
+                                };
                                 let mut triggered = false;
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
@@ -285,7 +323,9 @@ fn search_combo_full(
                             let (clicked, triggered) = response.inner;
                             if clicked {
                                 chosen = Some(index);
-                                state.open = false;
+                                if !checkable {
+                                    state.open = false;
+                                }
                             }
                             if triggered {
                                 acted = Some(index);
@@ -878,5 +918,106 @@ mod tests {
             selected, None,
             "a assinatura antiga devolve só o escolhido; a ação é do actionable"
         );
+    }
+
+    /// Junta `(texto, retângulo)` de todo `Shape::Text`, descendo nos grupos.
+    fn collect_rects(shapes: &[egui::epaint::ClippedShape], out: &mut Vec<(String, egui::Rect)>) {
+        fn walk(shape: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
+            match shape {
+                egui::Shape::Text(text) => {
+                    let content = text.galley.text().trim().to_string();
+                    if !content.is_empty() {
+                        out.push((
+                            content,
+                            egui::Rect::from_min_size(text.pos, text.galley.size()),
+                        ));
+                    }
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for clipped in shapes {
+            walk(&clipped.shape, out);
+        }
+    }
+
+    /// O combo com checkbox alterna a linha clicada e **não** fecha a lista.
+    /// CONTRACT: IF-272
+    #[test]
+    fn the_checkable_combo_toggles_without_closing() {
+        let ctx = egui::Context::default();
+        let state_id = egui::Id::unique(("search_combo", "checkable"));
+        let options = ["Local", "Local 2"];
+        let items = items(&options, None);
+        let mut toggled = None;
+        let mut click_at = None;
+
+        // Abre uma vez; o estado do popup fica na memória do `egui`.
+        open_for_test(&ctx, "checkable");
+
+        // Dois quadros para o `Area` do popup sair do *sizing pass* e a posição estabilizar;
+        // depois disso, o clique cai no rótulo da linha (o checkbox inteiro é o widget).
+        for frame in 0..4 {
+            let events = match (frame, click_at) {
+                (2, Some(pos)) => vec![
+                    egui::Event::PointerMoved(pos),
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                _ => Vec::new(),
+            };
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        if let Some(index) = search_combo_checkable(
+                            ui,
+                            "checkable",
+                            "All servers",
+                            &items,
+                            true,
+                            Size::default(),
+                        ) {
+                            toggled = Some(index);
+                        }
+                    });
+                },
+            );
+
+            let mut rows = Vec::new();
+            collect_rects(&output.shapes, &mut rows);
+            if frame == 1 {
+                click_at = rows
+                    .iter()
+                    .find(|(text, _)| text == "Local 2")
+                    .map(|(_, rect)| rect.center());
+            }
+            output.textures_delta.clear();
+        }
+
+        assert_eq!(toggled, Some(1), "o índice alternado é o da linha clicada");
+        let state = ctx
+            .data(|data| data.get_temp::<State>(state_id))
+            .unwrap_or_default();
+        assert!(state.open, "a lista continua aberta depois do clique");
     }
 }

@@ -21,8 +21,10 @@ use mustel_core::usecases::db_servers::CatalogDatabase;
 pub enum ApplyScope {
     /// Todos os servidores do cadastro.
     All,
-    /// Um servidor só, pelo nome do cadastro.
-    Server(String),
+    /// Só os servidores marcados no filtro, pelos nomes do cadastro.
+    ///
+    /// Conjunto vazio = nenhum servidor: a aplicação não toca em nada.
+    Servers(BTreeSet<String>),
 }
 
 /// O que se sabe de uma base: por que ela **não** entra, quando for o caso.
@@ -130,8 +132,11 @@ pub struct SelectionState {
     selector_marks: BTreeMap<String, BTreeSet<String>>,
     /// Texto da busca.
     search: String,
-    /// Servidor do filtro (`None` = todos).
-    server_filter: Option<String>,
+    /// Servidores do filtro (`None` = todos).
+    ///
+    /// O combo de servidor é uma lista de **checkbox**: o conjunto vazio é um estado explícito
+    /// ("nenhum servidor") e deixa a lista vazia — não é o mesmo que "sem recorte".
+    server_filter: Option<BTreeSet<String>>,
     /// Quantas linhas da lista plana já foram reveladas quando a paginação está ligada.
     revealed: usize,
     /// A lista mostra **só as marcadas**? (visão, não ação: `Select all`/`Clear` não mudam)
@@ -244,16 +249,18 @@ impl SelectionState {
     ) -> MarkSummary {
         match scope {
             ApplyScope::All => self.marked.clear(),
-            ApplyScope::Server(name) => {
-                self.marked.remove(name);
-            }
+            ApplyScope::Servers(names) => self
+                .marked
+                .retain(|server, _| !names.iter().any(|name| name.eq_ignore_ascii_case(server))),
         }
 
         let mut summary = MarkSummary::default();
         for server in selection {
             let in_scope = match scope {
                 ApplyScope::All => true,
-                ApplyScope::Server(name) => server.server.eq_ignore_ascii_case(name),
+                ApplyScope::Servers(names) => names
+                    .iter()
+                    .any(|name| name.eq_ignore_ascii_case(&server.server)),
             };
             if !in_scope {
                 continue;
@@ -423,9 +430,7 @@ impl SelectionState {
         let mut rows = Vec::new();
 
         for server in servers {
-            if let Some(filter) = &self.server_filter
-                && !server.name.eq_ignore_ascii_case(filter)
-            {
+            if !self.in_scope(&server.name) {
                 continue;
             }
             let Some(databases) = self.universe.get(&server.name) else {
@@ -545,9 +550,13 @@ impl SelectionState {
     /// Nao desmarca nada: so para de atribuir a selecao atual a uma query.
     pub fn forget_scope_selector(&mut self, servers: &[ServerConfigEntry]) {
         match self.server_filter.clone() {
-            Some(name) => {
-                self.server_selectors.remove(&name);
-                self.selector_marks.remove(&name);
+            Some(filter) => {
+                // O nome do filtro pode ter entrado em outra caixa (`produção`); a comparação é
+                // sem diferenciar maiúsculas, como no resto do escopo.
+                let in_filter =
+                    |server: &str| filter.iter().any(|name| name.eq_ignore_ascii_case(server));
+                self.server_selectors.retain(|server, _| !in_filter(server));
+                self.selector_marks.retain(|server, _| !in_filter(server));
             }
             None => {
                 for server in servers {
@@ -565,13 +574,14 @@ impl SelectionState {
 
     /// Qual seletor o **escopo** está usando.
     ///
-    /// Com filtro num servidor é o dele. Com "todos os servidores" é o de
-    /// [`selector_for_all`](Self::selector_for_all).
+    /// Só há resposta quando todos os servidores do escopo têm o **mesmo** seletor — e "não tem
+    /// nenhum" conta como um valor: com o filtro em `Local` e `Producao` aplicado só nele, o
+    /// escopo de vários servidores **não** está em `Producao`.
     pub fn selector_for_scope(&self, servers: &[ServerConfigEntry]) -> Option<String> {
-        match &self.server_filter {
-            Some(name) => self.selector_for(name).map(str::to_string),
-            None => self.selector_for_all(servers),
-        }
+        self.selector_common(
+            self.scope_servers(servers)
+                .map(|server| server.name.as_str()),
+        )
     }
 
     /// Qual seletor vale para **todos** os servidores do cadastro (independente do filtro).
@@ -581,13 +591,19 @@ impl SelectionState {
     /// `Producao`. Ignorar os servidores sem seletor (como era antes) fazia o combo e a linha
     /// "All servers" afirmarem um seletor que só um servidor tinha.
     pub fn selector_for_all(&self, servers: &[ServerConfigEntry]) -> Option<String> {
-        // O primeiro servidor do cadastro já decide: se ele não tem seletor, o escopo também não
-        // tem (nem todos concordariam em ter nenhum, nem há um nome para mostrar).
-        let first = self.selector_for(&servers.first()?.name)?;
-        servers
-            .iter()
-            .all(|server| {
-                self.selector_for(&server.name)
+        self.selector_common(servers.iter().map(|server| server.name.as_str()))
+    }
+
+    /// O seletor comum a um conjunto de servidores, quando todos concordam.
+    ///
+    /// O primeiro servidor já decide: se ele não tem seletor, o conjunto também não tem (nem todos
+    /// concordariam em ter nenhum, nem há um nome para mostrar).
+    fn selector_common<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Option<String> {
+        let mut names = names.into_iter();
+        let first = self.selector_for(names.next()?)?;
+        names
+            .all(|name| {
+                self.selector_for(name)
                     .is_some_and(|selector| selector.eq_ignore_ascii_case(first))
             })
             .then(|| first.to_string())
@@ -601,13 +617,8 @@ impl SelectionState {
         if let Some(name) = self.selector_for_scope(servers) {
             return Some(name);
         }
-        let in_scope = |server: &ServerConfigEntry| match &self.server_filter {
-            Some(filter) => server.name.eq_ignore_ascii_case(filter),
-            None => true,
-        };
-        let distinct: BTreeSet<&str> = servers
-            .iter()
-            .filter(|server| in_scope(server))
+        let distinct: BTreeSet<&str> = self
+            .scope_servers(servers)
             .filter_map(|server| self.selector_for(&server.name))
             .collect();
         (distinct.len() > 1).then(|| "several selectors".to_string())
@@ -622,17 +633,69 @@ impl SelectionState {
             .retain(|_, selector| known.iter().any(|name| name.eq_ignore_ascii_case(selector)));
     }
 
-    /// Servidor do filtro (`None` = todos).
-    pub fn server_filter(&self) -> Option<&str> {
-        self.server_filter.as_deref()
+    /// O filtro de servidor (`None` = todos; conjunto vazio = nenhum).
+    pub fn server_filter(&self) -> Option<&BTreeSet<String>> {
+        self.server_filter.as_ref()
+    }
+
+    /// O servidor está no filtro? (`None` = todos)
+    pub fn in_scope(&self, server: &str) -> bool {
+        match &self.server_filter {
+            None => true,
+            Some(filter) => filter.iter().any(|name| name.eq_ignore_ascii_case(server)),
+        }
+    }
+
+    /// Os servidores do cadastro que estão no filtro, na ordem do cadastro.
+    fn scope_servers<'a>(
+        &'a self,
+        servers: &'a [ServerConfigEntry],
+    ) -> impl Iterator<Item = &'a ServerConfigEntry> + 'a {
+        servers.iter().filter(|server| self.in_scope(&server.name))
     }
 
     /// Troca o filtro de servidor. Um filtro novo volta a lista ao primeiro pedaço.
-    pub fn set_server_filter(&mut self, server: Option<String>) {
-        if self.server_filter != server {
-            self.server_filter = server;
+    pub fn set_server_filter(&mut self, servers: Option<BTreeSet<String>>) {
+        if self.server_filter != servers {
+            self.server_filter = servers;
             self.revealed = 0;
         }
+    }
+
+    /// Marca/desmarca um servidor no filtro (o checkbox do combo).
+    ///
+    /// Quando o conjunto passa a cobrir o cadastro inteiro, o filtro normaliza para `None` (todos):
+    /// é o mesmo recorte, e é assim que o checkbox `All servers` volta a ficar marcado.
+    pub fn toggle_server(&mut self, server: &str, servers: &[ServerConfigEntry]) {
+        let mut filter = match self.server_filter.clone() {
+            None => servers
+                .iter()
+                .map(|candidate| candidate.name.clone())
+                .collect::<BTreeSet<_>>(),
+            Some(filter) => filter,
+        };
+        if filter.iter().any(|name| name.eq_ignore_ascii_case(server)) {
+            filter.retain(|name| !name.eq_ignore_ascii_case(server));
+        } else {
+            filter.insert(server.to_string());
+        }
+        let every_server = servers.iter().all(|candidate| {
+            filter
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(&candidate.name))
+        });
+        self.set_server_filter((!every_server).then_some(filter));
+    }
+
+    /// O checkbox `All servers`: marca todos quando há recorte, desmarca todos quando já estão
+    /// todos.
+    pub fn toggle_all_servers(&mut self) {
+        let filter = if self.server_filter.is_none() {
+            Some(BTreeSet::new())
+        } else {
+            None
+        };
+        self.set_server_filter(filter);
     }
 
     /// As bases **visíveis e marcáveis** (nem barradas, nem com aviso de senha).
@@ -651,6 +714,20 @@ impl SelectionState {
         servers
             .iter()
             .map(|server| self.known_on(&server.name))
+            .sum()
+    }
+
+    /// Quantas bases os servidores do filtro conhecem (o "N" do botão do combo).
+    pub fn known_in_scope(&self, servers: &[ServerConfigEntry]) -> usize {
+        self.scope_servers(servers)
+            .map(|server| self.known_on(&server.name))
+            .sum()
+    }
+
+    /// Quantas bases estão marcadas nos servidores do filtro (o "N marked" do status).
+    pub fn marked_in_scope(&self, servers: &[ServerConfigEntry]) -> usize {
+        self.scope_servers(servers)
+            .map(|server| self.marked_on(&server.name))
             .sum()
     }
 
@@ -723,12 +800,8 @@ impl SelectionState {
 
     /// O escopo tem algum seletor aplicado? (o botão vira `Reset` e passa a ter o que restaurar)
     pub fn has_selector_in_scope(&self, servers: &[ServerConfigEntry]) -> bool {
-        match &self.server_filter {
-            Some(name) => self.selector_for(name).is_some(),
-            None => servers
-                .iter()
-                .any(|server| self.selector_for(&server.name).is_some()),
-        }
+        self.scope_servers(servers)
+            .any(|server| self.selector_for(&server.name).is_some())
     }
 
     /// Texto da busca (mudar a busca volta a lista ao primeiro pedaço).
@@ -811,6 +884,16 @@ mod tests {
         }
     }
 
+    /// Um filtro de servidor com os nomes dados.
+    fn filter(names: &[&str]) -> Option<BTreeSet<String>> {
+        Some(names.iter().map(|name| name.to_string()).collect())
+    }
+
+    /// O escopo de **um** servidor.
+    fn only(name: &str) -> ApplyScope {
+        ApplyScope::Servers(BTreeSet::from([name.to_string()]))
+    }
+
     /// Marcar e desmarcar preserva o resto da seleção.
     /// CONTRACT: IF-227
     #[test]
@@ -863,7 +946,7 @@ mod tests {
         // Só o Local: o Produção não é tocado (ele nem tem nada marcado ainda).
         state.apply(
             &[selection("Local", &["dev", "test_a"])],
-            &ApplyScope::Server("Local".to_string()),
+            &only("Local"),
             "Produção",
         );
         assert_eq!(
@@ -893,6 +976,55 @@ mod tests {
         assert_eq!(state.query(), Some("Produção"));
     }
 
+    /// Aplicar com **vários** servidores no filtro substitui só eles.
+    /// CONTRACT: IF-227
+    #[test]
+    fn apply_with_several_servers_touches_only_them() {
+        let mut state = SelectionState::default();
+        let servers = vec![server("A"), server("B"), server("C")];
+        state.sync_registry(&servers);
+        for entry in &servers {
+            state.discover(entry, catalog(["velho"]));
+            state.set_marked(&entry.name, "velho", true);
+        }
+
+        let scope = ApplyScope::Servers(BTreeSet::from(["A".to_string(), "B".to_string()]));
+        state.apply(
+            &[
+                selection("A", &["novo"]),
+                selection("B", &["novo"]),
+                selection("C", &["outro"]),
+            ],
+            &scope,
+            "sel",
+        );
+
+        for name in ["A", "B"] {
+            assert_eq!(state.marked_on(name), 1, "{name} foi recalculado");
+            assert!(
+                state
+                    .marked
+                    .get(name)
+                    .is_some_and(|marks| marks.contains("novo"))
+            );
+        }
+        assert_eq!(state.marked_on("C"), 1, "o C está fora do escopo");
+        assert!(
+            state
+                .marked
+                .get("C")
+                .is_some_and(|marks| marks.contains("velho")),
+            "o C mantém o que tinha"
+        );
+        assert!(
+            !state
+                .marked
+                .get("C")
+                .is_some_and(|marks| marks.contains("outro")),
+            "a linha do C não é aplicada"
+        );
+    }
+
     /// Cada servidor lembra **o próprio** seletor: trocar de escopo não apaga o do outro.
     ///
     /// É a regra central do combo que aplica: filtrar um servidor e escolher age só nele; com
@@ -905,13 +1037,13 @@ mod tests {
         state.sync_registry(&servers);
 
         // Filtrando o Local, aplico `Producao` — só nele.
-        state.set_server_filter(Some("Local".to_string()));
+        state.set_server_filter(filter(&["Local"]));
         state.apply(
             &[
                 selection("Local", &["dev"]),
                 selection("Produção", &["prod_a"]),
             ],
-            &ApplyScope::Server("Local".to_string()),
+            &only("Local"),
             "Producao",
         );
         assert_eq!(state.selector_for("Local"), Some("Producao"));
@@ -923,10 +1055,10 @@ mod tests {
         );
 
         // Troco para o Produção e aplico `Homologacao`: cada um fica com o seu.
-        state.set_server_filter(Some("Produção".to_string()));
+        state.set_server_filter(filter(&["Produção"]));
         state.apply(
             &[selection("Produção", &["homem_a"])],
-            &ApplyScope::Server("Produção".to_string()),
+            &only("Produção"),
             "Homologacao",
         );
         assert_eq!(state.selector_for("Local"), Some("Producao"));
@@ -1129,17 +1261,13 @@ mod tests {
         state.sync_registry(&servers);
 
         for name in ["Local", "Produção"] {
-            state.apply(
-                &[selection(name, &["dev"])],
-                &ApplyScope::Server(name.to_string()),
-                "todas",
-            );
+            state.apply(&[selection(name, &["dev"])], &only(name), "todas");
         }
         assert_eq!(state.selectors_count(), 2);
         assert_eq!(state.marked_count(), 2);
 
         // Mesmo com filtro num servidor, o botão é sobre **todos**.
-        state.set_server_filter(Some("Local".to_string()));
+        state.set_server_filter(filter(&["Local"]));
         state.forget_all_selectors();
 
         assert_eq!(
@@ -1203,14 +1331,10 @@ mod tests {
         let servers = servers();
         state.sync_registry(&servers);
         for name in ["Local", "Produção"] {
-            state.apply(
-                &[selection(name, &["dev"])],
-                &ApplyScope::Server(name.to_string()),
-                "todas",
-            );
+            state.apply(&[selection(name, &["dev"])], &only(name), "todas");
         }
 
-        state.set_server_filter(Some("Local".to_string()));
+        state.set_server_filter(filter(&["Local"]));
         state.forget_scope_selector(&servers);
         assert_eq!(state.selector_for("Local"), None);
         assert_eq!(
@@ -1320,11 +1444,7 @@ mod tests {
         state.sync_registry(&servers);
 
         // Aplicado **só** no Local (é o que o filtro manda).
-        state.apply(
-            &[selection("Local", &["dev"])],
-            &ApplyScope::Server("Local".to_string()),
-            "todas",
-        );
+        state.apply(&[selection("Local", &["dev"])], &only("Local"), "todas");
 
         assert_eq!(
             state.selector_for_all(&servers),
@@ -1343,7 +1463,7 @@ mod tests {
         );
 
         // Filtrando o Local, o nome aparece: o escopo é só ele.
-        state.set_server_filter(Some("Local".to_string()));
+        state.set_server_filter(filter(&["Local"]));
         assert_eq!(state.selector_for_scope(&servers).as_deref(), Some("todas"));
         assert_eq!(
             state.selector_for_all(&servers),
@@ -1383,7 +1503,7 @@ mod tests {
         assert_eq!(state.marked_count(), 2);
 
         // Com filtro: só o seletor do servidor filtrado sai de cena.
-        state.set_server_filter(Some("Local".to_string()));
+        state.set_server_filter(filter(&["Local"]));
         state.forget_scope_selector(&servers);
         assert_eq!(state.selector_for("Local"), None);
         assert_eq!(state.selector_for("Produção"), Some("Producao"));
@@ -1450,7 +1570,7 @@ mod tests {
         assert_eq!(state.marked_count(), 2);
 
         state.reveal_more(50, &servers);
-        state.set_server_filter(Some("Local".to_string()));
+        state.set_server_filter(filter(&["Local"]));
         assert_eq!(state.marked_count(), 2, "filtrar não desmarca");
 
         state.set_search("base_7".to_string());
@@ -1593,11 +1713,79 @@ mod tests {
         assert_eq!(rows[1].server, "Local", "empate desempatado pelo servidor");
         assert_eq!(rows[2].server, "Produção");
 
-        state.set_server_filter(Some("produção".to_string()));
+        // O filtro compara sem diferenciar maiúsculas: `produção` recorta o `Produção`.
+        state.set_server_filter(filter(&["produção"]));
         let rows = state.rows(&servers);
         assert_eq!(rows.len(), 2);
         assert!(rows.iter().all(|row| row.server == "Produção"));
-        assert_eq!(state.server_filter(), Some("produção"));
+        assert_eq!(
+            state.server_filter(),
+            filter(&["produção"]).as_ref(),
+            "o filtro guarda o nome como veio"
+        );
+    }
+
+    /// O filtro de checkbox aceita **vários** servidores ao mesmo tempo.
+    /// CONTRACT: IF-227
+    #[test]
+    fn the_filter_can_keep_several_servers() {
+        let mut state = SelectionState::default();
+        let servers = servers();
+        state.sync_registry(&servers);
+        state.discover(&servers[0], catalog(["dev", "alpha"]));
+        state.discover(&servers[1], catalog(["dev", "zulu"]));
+
+        state.set_server_filter(filter(&["Local", "Produção"]));
+        assert_eq!(state.rows(&servers).len(), 4, "os dois servidores na lista");
+        assert_eq!(state.known_in_scope(&servers), 4);
+
+        state.set_marked("Local", "dev", true);
+        state.set_marked("Produção", "zulu", true);
+        assert_eq!(state.marked_in_scope(&servers), 2);
+        state.set_server_filter(filter(&["Local"]));
+        assert_eq!(state.rows(&servers).len(), 2);
+        assert_eq!(state.known_in_scope(&servers), 2, "só o catálogo do Local");
+        assert_eq!(state.marked_in_scope(&servers), 1, "só a marcada do Local");
+
+        state.set_server_filter(filter(&[]));
+        assert!(
+            state.rows(&servers).is_empty(),
+            "nenhum servidor, lista vazia"
+        );
+        assert_eq!(state.known_in_scope(&servers), 0);
+        assert_eq!(state.marked_in_scope(&servers), 0);
+        assert!(!state.in_scope("Local"));
+    }
+
+    /// O checkbox de cada servidor alterna o filtro, e "todos marcados" normaliza para `None`.
+    /// CONTRACT: IF-272
+    #[test]
+    fn toggling_servers_builds_the_filter() {
+        let mut state = SelectionState::default();
+        let servers = servers();
+        state.sync_registry(&servers);
+
+        // De "todos", desmarcar o Produção deixa só o Local.
+        state.toggle_server("Produção", &servers);
+        assert_eq!(state.server_filter(), filter(&["Local"]).as_ref());
+        assert!(state.in_scope("Local"));
+        assert!(!state.in_scope("Produção"));
+
+        // Desmarcar o último deixa o conjunto vazio (lista vazia), não "todos".
+        state.toggle_server("Local", &servers);
+        assert_eq!(state.server_filter(), filter(&[]).as_ref());
+
+        // Remarcar o Local e o Produção volta a "todos" (`None`).
+        state.toggle_server("Local", &servers);
+        state.toggle_server("Produção", &servers);
+        assert_eq!(state.server_filter(), None);
+
+        // O checkbox mestre: com recorte marca todos; com todos desmarca todos.
+        state.toggle_server("Local", &servers);
+        state.toggle_all_servers();
+        assert_eq!(state.server_filter(), None);
+        state.toggle_all_servers();
+        assert_eq!(state.server_filter(), filter(&[]).as_ref());
     }
 
     /// Busca casa nome da base **e** nome do servidor, sem diferenciar maiúsculas.
@@ -1647,7 +1835,7 @@ mod tests {
 
         state.reset_visible(&servers);
         assert_eq!(state.marked_count(), 0);
-        state.set_server_filter(Some("Produção".to_string()));
+        state.set_server_filter(filter(&["Produção"]));
         let summary = state.select_all_visible(&servers);
         assert_eq!(summary.marked, 1, "so o dev do Producao");
         assert_eq!(
@@ -1662,6 +1850,74 @@ mod tests {
         let summary = state.select_all_visible(&servers);
         assert_eq!(summary.marked, 1, "so test2");
         assert_eq!(state.marked_on("Local"), 1);
+    }
+
+    /// O `Select all` marca **só** os servidores com checkbox no combo.
+    ///
+    /// É o fluxo da janela: marcar um servidor no combo (ou vários) e apertar `Select all N` — as
+    /// bases dos servidores **sem** checkbox ficam como estavam.
+    /// CONTRACT: IF-227
+    #[test]
+    fn select_all_marks_only_the_servers_checked_in_the_combo() {
+        let mut state = SelectionState::default();
+        let servers = vec![server("A"), server("B"), server("C")];
+        state.sync_registry(&servers);
+        for entry in &servers {
+            state.discover(entry, catalog(["dev", "prod"]));
+        }
+
+        // Um servidor marcado no combo (vindo do estado "nenhum", como na janela).
+        state.toggle_all_servers();
+        state.toggle_server("B", &servers);
+        assert_eq!(state.server_filter(), filter(&["B"]).as_ref());
+
+        let summary = state.select_all_visible(&servers);
+        assert_eq!(summary.marked, 2, "as 2 bases do B");
+        assert_eq!(state.marked_on("B"), 2);
+        assert_eq!(state.marked_on("A"), 0, "A está sem checkbox");
+        assert_eq!(state.marked_on("C"), 0, "C está sem checkbox");
+
+        // Mais um servidor marcado: o `Select all` alcança os dois checkboxes.
+        state.toggle_server("A", &servers);
+        assert_eq!(state.server_filter(), filter(&["A", "B"]).as_ref());
+        let summary = state.select_all_visible(&servers);
+        assert_eq!(summary.marked, 4, "2 do A + 2 do B");
+        assert_eq!(state.marked_on("A"), 2);
+        assert_eq!(state.marked_on("B"), 2);
+        assert_eq!(state.marked_on("C"), 0, "C continua fora do recorte");
+    }
+
+    /// O `Clear` desmarca **só** os servidores com checkbox no combo.
+    ///
+    /// O que está marcado à mão num servidor fora do recorte não pode ser perdido.
+    /// CONTRACT: IF-227
+    #[test]
+    fn clear_unmarks_only_the_servers_checked_in_the_combo() {
+        let mut state = SelectionState::default();
+        let servers = vec![server("A"), server("B"), server("C")];
+        state.sync_registry(&servers);
+        for entry in &servers {
+            state.discover(entry, catalog(["dev", "prod"]));
+        }
+
+        // Dois servidores marcados no combo; o `Select all` marca as 4 bases deles.
+        state.set_server_filter(filter(&["A", "B"]));
+        let summary = state.select_all_visible(&servers);
+        assert_eq!(summary.marked, 4);
+
+        // Uma base do C marcada à mão fica fora do recorte.
+        state.set_marked("C", "dev", true);
+        assert_eq!(state.marked_on("C"), 1);
+
+        let (cleared, restored) = state.reset_visible(&servers);
+        assert_eq!(
+            (cleared, restored),
+            (4, 0),
+            "só as bases dos servidores com checkbox"
+        );
+        assert_eq!(state.marked_on("A"), 0);
+        assert_eq!(state.marked_on("B"), 0);
+        assert_eq!(state.marked_on("C"), 1, "fora do combo, ninguém toca");
     }
 
     /// Base com aviso de senha **nao** entra no `Select all` (R4b), mas da para marcar a mao.

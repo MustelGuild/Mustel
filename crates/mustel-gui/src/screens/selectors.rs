@@ -361,7 +361,7 @@ impl State {
                             self.discovered
                                 .insert(form.server.clone(), Discovery::Loading);
                             request = Some(Request::DiscoverDatabases {
-                                server: Some(form.server.clone()),
+                                servers: Some(vec![form.server.clone()]),
                             });
                         }
                         if loading {
@@ -477,7 +477,7 @@ impl State {
         self.discovered
             .insert(server.to_string(), Discovery::Loading);
         Some(Request::DiscoverDatabases {
-            server: Some(server.to_string()),
+            servers: Some(vec![server.to_string()]),
         })
     }
 
@@ -685,7 +685,7 @@ mod tests {
         assert_eq!(
             request,
             Some(Request::DiscoverDatabases {
-                server: Some("Local".to_string())
+                servers: Some(vec!["Local".to_string()])
             })
         );
         assert!(state.is_loading("Local"), "a tela mostra o carregamento");

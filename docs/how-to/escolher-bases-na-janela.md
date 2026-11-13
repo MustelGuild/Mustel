@@ -8,7 +8,8 @@ de base fica lá.
 
 ## Marcar à mão
 
-1. No combo **Server**, escolha o servidor (ou deixe `All servers`).
+1. No combo **Server**, marque um ou mais servidores (ou deixe `All servers`). A lista é de
+   checkbox e não fecha a cada clique; sem nenhum marcado, a lista fica vazia.
 2. Opcional: use a busca para achar a base — ela cruza o nome da base **e** o do servidor.
 3. Marque as caixas que vão rodar. O contador no topo (`N selected`) e o status da sidebar
    (`5 marked`) acompanham.
@@ -33,9 +34,10 @@ pode cair em qualquer servidor do cadastro.
 3. Se quiser conferir o que veio, ligue **Show only marked**: a lista passa a mostrar só as
    marcadas (`3 of 3`), sem mudar o que os botões fazem.
 
-O escopo da aplicação é o filtro de servidor: com um servidor filtrado, escolher aplica **só nele**;
-com `All servers`, aplica em todos. Cada servidor guarda o seu — dá para deixar `Local` em
-`Producao` e `Local 2` em `Homologacao` e trocar o filtro para ver o nome de cada um.
+O escopo da aplicação é o filtro de servidor: com um servidor marcado, escolher aplica **só nele**;
+com vários marcados, só neles; com `All servers`, aplica em todos. Cada servidor guarda o seu — dá
+para deixar `Local` em `Producao` e `Local 2` em `Homologacao` e trocar o filtro para ver o nome de
+cada um.
 
 ## Desfazer a bagunça
 
@@ -49,7 +51,7 @@ Se o que falta é base **nova** (criada depois da última aplicação), escolha 
 
 ## Ver o que o servidor tem
 
-- `⟳`, ao lado do combo de servidor, lista as bases do escopo (um servidor, ou todos).
+- `⟳`, ao lado do combo de servidor, lista as bases do escopo (os servidores marcados, ou todos).
 - O número ao lado do nome (`Local 106`) é quanto o **catálogo** daquele servidor tem, templates
   incluídos. Ele não muda quando você aplica um seletor.
 - Base que o seletor conhece mas o servidor não tem também aparece, apagada, para não sumir em

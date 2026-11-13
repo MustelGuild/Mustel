@@ -101,8 +101,8 @@ pub enum Request {
     /// `None` descobre **todos** os servidores do cadastro, um a um e em melhor esforço: um
     /// servidor fora do ar não pode impedir os outros (é o `⟳ Discover all`).
     DiscoverDatabases {
-        /// Servidor do cadastro (`None` = todos).
-        server: Option<String>,
+        /// Servidores do cadastro (`None` = todos).
+        servers: Option<Vec<String>>,
     },
     /// A lista de seletores mudou: o app compõe a seção `gui` (aparência + seletores + paginação)
     /// e grava.
@@ -125,7 +125,7 @@ pub enum Request {
     ApplySelection {
         /// Nome da query salva em `gui.selections`.
         query: String,
-        /// Todos os servidores, ou um só.
+        /// Todos os servidores, ou só os que estão no filtro.
         scope: crate::selection::ApplyScope,
     },
     /// Carrega o esquema de um banco, para o autocomplete.

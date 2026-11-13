@@ -821,18 +821,26 @@ impl App {
                     });
                 });
             }
-            Request::DiscoverDatabases { server } => {
+            Request::DiscoverDatabases { servers } => {
                 let registry = self.servers_snapshot();
-                let targets: Vec<ServerConfigEntry> = match &server {
-                    Some(name) => registry
+                let targets: Vec<ServerConfigEntry> = match &servers {
+                    Some(names) => registry
                         .into_iter()
-                        .filter(|candidate| &candidate.name == name)
+                        .filter(|candidate| {
+                            names
+                                .iter()
+                                .any(|name| name.eq_ignore_ascii_case(&candidate.name))
+                        })
                         .collect(),
                     None => registry,
                 };
                 if targets.is_empty() {
-                    self.status = match &server {
-                        Some(name) => format!("Server '{name}' not found."),
+                    self.status = match &servers {
+                        Some(names) if names.is_empty() => "No server selected.".to_string(),
+                        Some(names) => format!(
+                            "Server '{}' not found.",
+                            names.first().map(String::as_str).unwrap_or_default()
+                        ),
                         None => "No server registered.".to_string(),
                     };
                     return;
@@ -846,9 +854,11 @@ impl App {
                 for entry in &targets {
                     self.reference.mark_pending(&entry.name);
                 }
-                self.status = match &server {
-                    Some(name) => format!("Discovering databases on '{name}'..."),
-                    None => format!("Discovering databases on {} server(s)...", targets.len()),
+                self.status = match &servers {
+                    Some(names) if names.len() == 1 => {
+                        format!("Discovering databases on '{}'...", names[0])
+                    }
+                    _ => format!("Discovering databases on {} server(s)...", targets.len()),
                 };
 
                 for entry in targets {

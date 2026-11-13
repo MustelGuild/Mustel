@@ -317,6 +317,37 @@ fn note_line(selector: &str, databases: usize) -> String {
     }
 }
 
+/// O texto do botão do combo de servidor: o recorte e a contagem dele.
+///
+/// `All servers (208)` sem recorte, `Local (104)` com um servidor, `2 servers (209)` com vários e
+/// `No servers (0)` quando todos foram desmarcados.
+fn server_scope_label(
+    selection: &crate::selection::SelectionState,
+    servers: &[ServerConfigEntry],
+) -> String {
+    match selection.server_filter() {
+        None => format!("All servers ({})", selection.known_count(servers)),
+        Some(filter) if filter.is_empty() => "No servers (0)".to_string(),
+        Some(filter) => match filter.len() {
+            1 => filter.iter().next().map_or_else(
+                || "No servers (0)".to_string(),
+                |name| format!("{name} ({})", selection.known_in_scope(servers)),
+            ),
+            count => format!("{count} servers ({})", selection.known_in_scope(servers)),
+        },
+    }
+}
+
+/// Como o escopo se chama no tooltip do `⟳`.
+fn scope_description(selection: &crate::selection::SelectionState) -> String {
+    match selection.server_filter() {
+        None => "all servers".to_string(),
+        Some(filter) if filter.is_empty() => "no server".to_string(),
+        Some(filter) if filter.len() > 3 => format!("{} servers", filter.len()),
+        Some(filter) => filter.iter().cloned().collect::<Vec<_>>().join(", "),
+    }
+}
+
 /// Tamanho de página da lista, quando a paginação está ligada (`None` = desenha tudo).
 ///
 /// A decisão mora na configuração (`gui.selectionList`), não na tela: assim o dono liga/desliga em
@@ -1294,14 +1325,15 @@ Selection unchanged."
         let mut request = None;
         let running = self.is_running();
 
-        // O **escopo** de tudo o que está abaixo é o filtro: um servidor, ou todos.
-        let scope_name = self
+        // O **escopo** de tudo o que está abaixo é o filtro: um servidor, vários, ou todos.
+        // Nenhum servidor marcado é um estado explícito: não há o que descobrir nem onde aplicar.
+        let no_server = self
             .selection
             .server_filter()
-            .map(str::to_string)
-            .unwrap_or_else(|| "all".to_string());
+            .is_some_and(std::collections::BTreeSet::is_empty);
+        let scope_name = scope_description(&self.selection);
         let scope = match self.selection.server_filter() {
-            Some(name) => crate::selection::ApplyScope::Server(name.to_string()),
+            Some(filter) => crate::selection::ApplyScope::Servers(filter.clone()),
             None => crate::selection::ApplyScope::All,
         };
 
@@ -1321,10 +1353,7 @@ Selection unchanged."
         let popup_width = (combo_width + ICON_WIDTH).max(SERVER_POPUP_WIDTH);
         ui.horizontal(|ui| {
             // O botão mostra a contagem do escopo, igual ao "All servers (208)".
-            let current = match self.selection.server_filter() {
-                Some(name) => format!("{name} ({})", self.selection.known_on(name)),
-                None => format!("All servers ({})", self.selection.known_count(servers)),
-            };
+            let current = server_scope_label(&self.selection, servers);
             let mut texts: Vec<String> = vec!["All servers".to_string()];
             texts.extend(servers.iter().map(|server| server.name.clone()));
             // O detalhe de cada linha é `seletor · bases`. A contagem fica **fora** da busca
@@ -1349,21 +1378,22 @@ Selection unchanged."
                 .iter()
                 .enumerate()
                 .map(|(index, text)| {
-                    let selected = if index == 0 {
+                    // A caixa do escopo `All servers` fica marcada quando **não há recorte**;
+                    // cada servidor reflete o próprio lugar no filtro. Vários podem estar
+                    // marcados ao mesmo tempo.
+                    let checked = if index == 0 {
                         self.selection.server_filter().is_none()
                     } else {
-                        self.selection
-                            .server_filter()
-                            .is_some_and(|filter| filter.eq_ignore_ascii_case(text))
+                        self.selection.in_scope(text)
                     };
                     crate::search_combo::Item::with_note(
                         text.as_str(),
                         notes[index].as_str(),
-                        selected,
+                        checked,
                     )
                 })
                 .collect();
-            if let Some(index) = crate::search_combo::search_combo_sized(
+            if let Some(index) = crate::search_combo::search_combo_checkable(
                 ui,
                 "selection_server_filter",
                 &current,
@@ -1374,23 +1404,40 @@ Selection unchanged."
                     popup: popup_width,
                 },
             ) {
-                self.selection
-                    .set_server_filter((index > 0).then(|| texts[index].clone()));
+                if index == 0 {
+                    // `All servers` é o checkbox mestre: com recorte, marca todos; com todos
+                    // marcados, desmarca todos (a lista fica vazia e o botão diz isso).
+                    self.selection.toggle_all_servers();
+                } else if let Some(server) = servers.get(index - 1) {
+                    self.selection.toggle_server(&server.name, servers);
+                }
             }
 
             // `⟳` no lugar do antigo `Discover all`: a descoberta age no escopo do filtro, e ao
             // lado do filtro isso fica visível sem um rótulo a mais. O botão é alinhado à direita
-            // na caixa reservada, então ele cai sempre na mesma coluna.
+            // na caixa reservada, então ele cai sempre na mesma coluna. Sem servidor marcado não
+            // há o que descobrir, e o botão fica apagado.
             ui.allocate_ui_with_layout(
                 icon_box,
                 egui::Layout::right_to_left(egui::Align::Center),
                 |ui| {
-                    if crate::icons::button_enabled(ui, crate::icons::Icon::Refresh, !running)
-                        .on_hover_text(format!("List the databases of {scope_name}"))
-                        .clicked()
+                    if crate::icons::button_enabled(
+                        ui,
+                        crate::icons::Icon::Refresh,
+                        !running && !no_server,
+                    )
+                    .on_hover_text(if no_server {
+                        "No server selected".to_string()
+                    } else {
+                        format!("List the databases of {scope_name}")
+                    })
+                    .clicked()
                     {
                         request = Some(Request::DiscoverDatabases {
-                            server: self.selection.server_filter().map(str::to_string),
+                            servers: self
+                                .selection
+                                .server_filter()
+                                .map(|filter| filter.iter().cloned().collect()),
                         });
                     }
                 },
@@ -1444,7 +1491,7 @@ Selection unchanged."
                 "selection_query",
                 &chosen,
                 &items,
-                self.applying.is_none() && !running,
+                self.applying.is_none() && !running && !no_server,
                 crate::search_combo::Size {
                     button: combo_width,
                     popup: popup_width,
@@ -1599,10 +1646,7 @@ Selection unchanged."
 
         // Status **derivado** (é sempre a verdade atual): quantas bases estão marcadas no escopo e
         // de qual seletor vieram. O recado da última ação vem embaixo, quando há o que contar.
-        let scope_marked = match self.selection.server_filter() {
-            Some(name) => self.selection.marked_on(name),
-            None => self.selection.marked_count(),
-        };
+        let scope_marked = self.selection.marked_in_scope(servers);
         let mut status = format!("{scope_marked} marked");
         if let Some(origin) = self.selection.scope_origin(servers) {
             status.push_str(&format!(" · from '{origin}'"));
@@ -1762,7 +1806,7 @@ Selection unchanged."
         // não impede os outros.
         if request.is_none() && !self.auto_discovered && !servers.is_empty() {
             self.auto_discovered = true;
-            request = Some(Request::DiscoverDatabases { server: None });
+            request = Some(Request::DiscoverDatabases { servers: None });
         }
 
         // A linha de referência precisa dos bancos do servidor escolhido: pede a descoberta uma vez
@@ -1770,7 +1814,7 @@ Selection unchanged."
         // quando o dono **troca** a referência depois da abertura.
         if request.is_none() && reference.unknown(self.reference_server()) {
             request = Some(Request::DiscoverDatabases {
-                server: Some(self.reference_server().to_string()),
+                servers: Some(vec![self.reference_server().to_string()]),
             });
         }
 
@@ -2157,6 +2201,16 @@ mod tests {
         }
     }
 
+    /// O escopo de **um** servidor.
+    fn only(name: &str) -> crate::selection::ApplyScope {
+        crate::selection::ApplyScope::Servers(std::collections::BTreeSet::from([name.to_string()]))
+    }
+
+    /// Um filtro de servidor com os nomes dados.
+    fn filter(names: &[&str]) -> Option<std::collections::BTreeSet<String>> {
+        Some(names.iter().map(|name| name.to_string()).collect())
+    }
+
     /// Nenhum servidor vem marcado por padrão: quem escolhe os alvos é quem vai executar.
     ///
     /// Muda o contrato anterior ("servidor único já vem marcado, como no CLI"): na janela a lista
@@ -2507,11 +2561,7 @@ mod tests {
                     warning: None,
                 }],
             };
-            state.selection.apply(
-                &[selected],
-                &crate::selection::ApplyScope::Server(name.to_string()),
-                "Smoke",
-            );
+            state.selection.apply(&[selected], &only(name), "Smoke");
         }
 
         // Ainda existe (com outra caixa): o combo continua mostrando o nome.
@@ -2560,24 +2610,17 @@ mod tests {
                         warning: None,
                     }],
                 }],
-                &crate::selection::ApplyScope::Server(name.to_string()),
+                &only(name),
                 "Producao",
             );
         }
         // Com filtro: aplica **só** naquele servidor.
-        state
-            .selection
-            .set_server_filter(Some("Produção".to_string()));
+        state.selection.set_server_filter(filter(&["Produção"]));
         assert_eq!(
-            state.choose_selector(
-                Some("Homologacao"),
-                None,
-                &crate::selection::ApplyScope::Server("Produção".to_string()),
-                &servers
-            ),
+            state.choose_selector(Some("Homologacao"), None, &only("Produção"), &servers),
             Some(Request::ApplySelection {
                 query: "Homologacao".to_string(),
-                scope: crate::selection::ApplyScope::Server("Produção".to_string()),
+                scope: only("Produção"),
             })
         );
 
@@ -2730,6 +2773,33 @@ mod tests {
         assert!(selector.ends_with('…'), "com reticências: {long}");
         assert!(long.ends_with(" · 104"), "a contagem fica inteira: {long}");
         assert_eq!(truncate("curto", 20), "curto", "quem cabe não é mexido");
+    }
+
+    /// O botão do combo de servidor resume o recorte: todos, um, vários e nenhum.
+    /// CONTRACT: IF-272
+    #[test]
+    fn the_server_scope_label_follows_the_filter() {
+        let mut selection = crate::selection::SelectionState::default();
+        let servers = [server("Local"), server("Local 2")];
+        selection.sync_registry(&servers);
+        selection.discover(&servers[0], crate::selection::catalog(["dev", "prod"]));
+        selection.discover(&servers[1], crate::selection::catalog(["demo"]));
+
+        assert_eq!(server_scope_label(&selection, &servers), "All servers (3)");
+        selection.set_server_filter(filter(&["Local"]));
+        assert_eq!(server_scope_label(&selection, &servers), "Local (2)");
+        selection.set_server_filter(filter(&["Local", "Local 2"]));
+        assert_eq!(
+            server_scope_label(&selection, &servers),
+            "2 servers (3)",
+            "o botão conta o que o recorte inteiro tem"
+        );
+        selection.set_server_filter(filter(&[]));
+        assert_eq!(
+            server_scope_label(&selection, &servers),
+            "No servers (0)",
+            "nenhum marcado é um estado explícito, não \"todos\""
+        );
     }
 
     /// O alerta de falha mora **abaixo do combo de seletor** e acima da busca — largura toda.
@@ -3025,7 +3095,7 @@ mod tests {
 
         assert_eq!(
             request,
-            Some(Request::DiscoverDatabases { server: None }),
+            Some(Request::DiscoverDatabases { servers: None }),
             "a abertura pede a descoberta de todos"
         );
 
@@ -3040,7 +3110,7 @@ mod tests {
         assert_eq!(
             request,
             Some(Request::DiscoverDatabases {
-                server: Some("local".to_string())
+                servers: Some(vec!["local".to_string()])
             }),
             "no quadro seguinte quem pede é a referência do autocomplete, não a abertura"
         );
@@ -3090,7 +3160,7 @@ mod tests {
         assert_eq!(
             request,
             Some(Request::DiscoverDatabases {
-                server: Some("outro".to_string())
+                servers: Some(vec!["outro".to_string()])
             }),
             "trocar a referência pede os bancos do servidor novo"
         );

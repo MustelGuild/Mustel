@@ -78,15 +78,16 @@ oportunidade de esquecê-lo apertado, com a tela mostrando um seletor escolhido 
 
 ## Por que cada servidor lembra o seu seletor
 
-O escopo de uma aplicação é o filtro: um servidor, ou todos. Mas o que a tela mostra é o mundo
-inteiro — e é normal `Local` estar em `Producao` enquanto `Local 2` está em `Homologacao`. Com uma
-escolha única, o combo teria de mentir sobre um dos dois.
+O escopo de uma aplicação é o filtro: os servidores marcados no combo (um, vários, ou todos). Mas o
+que a tela mostra é o mundo inteiro — e é normal `Local` estar em `Producao` enquanto `Local 2` está
+em `Homologacao`. Com uma escolha única, o combo teria de mentir sobre um dos dois.
 
 Por isso a memória é **por servidor** (`servidor → nome do seletor`), e o combo resume o escopo:
-com filtro, mostra o do servidor; com "todos" e seletores iguais, o nome comum; com diferentes,
-fica vazio. Servidor **sem** seletor conta como um valor diferente, não como "tanto faz": senão o
-escopo afirmaria estar em `Producao` quando só um dos servidores está — foi exatamente o bug que o
-dono pegou no dropdown (`All servers` dizendo `todas` com o `Local 2` sem nada).
+com um servidor, mostra o dele; com vários, o nome comum a eles; com "todos" e seletores iguais, o
+nome comum; com diferentes, fica vazio. Servidor **sem** seletor conta como um valor diferente, não
+como "tanto faz": senão o escopo afirmaria estar em `Producao` quando só um dos servidores está —
+foi exatamente o bug que o dono pegou no dropdown (`All servers` dizendo `todas` com o `Local 2` sem
+nada).
 
 ## Por que `Clear` vira `Reset`
 

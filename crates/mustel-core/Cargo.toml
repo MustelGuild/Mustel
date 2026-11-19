@@ -50,7 +50,7 @@ keyring = "4"
 # container: `/bin/kill -KILL -<pid>` sai com 0 e **não** mata o grupo; o builtin do shell mata),
 # e `libc::kill` direto não é opção por causa de `unsafe_code = "forbid"`.
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31", features = ["signal", "process"] }
+nix = { version = "0.32", features = ["signal", "process"] }
 
 [dev-dependencies]
 tempfile = "3"
